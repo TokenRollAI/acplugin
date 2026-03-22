@@ -11,11 +11,14 @@ export function convertAgent(agent: Agent, platform: Platform): ConvertedFile {
       return convertToOpenCode(agent);
     case 'cursor':
       return convertToCursor(agent);
+    case 'antigravity':
+      return convertToAntigravity(agent);
   }
 }
 
+// --- Codex: .codex/agents/*.toml ---
+
 function convertToCodex(agent: Agent): ConvertedFile {
-  // Codex uses .codex/agents/*.toml for subagents
   const name = agent.frontmatter.name || agent.fileName;
   const tomlData: Record<string, unknown> = {
     name,
@@ -23,14 +26,12 @@ function convertToCodex(agent: Agent): ConvertedFile {
     developer_instructions: agent.body.trim(),
   };
 
-  // Map model
   if (agent.frontmatter.model) {
     tomlData.model = mapModel(agent.frontmatter.model, 'codex');
   } else {
     tomlData.model = 'gpt-5.4';
   }
 
-  // Map tools → sandbox_mode
   if (agent.frontmatter.tools) {
     const tools = agent.frontmatter.tools.toLowerCase();
     if (tools.includes('bash') || tools.includes('write') || tools.includes('edit')) {
@@ -40,71 +41,104 @@ function convertToCodex(agent: Agent): ConvertedFile {
     }
   }
 
-  // Map effort → model_reasoning_effort
   if (agent.frontmatter.effort) {
     tomlData.model_reasoning_effort = agent.frontmatter.effort;
   }
 
   const content = `# Converted from Claude Code agent: ${name}\n\n` + toToml(tomlData);
-
-  return {
-    path: `.codex/agents/${agent.fileName}.toml`,
-    content,
-    type: 'agent',
-  };
+  return { path: `.codex/agents/${agent.fileName}.toml`, content, type: 'agent' };
 }
+
+// --- OpenCode: .opencode/agents/*.md (YAML frontmatter) ---
 
 function convertToOpenCode(agent: Agent): ConvertedFile {
-  const fm: Record<string, unknown> = {};
+  const name = agent.frontmatter.name || agent.fileName;
+  const fm: Record<string, unknown> = {
+    description: agent.frontmatter.description || `Agent: ${name}`,
+    mode: 'subagent',
+  };
 
-  if (agent.frontmatter.name) fm.name = agent.frontmatter.name;
-  if (agent.frontmatter.description) fm.description = agent.frontmatter.description;
-  if (agent.frontmatter.tools) fm.tools = agent.frontmatter.tools;
-  if (agent.frontmatter.model) fm.model = agent.frontmatter.model;
-  if (agent.frontmatter.maxTurns) fm.maxTurns = agent.frontmatter.maxTurns;
+  if (agent.frontmatter.model) {
+    fm.model = mapModel(agent.frontmatter.model, 'opencode');
+  }
+
+  if (agent.frontmatter.maxTurns) {
+    fm.steps = agent.frontmatter.maxTurns;
+  }
+
+  // Map tools → permission
+  if (agent.frontmatter.tools) {
+    const tools = agent.frontmatter.tools.toLowerCase();
+    const permission: Record<string, string> = {};
+    if (!tools.includes('write') && !tools.includes('edit')) {
+      permission.edit = 'deny';
+    }
+    if (!tools.includes('bash')) {
+      permission.bash = 'deny';
+    }
+    if (Object.keys(permission).length > 0) {
+      fm.permission = permission;
+    }
+  }
 
   const content = stringifyFrontmatter(fm, agent.body);
-  return {
-    path: `.opencode/agents/${agent.fileName}.md`,
-    content,
-    type: 'agent',
-  };
+  return { path: `.opencode/agents/${agent.fileName}.md`, content, type: 'agent' };
 }
+
+// --- Cursor: .cursor/agents/*.md (YAML frontmatter) ---
 
 function convertToCursor(agent: Agent): ConvertedFile {
+  const name = agent.frontmatter.name || agent.fileName;
   const fm: Record<string, unknown> = {
-    description: `Agent behavior: ${agent.frontmatter.description || agent.frontmatter.name || agent.fileName}`,
-    alwaysApply: false,
+    name,
+    description: agent.frontmatter.description || `Agent: ${name}`,
   };
 
-  const body = buildAgentRuleBody(agent);
-  const content = stringifyFrontmatter(fm, body);
+  if (agent.frontmatter.model) {
+    fm.model = mapModel(agent.frontmatter.model, 'cursor');
+  }
 
-  return {
-    path: `.cursor/rules/agent-${agent.fileName}.mdc`,
-    content,
-    type: 'agent',
-  };
+  // Map tools to readonly
+  if (agent.frontmatter.tools) {
+    const tools = agent.frontmatter.tools.toLowerCase();
+    if (!tools.includes('write') && !tools.includes('edit') && !tools.includes('bash')) {
+      fm.readonly = true;
+    }
+  }
+
+  const content = stringifyFrontmatter(fm, agent.body);
+  return { path: `.cursor/agents/${agent.fileName}.md`, content, type: 'agent' };
 }
 
-function buildAgentRuleBody(agent: Agent): string {
-  const lines: string[] = [];
+// --- Antigravity: .gemini/agents/*.md (YAML frontmatter) ---
 
-  lines.push(`# Agent: ${agent.frontmatter.name || agent.fileName}\n`);
+function convertToAntigravity(agent: Agent): ConvertedFile {
+  const name = agent.frontmatter.name || agent.fileName;
+  const fm: Record<string, unknown> = {
+    name,
+    description: agent.frontmatter.description || `Agent: ${name}`,
+  };
 
-  if (agent.frontmatter.description) {
-    lines.push(`> ${agent.frontmatter.description}\n`);
+  if (agent.frontmatter.model) {
+    fm.model = mapModel(agent.frontmatter.model, 'antigravity');
   }
 
+  // Map tools to allowed-tools list
   if (agent.frontmatter.tools) {
-    lines.push(`**Available tools:** ${agent.frontmatter.tools}\n`);
+    const toolList = agent.frontmatter.tools.split(',').map(t => t.trim().toLowerCase());
+    const mapped: string[] = [];
+    for (const t of toolList) {
+      if (t === 'read') mapped.push('read_file');
+      else if (t === 'grep') mapped.push('search_files');
+      else if (t === 'glob') mapped.push('list_files');
+      else if (t === 'bash') mapped.push('run_terminal_command');
+      else if (t === 'write') mapped.push('write_file');
+      else if (t === 'edit') mapped.push('edit_file');
+      else mapped.push(t);
+    }
+    fm['allowed-tools'] = mapped;
   }
 
-  if (agent.frontmatter.disallowedTools) {
-    lines.push(`**Restricted tools:** ${agent.frontmatter.disallowedTools}\n`);
-  }
-
-  lines.push('', agent.body);
-
-  return lines.join('\n');
+  const content = stringifyFrontmatter(fm, agent.body);
+  return { path: `.gemini/agents/${agent.fileName}.md`, content, type: 'agent' };
 }

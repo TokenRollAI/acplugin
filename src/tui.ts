@@ -127,13 +127,14 @@ export async function selectPlugins(plugins: PluginScanResult[]): Promise<number
  */
 export async function selectPlatforms(): Promise<Platform[]> {
   if (!process.stdin.isTTY) {
-    return ['codex', 'opencode', 'cursor'];
+    return ['codex', 'opencode', 'cursor', 'antigravity'];
   }
 
   const choices = [
     { name: 'Codex CLI', value: 'codex' as Platform, checked: true },
     { name: 'OpenCode', value: 'opencode' as Platform, checked: true },
     { name: 'Cursor', value: 'cursor' as Platform, checked: true },
+    { name: 'Antigravity (Google)', value: 'antigravity' as Platform, checked: true },
   ];
 
   const selected: Platform[] = await checkbox({

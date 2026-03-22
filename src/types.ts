@@ -1,5 +1,5 @@
 // Target platforms
-export type Platform = 'codex' | 'opencode' | 'cursor';
+export type Platform = 'codex' | 'opencode' | 'cursor' | 'antigravity';
 
 // --- Skill ---
 export interface SkillFrontmatter {

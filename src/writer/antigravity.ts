@@ -6,42 +6,41 @@ import { convertAgent } from '../converter/agent.js';
 import { convertCommand } from '../converter/command.js';
 import { convertHooks } from '../converter/hooks.js';
 
-export function generateCursor(scan: ScanResult): ConvertResult {
+export function generateAntigravity(scan: ScanResult): ConvertResult {
   const files: ConvertedFile[] = [];
   const warnings: string[] = [];
 
-  // Skills
+  // Skills → .agent/skills/
   for (const skill of scan.skills) {
-    files.push(convertSkill(skill, 'cursor'));
+    files.push(convertSkill(skill, 'antigravity'));
   }
 
-  // Instructions — each becomes a separate .mdc file
-  files.push(...mergeInstructions(scan.instructions, 'cursor'));
+  // Instructions → GEMINI.md
+  files.push(...mergeInstructions(scan.instructions, 'antigravity'));
 
-  // MCP
+  // MCP → .gemini/settings.json
   if (scan.mcp) {
-    files.push(convertMCP(scan.mcp, 'cursor'));
+    files.push(convertMCP(scan.mcp, 'antigravity'));
   }
 
-  // Agents → .cursor/agents/*.md
+  // Agents → .gemini/agents/
   for (const agent of scan.agents) {
-    files.push(convertAgent(agent, 'cursor'));
+    files.push(convertAgent(agent, 'antigravity'));
   }
 
-  // Commands
+  // Commands → Skills
   for (const cmd of scan.commands) {
-    files.push(convertCommand(cmd, 'cursor'));
+    files.push(convertCommand(cmd, 'antigravity'));
   }
 
   // Hooks
   if (scan.hooks) {
-    const hookResult = convertHooks(scan.hooks, 'cursor');
+    const hookResult = convertHooks(scan.hooks, 'antigravity');
     warnings.push(...hookResult.warnings);
-    // Cursor hooks are not file-configurable, so we only report warnings
   }
 
   return {
-    platform: 'cursor',
+    platform: 'antigravity',
     files,
     warnings,
   };

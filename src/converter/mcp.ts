@@ -9,6 +9,8 @@ export function convertMCP(mcp: MCPConfig, platform: Platform): ConvertedFile {
       return convertToOpenCode(mcp);
     case 'cursor':
       return convertToCursor(mcp);
+    case 'antigravity':
+      return convertToAntigravity(mcp);
   }
 }
 
@@ -97,6 +99,35 @@ function convertToCursor(mcp: MCPConfig): ConvertedFile {
   const content = JSON.stringify({ mcpServers }, null, 2);
   return {
     path: '.cursor/mcp.json',
+    content,
+    type: 'mcp',
+  };
+}
+
+function convertToAntigravity(mcp: MCPConfig): ConvertedFile {
+  // Antigravity uses .gemini/settings.json { mcpServers: { ... } }
+  const mcpServers: Record<string, unknown> = {};
+
+  for (const server of mcp.servers) {
+    const config: Record<string, unknown> = {};
+
+    if (server.type === 'http' && server.url) {
+      config.url = server.url;
+      if (server.headers) config.headers = server.headers;
+    } else {
+      if (server.command) config.command = server.command;
+      if (server.args) config.args = server.args;
+      if (server.env && Object.keys(server.env).length > 0) {
+        config.env = server.env;
+      }
+    }
+
+    mcpServers[server.name] = config;
+  }
+
+  const content = JSON.stringify({ mcpServers }, null, 2);
+  return {
+    path: '.gemini/settings.json',
     content,
     type: 'mcp',
   };

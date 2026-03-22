@@ -9,6 +9,8 @@ export function convertInstruction(instruction: Instruction, platform: Platform)
       return convertToOpenCode(instruction);
     case 'cursor':
       return convertToCursor(instruction);
+    case 'antigravity':
+      return convertToAntigravity(instruction);
   }
 }
 
@@ -62,10 +64,33 @@ function convertToCursor(instruction: Instruction): ConvertedFile {
  * Merge multiple instructions into a single file for platforms that use one file.
  * Codex and OpenCode both use a single AGENTS.md.
  */
+function convertToAntigravity(instruction: Instruction): ConvertedFile {
+  // CLAUDE.md → GEMINI.md
+  return {
+    path: 'GEMINI.md',
+    content: instruction.content,
+    type: 'instruction',
+  };
+}
+
 export function mergeInstructions(instructions: Instruction[], platform: Platform): ConvertedFile[] {
   if (platform === 'cursor') {
-    // Cursor: each instruction becomes a separate .mdc file
     return instructions.map(i => convertInstruction(i, platform));
+  }
+
+  if (platform === 'antigravity') {
+    // Antigravity: merge into GEMINI.md
+    if (instructions.length === 0) return [];
+    const sections: string[] = [];
+    for (const inst of instructions) {
+      if (inst.isRule) {
+        const name = inst.fileName.replace(/\.md$/, '');
+        sections.push(`\n## Rule: ${name}\n\n${inst.content}`);
+      } else {
+        sections.push(inst.content);
+      }
+    }
+    return [{ path: 'GEMINI.md', content: sections.join('\n\n---\n'), type: 'instruction' }];
   }
 
   // Codex / OpenCode: merge all into one AGENTS.md

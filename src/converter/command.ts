@@ -9,6 +9,8 @@ export function convertCommand(command: Command, platform: Platform): ConvertedF
       return convertToOpenCode(command);
     case 'cursor':
       return convertToCursor(command);
+    case 'antigravity':
+      return convertToAntigravity(command);
   }
 }
 
@@ -37,10 +39,23 @@ function convertToOpenCode(command: Command): ConvertedFile {
 }
 
 function convertToCursor(command: Command): ConvertedFile {
-  // Cursor uses .cursor/commands/*.md
   return {
     path: `.cursor/commands/${command.name}.md`,
     content: command.content,
+    type: 'command',
+  };
+}
+
+function convertToAntigravity(command: Command): ConvertedFile {
+  // Antigravity: convert commands to skills (no separate commands dir)
+  const fm = {
+    name: command.name,
+    description: `Command: ${command.name} (imported from Claude Code)`,
+  };
+  const content = stringifyFrontmatter(fm, command.content);
+  return {
+    path: `.agent/skills/cmd-${command.name}/SKILL.md`,
+    content,
     type: 'command',
   };
 }

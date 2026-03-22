@@ -8,6 +8,7 @@ import { hasMarketplace, isSinglePlugin, scanAllPlugins, scanPlugin, countResour
 import { generateCodex } from './writer/codex.js';
 import { generateOpenCode } from './writer/opencode.js';
 import { generateCursor } from './writer/cursor.js';
+import { generateAntigravity } from './writer/antigravity.js';
 import { writeFile } from './utils/fs.js';
 import { parseGitHubSource, downloadGitHubRepo, cleanupTempDir, getTempRoot } from './github.js';
 import { selectPlugins, selectPlatforms, runWizard, log } from './tui.js';
@@ -97,7 +98,7 @@ program
   .command('convert')
   .description('Convert Claude Code plugins to other platforms')
   .argument('[source]', 'Local path or GitHub repo (owner/repo)', '.')
-  .option('-t, --to <platforms>', 'Target platforms (codex,opencode,cursor)')
+  .option('-t, --to <platforms>', 'Target platforms (codex,opencode,cursor,antigravity)')
   .option('-o, --output <path>', 'Output directory')
   .option('-a, --all', 'Convert all plugins without selection')
   .option('-p, --path <subpath>', 'Sub-path within the repository')
@@ -114,7 +115,7 @@ program
       let platforms: Platform[];
       if (opts.to) {
         platforms = opts.to.split(',').map(p => p.trim()) as Platform[];
-        const valid: Platform[] = ['codex', 'opencode', 'cursor'];
+        const valid: Platform[] = ['codex', 'opencode', 'cursor', 'antigravity'];
         for (const p of platforms) {
           if (!valid.includes(p)) {
             log.error(`Unknown platform "${p}". Valid: ${valid.join(', ')}`);
@@ -231,6 +232,7 @@ function generateForPlatform(scan: ScanResult, platform: Platform): ConvertResul
     case 'codex': return generateCodex(scan);
     case 'opencode': return generateOpenCode(scan);
     case 'cursor': return generateCursor(scan);
+    case 'antigravity': return generateAntigravity(scan);
   }
 }
 

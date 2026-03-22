@@ -62,17 +62,27 @@ describe('convertAgent', () => {
     expect(result.content).toContain('model_reasoning_effort = "high"');
   });
 
-  it('converts to opencode as agent file', () => {
+  it('converts to opencode as subagent file', () => {
     const result = convertAgent(sampleAgent, 'opencode');
     expect(result.path).toBe('.opencode/agents/code-reviewer.md');
+    expect(result.content).toContain('description: Reviews code for bugs');
+    expect(result.content).toContain('mode: subagent');
+    expect(result.content).toContain('steps: 20');
+    expect(result.content).toContain('edit: deny');
+  });
+
+  it('converts to cursor as agent file', () => {
+    const result = convertAgent(sampleAgent, 'cursor');
+    expect(result.path).toBe('.cursor/agents/code-reviewer.md');
     expect(result.content).toContain('name: code-reviewer');
     expect(result.content).toContain('description: Reviews code for bugs');
   });
 
-  it('converts to cursor as rule file', () => {
-    const result = convertAgent(sampleAgent, 'cursor');
-    expect(result.path).toBe('.cursor/rules/agent-code-reviewer.mdc');
-    expect(result.content).toContain('alwaysApply: false');
-    expect(result.content).toContain('# Agent: code-reviewer');
+  it('converts to antigravity as agent file', () => {
+    const result = convertAgent(sampleAgent, 'antigravity');
+    expect(result.path).toBe('.gemini/agents/code-reviewer.md');
+    expect(result.content).toContain('name: code-reviewer');
+    expect(result.content).toContain('model: gemini-3-pro');
+    expect(result.content).toContain('read_file');
   });
 });

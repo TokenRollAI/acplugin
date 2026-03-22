@@ -64,5 +64,8 @@ function convertCommandHook(
         content: `## Hook: ${event}${matcher ? ` (${matcher})` : ''}\n\nRun after ${event}: \`${command}\`\n`,
         type: 'hook',
       };
+    case 'antigravity':
+      // Antigravity doesn't have file-configurable hooks
+      return null;
   }
 }
