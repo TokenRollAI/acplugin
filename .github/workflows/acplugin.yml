@@ -1,0 +1,18 @@
+name: Convert Plugins
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.claude/**'
+      - 'CLAUDE.md'
+
+jobs:
+  convert:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: TokenRollAI/acplugin-action@v1
+        with:
+          platforms: codex,opencode,cursor,antigravity
