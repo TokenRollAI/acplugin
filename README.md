@@ -19,6 +19,9 @@ npx @disdjj/acplugin convert .
 ## Quick Start
 
 ```bash
+# Interactive wizard — just run acplugin!
+acplugin
+
 # Convert current project
 acplugin convert .
 

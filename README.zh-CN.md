@@ -17,6 +17,9 @@ npx @disdjj/acplugin convert .
 ## 快速开始
 
 ```bash
+# 交互式引导 — 直接运行 acplugin！
+acplugin
+
 # 转换当前项目
 acplugin convert .
 

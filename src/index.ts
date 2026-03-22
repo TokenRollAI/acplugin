@@ -10,7 +10,7 @@ import { generateOpenCode } from './writer/opencode.js';
 import { generateCursor } from './writer/cursor.js';
 import { writeFile } from './utils/fs.js';
 import { parseGitHubSource, downloadGitHubRepo, cleanupTempDir, getTempRoot } from './github.js';
-import { selectPlugins, selectPlatforms, log } from './tui.js';
+import { selectPlugins, selectPlatforms, runWizard, log } from './tui.js';
 import type { Platform, ConvertResult, ScanResult, PluginScanResult } from './types.js';
 
 const program = new Command();
@@ -302,4 +302,30 @@ function printConvertReport(results: ConvertResult[], dryRun: boolean): void {
   }
 }
 
-program.parse();
+// --- Default: interactive wizard when no subcommand ---
+async function main() {
+  // If no subcommand provided (just `acplugin`), run interactive wizard
+  const args = process.argv.slice(2);
+  const hasSubcommand = args.length > 0 && ['scan', 'convert', 'help', '--help', '-h', '--version', '-V'].includes(args[0]);
+
+  if (args.length === 0 || !hasSubcommand) {
+    if (args.length === 0 && process.stdin.isTTY) {
+      // Pure `acplugin` with no args → wizard
+      const result = await runWizard();
+      const fakeArgs = [result.action, result.source];
+
+      if (result.action === 'convert') {
+        if (result.platforms.length) fakeArgs.push('--to', result.platforms.join(','));
+        if (result.outputDir) fakeArgs.push('-o', result.outputDir);
+        if (result.all) fakeArgs.push('--all');
+        if (result.dryRun) fakeArgs.push('--dry-run');
+      }
+
+      process.argv = ['node', 'acplugin', ...fakeArgs];
+    }
+  }
+
+  program.parse();
+}
+
+main();
