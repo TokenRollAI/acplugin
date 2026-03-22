@@ -8,7 +8,8 @@ acplugin converts six Claude Code resource types (skills, instructions, MCP conf
 
 ## 2. Source of Truth
 
-- **Type Definitions:** `src/types.ts` - All resource types (`Skill`, `Instruction`, `MCPConfig`, `Agent`, `Command`, `Hooks`), plugin types (`PluginMeta`, `PluginScanResult`), and result types (`ScanResult`, `ConvertResult`, `ConvertedFile`).
+- **Type Definitions:** `src/types.ts` - All resource types (`Skill`, `Instruction`, `MCPConfig`, `Agent`, `Command`, `Hooks`), plugin types (`PluginMeta`, `PluginScanResult`), and result types (`ScanResult`, `ConvertResult`, `ConvertedFile`). `PluginMeta` includes optional `displayName`, `homepage`, `repository`, `license`, `keywords` fields.
+- **Integration Tests:** `src/__tests__/superpowers-integration.test.ts` - 51 integration tests using real superpowers plugin data covering full pipeline.
 - **GitHub Source Resolution:** `src/github.ts` - Parsing and downloading GitHub repos. Supported formats: `owner/repo`, `github:owner/repo#branch`, full URLs.
 - **Plugin Scanner:** `src/scanner/plugin.ts` - Plugin format detection and scanning. Marketplace: `.claude-plugin/marketplace.json`. Single plugin: `.claude-plugin/plugin.json`. Plugin layout: `skills/`, `agents/`, `commands/`, `hooks/` directly in plugin root.
 - **Project Scanner:** `src/scanner/claude.ts` - Standard Claude Code project scanning (`.claude/` directory layout).
@@ -18,11 +19,11 @@ acplugin converts six Claude Code resource types (skills, instructions, MCP conf
 - **MCP Converter:** `src/converter/mcp.ts` - MCP server config conversion to config.toml / opencode.json / mcp.json (Cursor plugin format).
 - **Agent Converter:** `src/converter/agent.ts` - Native agent conversion for all four platforms. Cursor: `agents/*.md` (`name`, `description`, `model`, `readonly`). OpenCode: `.opencode/agents/*.md` (`mode: subagent`, `steps`, `permission`). Antigravity: `.gemini/agents/*.md` (tool-mapped `allowed-tools`).
 - **Command Converter:** `src/converter/command.ts` - Command conversion across platforms. Antigravity converts commands to skills.
-- **Hooks Converter:** `src/converter/hooks.ts` - Hook conversion with compatibility warnings for non-portable events.
+- **Hooks Converter:** `src/converter/hooks.ts` - Hook conversion with compatibility warnings for non-portable events. Cursor hooks get dedicated conversion: PascalCase → camelCase event names, `${CLAUDE_PLUGIN_ROOT}` stripped to relative paths, output as `hooks/hooks-cursor.json` with `{ version: 1 }` format.
 - **Model Mapper:** `src/utils/model.ts` - Claude model → platform model mapping. Codex: `gpt-5.4`. Antigravity: `gemini-3-pro`/`gemini-3-flash`. OpenCode/Cursor: passthrough.
 - **Codex Writer:** `src/writer/codex.ts` - Codex output orchestration.
 - **OpenCode Writer:** `src/writer/opencode.ts` - OpenCode output orchestration.
-- **Cursor Writer:** `src/writer/cursor.ts` - Cursor plugin format output. Generates `.cursor-plugin/plugin.json` manifest. Output paths remapped from `.cursor/` to plugin root: `skills/`, `agents/`, `commands/`, `rules/`, `mcp.json`.
+- **Cursor Writer:** `src/writer/cursor.ts` - Cursor plugin format output. Generates `.cursor-plugin/plugin.json` manifest with passthrough of `displayName`, `homepage`, `repository`, `license`, `keywords` and `hooks` field. Output paths remapped from `.cursor/` to plugin root: `skills/`, `agents/`, `commands/`, `rules/`, `mcp.json`.
 - **Antigravity Writer:** `src/writer/antigravity.ts` - Antigravity (Google) output orchestration.
 - **GitHub Action:** `.github/workflows/acplugin.yml` - CI workflow using `TokenRollAI/acplugin-action@v1`. Triggers on push to main when `.claude/` or `CLAUDE.md` changes. Auto-converts to all 4 platforms.
 - **System Architecture:** `/llmdoc/architecture/system.md` - Full pipeline and execution flow.
