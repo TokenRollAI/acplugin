@@ -34,6 +34,11 @@ export function scanMarketplace(rootDir: string): PluginMeta[] {
       author: p.author,
       source: p.source,
       category: p.category,
+      displayName: p.displayName,
+      homepage: p.homepage,
+      repository: p.repository,
+      license: p.license,
+      keywords: p.keywords,
     }));
     return plugins;
   } catch {
@@ -86,6 +91,11 @@ function readPluginMeta(pluginDir: string): PluginMeta {
       description: data.description,
       version: data.version,
       author: data.author,
+      displayName: data.displayName,
+      homepage: data.homepage,
+      repository: data.repository,
+      license: data.license,
+      keywords: data.keywords,
     };
   } catch {
     return { name: path.basename(pluginDir) };

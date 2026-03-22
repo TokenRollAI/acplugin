@@ -3,12 +3,24 @@ import type { Hooks, Platform, ConvertedFile } from '../types.js';
 // Events that have reasonable mapping across platforms
 const PORTABLE_EVENTS = ['PostToolUse', 'PreToolUse', 'Stop', 'SessionStart'];
 
+// Claude Code PascalCase → Cursor camelCase event name mapping
+const CURSOR_EVENT_MAP: Record<string, string> = {
+  'PostToolUse': 'postToolUse',
+  'PreToolUse': 'preToolUse',
+  'Stop': 'stop',
+  'SessionStart': 'sessionStart',
+};
+
 interface HookReport {
   converted: ConvertedFile[];
   warnings: string[];
 }
 
 export function convertHooks(hooks: Hooks, platform: Platform): HookReport {
+  if (platform === 'cursor') {
+    return convertCursorHooks(hooks);
+  }
+
   const warnings: string[] = [];
   const converted: ConvertedFile[] = [];
 
@@ -21,7 +33,6 @@ export function convertHooks(hooks: Hooks, platform: Platform): HookReport {
     for (const matcher of matchers) {
       for (const hook of matcher.hooks) {
         if (hook.type === 'command' && hook.command) {
-          // Command hooks are the most portable
           const result = convertCommandHook(event, matcher.matcher, hook.command, platform);
           if (result) {
             converted.push(result);
@@ -35,6 +46,54 @@ export function convertHooks(hooks: Hooks, platform: Platform): HookReport {
         }
       }
     }
+  }
+
+  return { converted, warnings };
+}
+
+/**
+ * Convert Claude Code hooks to Cursor hooks format.
+ * Cursor hooks use camelCase event names, no matcher, and a version field.
+ */
+function convertCursorHooks(hooks: Hooks): HookReport {
+  const warnings: string[] = [];
+  const cursorHooks: Record<string, Array<{ command: string }>> = {};
+
+  for (const [event, matchers] of Object.entries(hooks)) {
+    const cursorEvent = CURSOR_EVENT_MAP[event];
+    if (!cursorEvent) {
+      warnings.push(`Hook event "${event}" is not supported in Cursor — skipped`);
+      continue;
+    }
+
+    const entries: Array<{ command: string }> = [];
+    for (const matcher of matchers) {
+      for (const hook of matcher.hooks) {
+        if (hook.type === 'command' && hook.command) {
+          // Strip ${CLAUDE_PLUGIN_ROOT}/ prefix and adapt path for Cursor
+          let cmd = hook.command;
+          cmd = cmd.replace(/"\$\{CLAUDE_PLUGIN_ROOT\}\/([^"]+)"/g, './$1');
+          cmd = cmd.replace(/\$\{CLAUDE_PLUGIN_ROOT\}\//g, './');
+          entries.push({ command: cmd });
+        } else {
+          warnings.push(`Hook type "${hook.type}" for event "${event}" is not supported in Cursor — skipped`);
+        }
+      }
+    }
+
+    if (entries.length > 0) {
+      cursorHooks[cursorEvent] = entries;
+    }
+  }
+
+  const converted: ConvertedFile[] = [];
+  if (Object.keys(cursorHooks).length > 0) {
+    const content = JSON.stringify({ version: 1, hooks: cursorHooks }, null, 2);
+    converted.push({
+      path: 'hooks/hooks-cursor.json',
+      content,
+      type: 'hook',
+    });
   }
 
   return { converted, warnings };

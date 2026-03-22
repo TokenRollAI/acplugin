@@ -103,6 +103,11 @@ export interface PluginMeta {
   author?: { name: string; email?: string };
   source?: string;
   category?: string;
+  displayName?: string;
+  homepage?: string;
+  repository?: string;
+  license?: string;
+  keywords?: string[];
 }
 
 // --- Scan Result ---

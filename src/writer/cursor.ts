@@ -33,9 +33,10 @@ export function generateCursor(scan: ScanResult): ConvertResult {
     files.push(convertCommand(cmd, 'cursor'));
   }
 
-  // Hooks
+  // Hooks — generate Cursor-format hooks JSON
   if (scan.hooks) {
     const hookResult = convertHooks(scan.hooks, 'cursor');
+    files.push(...hookResult.converted);
     warnings.push(...hookResult.warnings);
   }
 
@@ -58,13 +59,18 @@ function generatePluginJson(scan: ScanResult): ConvertedFile {
   const meta = (scan as PluginScanResult).meta;
   const manifest: Record<string, unknown> = {
     name: meta?.name || 'converted-plugin',
-    description: meta?.description || 'Converted from Claude Code plugin via acplugin',
-    version: meta?.version || '1.0.0',
   };
 
-  if (meta?.author) {
-    manifest.author = meta.author;
-  }
+  if (meta?.displayName) manifest.displayName = meta.displayName;
+
+  manifest.description = meta?.description || 'Converted from Claude Code plugin via acplugin';
+  manifest.version = meta?.version || '1.0.0';
+
+  if (meta?.author) manifest.author = meta.author;
+  if (meta?.homepage) manifest.homepage = meta.homepage;
+  if (meta?.repository) manifest.repository = meta.repository;
+  if (meta?.license) manifest.license = meta.license;
+  if (meta?.keywords) manifest.keywords = meta.keywords;
 
   // Only include paths for components that exist
   if (scan.skills.length > 0) manifest.skills = './skills/';
@@ -72,6 +78,7 @@ function generatePluginJson(scan: ScanResult): ConvertedFile {
   if (scan.commands.length > 0) manifest.commands = './commands/';
   if (scan.instructions.length > 0) manifest.rules = './rules/';
   if (scan.mcp) manifest.mcpServers = './mcp.json';
+  if (scan.hooks) manifest.hooks = './hooks/hooks-cursor.json';
 
   return {
     path: '.cursor-plugin/plugin.json',
