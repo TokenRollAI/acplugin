@@ -1,5 +1,6 @@
 import type { Agent, Platform, ConvertedFile } from '../types.js';
 import { stringifyFrontmatter } from '../utils/frontmatter.js';
+import { toToml } from '../utils/toml.js';
 
 export function convertAgent(agent: Agent, platform: Platform): ConvertedFile {
   switch (platform) {
@@ -13,30 +14,44 @@ export function convertAgent(agent: Agent, platform: Platform): ConvertedFile {
 }
 
 function convertToCodex(agent: Agent): ConvertedFile {
-  // Codex doesn't have agent files — embed as AGENTS.md section
-  const lines = [`## Agent: ${agent.frontmatter.name || agent.fileName}\n`];
+  // Codex uses .codex/agents/*.toml for subagents
+  const name = agent.frontmatter.name || agent.fileName;
+  const tomlData: Record<string, unknown> = {
+    name,
+    description: agent.frontmatter.description || `Agent: ${name}`,
+    developer_instructions: agent.body.trim(),
+  };
 
-  if (agent.frontmatter.description) {
-    lines.push(`**Description:** ${agent.frontmatter.description}\n`);
-  }
-  if (agent.frontmatter.tools) {
-    lines.push(`**Tools:** ${agent.frontmatter.tools}\n`);
-  }
+  // Map model (Claude model names → leave as-is, user can adjust)
   if (agent.frontmatter.model) {
-    lines.push(`**Model:** ${agent.frontmatter.model}\n`);
+    tomlData.model = agent.frontmatter.model;
   }
 
-  lines.push('', agent.body);
+  // Map tools → sandbox_mode
+  if (agent.frontmatter.tools) {
+    const tools = agent.frontmatter.tools.toLowerCase();
+    if (tools.includes('bash') || tools.includes('write') || tools.includes('edit')) {
+      tomlData.sandbox_mode = 'workspace-write';
+    } else {
+      tomlData.sandbox_mode = 'read-only';
+    }
+  }
+
+  // Map effort → model_reasoning_effort
+  if (agent.frontmatter.effort) {
+    tomlData.model_reasoning_effort = agent.frontmatter.effort;
+  }
+
+  const content = `# Converted from Claude Code agent: ${name}\n\n` + toToml(tomlData);
 
   return {
-    path: `AGENTS.md.agent-${agent.fileName}`,
-    content: lines.join('\n'),
+    path: `.codex/agents/${agent.fileName}.toml`,
+    content,
     type: 'agent',
   };
 }
 
 function convertToOpenCode(agent: Agent): ConvertedFile {
-  // OpenCode supports agent files with similar format
   const fm: Record<string, unknown> = {};
 
   if (agent.frontmatter.name) fm.name = agent.frontmatter.name;
@@ -54,10 +69,9 @@ function convertToOpenCode(agent: Agent): ConvertedFile {
 }
 
 function convertToCursor(agent: Agent): ConvertedFile {
-  // Cursor doesn't support custom agents — convert to a rule
   const fm: Record<string, unknown> = {
     description: `Agent behavior: ${agent.frontmatter.description || agent.frontmatter.name || agent.fileName}`,
-    alwaysApply: false, // Agent-requested: only applied when relevant
+    alwaysApply: false,
   };
 
   const body = buildAgentRuleBody(agent);

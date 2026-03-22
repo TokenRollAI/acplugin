@@ -27,22 +27,9 @@ export function generateCodex(scan: ScanResult): ConvertResult {
     files.push(convertMCP(scan.mcp, 'codex'));
   }
 
-  // Agents — generate as AGENTS.md appendix sections
-  const agentSections: string[] = [];
+  // Agents — now generates .codex/agents/*.toml files
   for (const agent of scan.agents) {
-    const result = convertAgent(agent, 'codex');
-    agentSections.push(result.content);
-  }
-
-  // Merge agent sections into AGENTS.md
-  if (agentSections.length > 0) {
-    const existingAgentsMd = files.find(f => f.path === 'AGENTS.md');
-    const agentContent = '\n\n---\n\n# Agents (from Claude Code)\n\n' + agentSections.join('\n\n');
-    if (existingAgentsMd) {
-      existingAgentsMd.content += agentContent;
-    } else {
-      files.push({ path: 'AGENTS.md', content: agentContent.trim(), type: 'agent' });
-    }
+    files.push(convertAgent(agent, 'codex'));
   }
 
   // Commands → Skills
@@ -68,10 +55,9 @@ export function generateCodex(scan: ScanResult): ConvertResult {
     }
   }
 
-  // Remove temporary agent/hook fragment files
   return {
     platform: 'codex',
-    files: files.filter(f => !f.path.includes('.agent-') && !f.path.includes('.hook-')),
+    files: files.filter(f => !f.path.includes('.hook-')),
     warnings,
   };
 }
