@@ -1,0 +1,50 @@
+{
+  "name": "@disdjj/acplugin",
+  "version": "1.1.0",
+  "description": "Convert Claude Code plugins to Codex, OpenCode, and Cursor formats",
+  "main": "dist/index.js",
+  "bin": {
+    "acplugin": "dist/index.js"
+  },
+  "files": [
+    "dist/**/*",
+    "!dist/__tests__",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "tsc && node dist/index.js",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "claude-code",
+    "codex",
+    "opencode",
+    "cursor",
+    "plugin",
+    "converter",
+    "ai-coding",
+    "skill",
+    "mcp"
+  ],
+  "author": "",
+  "license": "MIT",
+  "type": "commonjs",
+  "dependencies": {
+    "@iarna/toml": "^2.2.5",
+    "@inquirer/prompts": "^8.3.2",
+    "chalk": "^4.1.2",
+    "commander": "^14.0.3",
+    "glob": "^13.0.6",
+    "gray-matter": "^4.0.3",
+    "ora": "^5.4.1",
+    "typescript": "^5.9.3"
+  },
+  "devDependencies": {
+    "@types/node": "^25.5.0",
+    "vitest": "^3.2.1"
+  }
+}
