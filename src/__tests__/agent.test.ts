@@ -27,6 +27,21 @@ describe('convertAgent', () => {
     expect(result.content).toContain('You are a code reviewer');
   });
 
+  it('maps Claude model to gpt-5.4 for codex', () => {
+    const result = convertAgent(sampleAgent, 'codex');
+    expect(result.content).toContain('model = "gpt-5.4"');
+    expect(result.content).not.toContain('sonnet');
+  });
+
+  it('defaults to gpt-5.4 when no model specified', () => {
+    const noModelAgent: Agent = {
+      ...sampleAgent,
+      frontmatter: { ...sampleAgent.frontmatter, model: undefined },
+    };
+    const result = convertAgent(noModelAgent, 'codex');
+    expect(result.content).toContain('model = "gpt-5.4"');
+  });
+
   it('maps tools to sandbox_mode for codex', () => {
     const result = convertAgent(sampleAgent, 'codex');
     // Has Bash in tools → workspace-write

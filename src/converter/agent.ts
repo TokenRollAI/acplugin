@@ -1,6 +1,7 @@
 import type { Agent, Platform, ConvertedFile } from '../types.js';
 import { stringifyFrontmatter } from '../utils/frontmatter.js';
 import { toToml } from '../utils/toml.js';
+import { mapModel } from '../utils/model.js';
 
 export function convertAgent(agent: Agent, platform: Platform): ConvertedFile {
   switch (platform) {
@@ -22,9 +23,11 @@ function convertToCodex(agent: Agent): ConvertedFile {
     developer_instructions: agent.body.trim(),
   };
 
-  // Map model (Claude model names → leave as-is, user can adjust)
+  // Map model
   if (agent.frontmatter.model) {
-    tomlData.model = agent.frontmatter.model;
+    tomlData.model = mapModel(agent.frontmatter.model, 'codex');
+  } else {
+    tomlData.model = 'gpt-5.4';
   }
 
   // Map tools → sandbox_mode
