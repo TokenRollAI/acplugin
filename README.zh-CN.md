@@ -1,6 +1,6 @@
 # acplugin
 
-将 [Claude Code](https://claude.ai/code) 插件转换为 [Codex CLI](https://github.com/openai/codex)、[OpenCode](https://opencode.ai/) 和 [Cursor](https://cursor.com/) 格式。
+将 [Claude Code](https://claude.ai/code) 插件转换为 [Codex CLI](https://github.com/openai/codex)、[OpenCode](https://opencode.ai/)、[Cursor](https://cursor.com/) 和 [Google Antigravity](https://antigravity.google/) 格式。
 
 ## 安装
 
@@ -33,6 +33,9 @@ acplugin scan anthropics/claude-code
 ## 功能特性
 
 - 转换 Skills、指令、MCP 配置、Agents、Commands 和 Hooks
+- **4 个目标平台**：Codex CLI、OpenCode、Cursor、Google Antigravity
+- 完整的 subagent 转换，为每个平台生成正确格式
+- 自动模型映射（Claude → GPT-5.4 / Gemini 3 Pro）
 - 支持 Claude Code Plugin marketplace 格式（多插件仓库）
 - 交互式 TUI，支持 checkbox 多选插件和平台
 - 直接支持 GitHub 仓库 — 无需先 clone
@@ -40,14 +43,24 @@ acplugin scan anthropics/claude-code
 
 ## 支持的转换
 
-| 资源类型 | Codex CLI | OpenCode | Cursor |
-|---------|-----------|----------|--------|
-| **Skills** (SKILL.md) | `.agents/skills/` | `.opencode/skills/` | `.cursor/skills/` |
-| **指令** (CLAUDE.md) | `AGENTS.md` | `AGENTS.md` | `.cursor/rules/*.mdc` |
-| **MCP 服务器** (.mcp.json) | `.codex/config.toml` | `opencode.json` | `.cursor/mcp.json` |
-| **Agents** (.claude/agents/) | 合并到 `AGENTS.md` | `.opencode/agents/` | `.cursor/rules/agent-*.mdc` |
-| **Commands** (.claude/commands/) | 转换为 Skills | `.opencode/commands/` | `.cursor/commands/` |
-| **Hooks** (settings.json) | 记录在 `AGENTS.md` | 记录在 `AGENTS.md` | 仅输出警告 |
+| 资源类型 | Codex CLI | OpenCode | Cursor | Antigravity |
+|---------|-----------|----------|--------|-------------|
+| **Skills** | `.agents/skills/` | `.opencode/skills/` | `.cursor/skills/` | `.agent/skills/` |
+| **指令** | `AGENTS.md` | `AGENTS.md` | `.cursor/rules/*.mdc` | `GEMINI.md` |
+| **MCP 服务器** | `.codex/config.toml` | `opencode.json` | `.cursor/mcp.json` | `.gemini/settings.json` |
+| **Agents** | `.codex/agents/*.toml` | `.opencode/agents/*.md` | `.cursor/agents/*.md` | `.gemini/agents/*.md` |
+| **Commands** | 转换为 Skills | `.opencode/commands/` | `.cursor/commands/` | 转换为 Skills |
+| **Hooks** | 记录在 `AGENTS.md` | 记录在 `AGENTS.md` | 仅输出警告 | 仅输出警告 |
+
+### 模型映射
+
+| Claude Code | → Codex | → Antigravity |
+|-------------|---------|---------------|
+| `sonnet` / `opus` | `gpt-5.4` | `gemini-3-pro` |
+| `haiku` | `gpt-5.4` | `gemini-3-flash` |
+| （未指定） | `gpt-5.4` | `gemini-3-pro` |
+
+OpenCode 和 Cursor 保持原始模型值不映射。
 
 ## CLI 参考
 
@@ -70,7 +83,7 @@ acplugin scan owner/repo --path plugins/foo  # 仓库内子路径
 ```bash
 acplugin convert .                           # 交互式选择平台
 acplugin convert . --to cursor               # 指定平台
-acplugin convert . --to codex,cursor         # 多个平台
+acplugin convert . --to codex,antigravity    # 多个平台
 acplugin convert anthropics/claude-code      # 从 GitHub，交互式
 acplugin convert anthropics/claude-code --all  # 全部插件，跳过选择
 acplugin convert . -o ./output               # 自定义输出目录
@@ -81,7 +94,7 @@ acplugin convert . --dry-run                 # 预览模式，不写入文件
 
 | 选项 | 说明 |
 |------|------|
-| `-t, --to <platforms>` | 目标平台（逗号分隔：`codex`、`opencode`、`cursor`） |
+| `-t, --to <platforms>` | 目标平台（逗号分隔：`codex`、`opencode`、`cursor`、`antigravity`） |
 | `-o, --output <path>` | 输出目录 |
 | `-a, --all` | 全部转换，跳过交互选择 |
 | `-p, --path <subpath>` | 仓库内子路径 |
@@ -93,7 +106,7 @@ acplugin convert . --dry-run                 # 预览模式，不写入文件
 
 ```bash
 cd my-project
-acplugin convert . --to cursor
+acplugin convert . --to cursor,antigravity
 ```
 
 ### 从 GitHub Plugin Marketplace 转换
@@ -133,7 +146,7 @@ acplugin convert my-org/private-plugins --all --to codex
 
 1. **扫描** — 检测 Claude Code 资源：`.claude/` 项目结构、`.claude-plugin/` 插件格式或 marketplace 仓库
 2. **选择** — 交互式 TUI 让你选择要转换的插件和目标平台
-3. **转换** — 将每个资源转换为目标平台格式，保留内容并添加平台特定的元数据
+3. **转换** — 将每个资源转换为目标平台格式，自动映射模型和字段
 4. **报告** — 显示生成结果，对无法完全转换的资源输出警告
 
 Claude 特有的功能（如 `context: fork`、`agent: Explore`）会以 HTML 注释的形式保留在输出文件中，供参考。

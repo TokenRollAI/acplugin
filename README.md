@@ -2,7 +2,7 @@
 
 [中文文档](./README.zh-CN.md)
 
-Convert [Claude Code](https://claude.ai/code) plugins to [Codex CLI](https://github.com/openai/codex), [OpenCode](https://opencode.ai/), and [Cursor](https://cursor.com/) formats.
+Convert [Claude Code](https://claude.ai/code) plugins to [Codex CLI](https://github.com/openai/codex), [OpenCode](https://opencode.ai/), [Cursor](https://cursor.com/), and [Google Antigravity](https://antigravity.google/) formats.
 
 ## Install
 
@@ -35,6 +35,9 @@ acplugin scan anthropics/claude-code
 ## Features
 
 - Converts Skills, Instructions, MCP configs, Agents, Commands, and Hooks
+- **4 target platforms**: Codex CLI, OpenCode, Cursor, Google Antigravity
+- Full subagent conversion with proper format for each platform
+- Automatic model mapping (Claude → GPT-5.4 / Gemini 3 Pro)
 - Supports Claude Code Plugin marketplace format (multi-plugin repos)
 - Interactive TUI with checkbox selection for plugins and platforms
 - Direct GitHub repo support — no need to clone first
@@ -42,14 +45,24 @@ acplugin scan anthropics/claude-code
 
 ## Supported Conversions
 
-| Resource | Codex CLI | OpenCode | Cursor |
-|----------|-----------|----------|--------|
-| **Skills** (SKILL.md) | `.agents/skills/` | `.opencode/skills/` | `.cursor/skills/` |
-| **Instructions** (CLAUDE.md) | `AGENTS.md` | `AGENTS.md` | `.cursor/rules/*.mdc` |
-| **MCP Servers** (.mcp.json) | `.codex/config.toml` | `opencode.json` | `.cursor/mcp.json` |
-| **Agents** (.claude/agents/) | Merged into `AGENTS.md` | `.opencode/agents/` | `.cursor/rules/agent-*.mdc` |
-| **Commands** (.claude/commands/) | Converted to Skills | `.opencode/commands/` | `.cursor/commands/` |
-| **Hooks** (settings.json) | Documented in `AGENTS.md` | Documented in `AGENTS.md` | Warnings only |
+| Resource | Codex CLI | OpenCode | Cursor | Antigravity |
+|----------|-----------|----------|--------|-------------|
+| **Skills** | `.agents/skills/` | `.opencode/skills/` | `.cursor/skills/` | `.agent/skills/` |
+| **Instructions** | `AGENTS.md` | `AGENTS.md` | `.cursor/rules/*.mdc` | `GEMINI.md` |
+| **MCP Servers** | `.codex/config.toml` | `opencode.json` | `.cursor/mcp.json` | `.gemini/settings.json` |
+| **Agents** | `.codex/agents/*.toml` | `.opencode/agents/*.md` | `.cursor/agents/*.md` | `.gemini/agents/*.md` |
+| **Commands** | Converted to Skills | `.opencode/commands/` | `.cursor/commands/` | Converted to Skills |
+| **Hooks** | Documented in `AGENTS.md` | Documented in `AGENTS.md` | Warnings only | Warnings only |
+
+### Model Mapping
+
+| Claude Code | → Codex | → Antigravity |
+|-------------|---------|---------------|
+| `sonnet` / `opus` | `gpt-5.4` | `gemini-3-pro` |
+| `haiku` | `gpt-5.4` | `gemini-3-flash` |
+| (not specified) | `gpt-5.4` | `gemini-3-pro` |
+
+OpenCode and Cursor keep the original model value.
 
 ## CLI Reference
 
@@ -72,7 +85,7 @@ Convert Claude Code plugins to target platform formats.
 ```bash
 acplugin convert .                           # Interactive: select platforms
 acplugin convert . --to cursor               # Specify platform
-acplugin convert . --to codex,cursor         # Multiple platforms
+acplugin convert . --to codex,antigravity    # Multiple platforms
 acplugin convert anthropics/claude-code      # From GitHub, interactive
 acplugin convert anthropics/claude-code --all  # All plugins, no prompt
 acplugin convert . -o ./output               # Custom output directory
@@ -83,7 +96,7 @@ acplugin convert . --dry-run                 # Preview without writing
 
 | Option | Description |
 |--------|-------------|
-| `-t, --to <platforms>` | Target platforms (comma-separated: `codex`, `opencode`, `cursor`) |
+| `-t, --to <platforms>` | Target platforms (comma-separated: `codex`, `opencode`, `cursor`, `antigravity`) |
 | `-o, --output <path>` | Output directory |
 | `-a, --all` | Convert all plugins without interactive selection |
 | `-p, --path <subpath>` | Sub-path within repository |
@@ -95,7 +108,7 @@ acplugin convert . --dry-run                 # Preview without writing
 
 ```bash
 cd my-project
-acplugin convert . --to cursor
+acplugin convert . --to cursor,antigravity
 ```
 
 ### Convert from GitHub Plugin Marketplace
@@ -135,7 +148,7 @@ acplugin convert my-org/private-plugins --all --to codex
 
 1. **Scan** — Detects Claude Code resources: `.claude/` project structure, `.claude-plugin/` plugin format, or marketplace repos
 2. **Select** — Interactive TUI lets you pick which plugins and platforms to target
-3. **Convert** — Transforms each resource to the target platform's format, preserving content and adding platform-specific metadata
+3. **Convert** — Transforms each resource to the target platform's format, with model mapping and field adaptation
 4. **Report** — Shows what was generated, with warnings for resources that couldn't be fully converted
 
 Claude-specific features (like `context: fork`, `agent: Explore`) are preserved as HTML comments in the output files for reference.
