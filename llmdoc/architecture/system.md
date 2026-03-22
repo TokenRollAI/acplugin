@@ -21,7 +21,7 @@
 - `src/converter/hooks.ts`: Converts `settings.json` hooks with compatibility warnings for non-portable events.
 - `src/writer/codex.ts` (`generateCodex`): Orchestrates all converters for Codex output.
 - `src/writer/opencode.ts` (`generateOpenCode`): Orchestrates all converters for OpenCode output.
-- `src/writer/cursor.ts` (`generateCursor`): Orchestrates all converters for Cursor output.
+- `src/writer/cursor.ts` (`generateCursor`, `generatePluginJson`, `remapToPluginPath`): Orchestrates all converters for Cursor output. Generates `.cursor-plugin/plugin.json` manifest with auto-detected components from scan result. Remaps all `.cursor/` output paths to plugin root layout (`skills/`, `agents/`, `commands/`, `rules/`, `mcp.json`). Inherits metadata from source `PluginMeta` when available. Compatible with Cursor Marketplace (v2.5+).
 - `src/writer/antigravity.ts` (`generateAntigravity`): Orchestrates all converters for Antigravity (Google) output. Skills → `.agent/skills/`, Instructions → `GEMINI.md`, MCP → `.gemini/settings.json`, Agents → `.gemini/agents/*.md`, Commands → Skills.
 - `src/utils/model.ts` (`mapModel`, `CODEX_MODEL_MAP`, `ANTIGRAVITY_MODEL_MAP`): Maps Claude model names to platform equivalents. Codex → `gpt-5.4`, Antigravity → `gemini-3-pro`/`gemini-3-flash`. OpenCode and Cursor pass models through unchanged.
 - `src/utils/frontmatter.ts`: YAML frontmatter parse/stringify via gray-matter.
