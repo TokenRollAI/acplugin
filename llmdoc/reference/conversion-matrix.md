@@ -4,7 +4,7 @@ This document summarizes which Claude Code resource types are supported by each 
 
 ## 1. Core Summary
 
-acplugin converts six Claude Code resource types (skills, instructions, MCP configs, agents, commands, hooks) across three target platforms (Codex, OpenCode, Cursor). Not all resource types have native equivalents on every platform; unsupported types are either degraded (e.g., agents become instructions) or generate compatibility warnings (e.g., hooks). Input can be a standard Claude Code project, a single plugin, or a multi-plugin marketplace. Sources can be local paths or GitHub repositories.
+acplugin converts six Claude Code resource types (skills, instructions, MCP configs, agents, commands, hooks) across four target platforms (Codex, OpenCode, Cursor, Antigravity). All platforms now support agents natively via subagent files. Antigravity maps: Skills → `.agent/skills/`, Instructions → `GEMINI.md`, MCP → `.gemini/settings.json`, Agents → `.gemini/agents/*.md`, Commands → Skills. Cursor agents output `.cursor/agents/*.md` (fields: `name`, `description`, `model`, `readonly`). OpenCode agents output `.opencode/agents/*.md` (fields: `mode: subagent`, `steps`, `permission`). Model names are mapped via `src/utils/model.ts` (Codex → `gpt-5.4`, Antigravity → `gemini-3-pro`/`gemini-3-flash`).
 
 ## 2. Source of Truth
 
@@ -16,10 +16,12 @@ acplugin converts six Claude Code resource types (skills, instructions, MCP conf
 - **Skill Converter:** `src/converter/skill.ts` - Platform-specific skill conversion logic.
 - **Instruction Converter:** `src/converter/instructions.ts` - CLAUDE.md / rules conversion to AGENTS.md or .mdc.
 - **MCP Converter:** `src/converter/mcp.ts` - MCP server config conversion to config.toml / opencode.json / .cursor/mcp.json.
-- **Agent Converter:** `src/converter/agent.ts` - Agent conversion with degradation to instructions when unsupported.
-- **Command Converter:** `src/converter/command.ts` - Command conversion across platforms.
+- **Agent Converter:** `src/converter/agent.ts` - Native agent conversion for all four platforms. Cursor: `.cursor/agents/*.md` (`name`, `description`, `model`, `readonly`). OpenCode: `.opencode/agents/*.md` (`mode: subagent`, `steps`, `permission`). Antigravity: `.gemini/agents/*.md` (tool-mapped `allowed-tools`).
+- **Command Converter:** `src/converter/command.ts` - Command conversion across platforms. Antigravity converts commands to skills.
 - **Hooks Converter:** `src/converter/hooks.ts` - Hook conversion with compatibility warnings for non-portable events.
+- **Model Mapper:** `src/utils/model.ts` - Claude model → platform model mapping. Codex: `gpt-5.4`. Antigravity: `gemini-3-pro`/`gemini-3-flash`. OpenCode/Cursor: passthrough.
 - **Codex Writer:** `src/writer/codex.ts` - Codex output orchestration.
 - **OpenCode Writer:** `src/writer/opencode.ts` - OpenCode output orchestration.
 - **Cursor Writer:** `src/writer/cursor.ts` - Cursor output orchestration.
+- **Antigravity Writer:** `src/writer/antigravity.ts` - Antigravity (Google) output orchestration.
 - **System Architecture:** `/llmdoc/architecture/system.md` - Full pipeline and execution flow.

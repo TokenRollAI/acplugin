@@ -8,7 +8,7 @@ A guide for using the `acplugin` CLI to scan a project for Claude Code resources
 
 3. **Scan a GitHub repo:** Run `acplugin scan owner/repo` to download and scan a GitHub repository without cloning. Also supports `github:owner/repo#branch` and full GitHub URLs. Use `-p <subpath>` for monorepos.
 
-4. **Convert to specific platforms:** Run `acplugin convert . --to codex,opencode,cursor` to generate output for specified platforms. When `--to` is omitted, an interactive checkbox lets you choose platforms.
+4. **Convert to specific platforms:** Run `acplugin convert . --to codex,opencode,cursor,antigravity` to generate output for specified platforms. When `--to` is omitted, an interactive checkbox lets you choose platforms (includes "Antigravity (Google)" option).
 
 5. **Convert a marketplace repo:** Run `acplugin convert owner/repo` on a repo with `.claude-plugin/marketplace.json`. An interactive TUI lets you select which plugins to convert. Use `--all` (`-a`) to skip selection.
 

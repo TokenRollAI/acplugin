@@ -16,12 +16,14 @@
 - `src/converter/skill.ts`: Converts `Skill` objects to target platform format.
 - `src/converter/instructions.ts`: Converts `Instruction` (CLAUDE.md, rules) to AGENTS.md or .mdc files.
 - `src/converter/mcp.ts`: Converts `.mcp.json` servers to config.toml / opencode.json / .cursor/mcp.json.
-- `src/converter/agent.ts`: Converts `.claude/agents/*.md` to platform-specific formats; degrades to instructions when agents are unsupported.
+- `src/converter/agent.ts` (`convertAgent`, `convertToCodex`, `convertToOpenCode`, `convertToCursor`, `convertToAntigravity`): Converts `.claude/agents/*.md` to platform-specific formats. Cursor outputs `.cursor/agents/*.md` with `name`, `description`, `model`, `readonly`. OpenCode outputs `.opencode/agents/*.md` with `mode: subagent`, `steps`, `permission` (edit/bash deny). Antigravity outputs `.gemini/agents/*.md` with tool-mapped `allowed-tools`.
 - `src/converter/command.ts`: Converts `.claude/commands/*.md` to platform commands.
 - `src/converter/hooks.ts`: Converts `settings.json` hooks with compatibility warnings for non-portable events.
 - `src/writer/codex.ts` (`generateCodex`): Orchestrates all converters for Codex output.
 - `src/writer/opencode.ts` (`generateOpenCode`): Orchestrates all converters for OpenCode output.
 - `src/writer/cursor.ts` (`generateCursor`): Orchestrates all converters for Cursor output.
+- `src/writer/antigravity.ts` (`generateAntigravity`): Orchestrates all converters for Antigravity (Google) output. Skills → `.agent/skills/`, Instructions → `GEMINI.md`, MCP → `.gemini/settings.json`, Agents → `.gemini/agents/*.md`, Commands → Skills.
+- `src/utils/model.ts` (`mapModel`, `CODEX_MODEL_MAP`, `ANTIGRAVITY_MODEL_MAP`): Maps Claude model names to platform equivalents. Codex → `gpt-5.4`, Antigravity → `gemini-3-pro`/`gemini-3-flash`. OpenCode and Cursor pass models through unchanged.
 - `src/utils/frontmatter.ts`: YAML frontmatter parse/stringify via gray-matter.
 - `src/utils/toml.ts`: TOML serialization via @iarna/toml.
 - `src/utils/fs.ts` (`writeFile`, `readFile`, `fileExists`): File system utilities with directory creation.
@@ -40,6 +42,7 @@
 
 - **One-way conversion only:** Claude Code is the source of truth. Bidirectional sync would create conflict resolution complexity with no clear benefit.
 - **HTML comment preservation:** Claude-specific frontmatter fields (e.g., `allowed-tools`, `effort`) are embedded as HTML comments in output so they are not lost but do not break target platforms.
-- **Agent degradation:** Platforms without agent support receive agent content as additional instructions, since the content is still valuable as context.
+- **Native subagent support:** All four platforms now support agents natively. Each writer generates platform-specific agent frontmatter fields (Cursor: `readonly`; OpenCode: `mode`, `steps`, `permission`; Antigravity: `allowed-tools` with tool name mapping).
+- **Model mapping:** `src/utils/model.ts` centralizes Claude-to-platform model translation, defaulting to the platform's strongest model when no mapping exists.
 - **Auto-detection over flags:** Source type (GitHub/local) and format (marketplace/plugin/project) are auto-detected to minimize required CLI arguments.
 - **Non-TTY fallback:** TUI selection defaults to "all" when stdin is not a TTY, enabling CI/script usage without interactive prompts.

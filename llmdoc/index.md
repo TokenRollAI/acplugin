@@ -2,7 +2,7 @@
 
 ## Project Summary
 
-CLI tool that converts Claude Code plugins (skills, instructions, MCP configs, agents, commands, hooks) to compatible formats for Codex CLI, OpenCode, and Cursor IDE. Supports local projects, single plugins, marketplace repos, and direct GitHub download.
+CLI tool that converts Claude Code plugins (skills, instructions, MCP configs, agents, commands, hooks) to compatible formats for Codex CLI, OpenCode, Cursor IDE, and Google Antigravity. Supports local projects, single plugins, marketplace repos, and direct GitHub download.
 
 ## Document Map
 
