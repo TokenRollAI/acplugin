@@ -56,6 +56,21 @@ export function convertSkill(skill: Skill, platform: Platform): ConvertedFile {
   return { path: outputPath, content, type: 'skill' };
 }
 
+/**
+ * Convert all auxiliary files (references/, scripts/, assets/, etc.) for a skill.
+ */
+export function convertSkillAuxFiles(skill: Skill, platform: Platform): ConvertedFile[] {
+  return skill.auxFiles.map(aux => {
+    const basePath = getSkillOutputPath(platform, skill.dirName);
+    const dir = basePath.replace(/\/SKILL\.md$/, '');
+    return {
+      path: `${dir}/${aux.relativePath}`,
+      content: aux.content,
+      type: 'skill' as const,
+    };
+  });
+}
+
 export function convertSkillCodexYaml(skill: Skill): ConvertedFile | null {
   if (!skill.frontmatter['disable-model-invocation']) return null;
 

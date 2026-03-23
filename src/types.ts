@@ -16,11 +16,17 @@ export interface SkillFrontmatter {
   hooks?: Record<string, unknown>;
 }
 
+export interface SkillAuxFile {
+  relativePath: string; // relative to skill dir, e.g. "references/doc.md"
+  content: string;
+}
+
 export interface Skill {
   dirName: string;
   frontmatter: SkillFrontmatter;
   body: string;
   sourcePath: string;
+  auxFiles: SkillAuxFile[];
 }
 
 // --- Instruction ---

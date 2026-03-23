@@ -1,5 +1,5 @@
 import type { ScanResult, ConvertedFile, ConvertResult } from '../types.js';
-import { convertSkill } from '../converter/skill.js';
+import { convertSkill, convertSkillAuxFiles } from '../converter/skill.js';
 import { mergeInstructions } from '../converter/instructions.js';
 import { convertMCP } from '../converter/mcp.js';
 import { convertAgent } from '../converter/agent.js';
@@ -13,6 +13,7 @@ export function generateAntigravity(scan: ScanResult): ConvertResult {
   // Skills → .agent/skills/
   for (const skill of scan.skills) {
     files.push(convertSkill(skill, 'antigravity'));
+    files.push(...convertSkillAuxFiles(skill, 'antigravity'));
   }
 
   // Instructions → GEMINI.md

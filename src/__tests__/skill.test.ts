@@ -16,6 +16,7 @@ const sampleSkill: Skill = {
   },
   body: '\n# Test Skill\n\nDo something useful.\n',
   sourcePath: '/tmp/.claude/skills/test-skill/SKILL.md',
+  auxFiles: [],
 };
 
 describe('convertSkill', () => {

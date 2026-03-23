@@ -1,6 +1,6 @@
 import * as path from 'path';
 import type { ScanResult, ConvertedFile, ConvertResult } from '../types.js';
-import { convertSkill, convertSkillCodexYaml } from '../converter/skill.js';
+import { convertSkill, convertSkillCodexYaml, convertSkillAuxFiles } from '../converter/skill.js';
 import { mergeInstructions } from '../converter/instructions.js';
 import { convertMCP } from '../converter/mcp.js';
 import { convertAgent } from '../converter/agent.js';
@@ -14,6 +14,7 @@ export function generateCodex(scan: ScanResult): ConvertResult {
   // Skills
   for (const skill of scan.skills) {
     files.push(convertSkill(skill, 'codex'));
+    files.push(...convertSkillAuxFiles(skill, 'codex'));
     const yaml = convertSkillCodexYaml(skill);
     if (yaml) files.push(yaml);
   }

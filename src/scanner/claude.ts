@@ -1,7 +1,7 @@
 import * as path from 'path';
-import { readFile, listFiles, listDirs } from '../utils/fs.js';
+import { readFile, listFiles, listDirs, listFilesRecursive } from '../utils/fs.js';
 import { parseFrontmatter } from '../utils/frontmatter.js';
-import type { ScanResult, Skill, SkillFrontmatter, Instruction, MCPConfig, MCPServer, Agent, AgentFrontmatter, Command, Hooks } from '../types.js';
+import type { ScanResult, Skill, SkillFrontmatter, SkillAuxFile, Instruction, MCPConfig, MCPServer, Agent, AgentFrontmatter, Command, Hooks } from '../types.js';
 
 /**
  * Scan a Claude Code project directory (.claude/ structure).
@@ -26,6 +26,7 @@ export function scanSkillsDir(skillsDir: string): Skill[] {
     const skillFile = path.join(dir, 'SKILL.md');
     const content = readFile(skillFile);
     if (!content) continue;
+    const auxFiles = scanSkillAuxFiles(dir);
     try {
       const { data, body } = parseFrontmatter<SkillFrontmatter>(content);
       skills.push({
@@ -33,6 +34,7 @@ export function scanSkillsDir(skillsDir: string): Skill[] {
         frontmatter: data,
         body,
         sourcePath: skillFile,
+        auxFiles,
       });
     } catch {
       // Skip files with invalid frontmatter
@@ -41,10 +43,29 @@ export function scanSkillsDir(skillsDir: string): Skill[] {
         frontmatter: {},
         body: content,
         sourcePath: skillFile,
+        auxFiles,
       });
     }
   }
   return skills;
+}
+
+/**
+ * Scan all auxiliary files in a skill directory (everything except SKILL.md).
+ * Includes files in subdirectories like references/, scripts/, assets/.
+ */
+function scanSkillAuxFiles(skillDir: string): SkillAuxFile[] {
+  const allFiles = listFilesRecursive(skillDir);
+  const auxFiles: SkillAuxFile[] = [];
+  for (const file of allFiles) {
+    const relativePath = path.relative(skillDir, file);
+    if (relativePath === 'SKILL.md') continue;
+    const content = readFile(file);
+    if (content !== null) {
+      auxFiles.push({ relativePath, content });
+    }
+  }
+  return auxFiles;
 }
 
 export function scanAgentsDir(agentsDir: string): Agent[] {

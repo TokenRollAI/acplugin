@@ -96,6 +96,38 @@ describe.skipIf(!repoExists)('superpowers plugin integration', () => {
         expect(core).toBeDefined();
         expect(core!.body).toContain('Skill');
       });
+
+      it('scans auxiliary files in skill directories', () => {
+        const brainstorm = result.skills.find(s => s.dirName === 'brainstorming');
+        expect(brainstorm).toBeDefined();
+        expect(brainstorm!.auxFiles.length).toBeGreaterThan(0);
+        // brainstorming has scripts/ subdirectory and other .md files
+        const scriptFiles = brainstorm!.auxFiles.filter(f => f.relativePath.startsWith('scripts/'));
+        expect(scriptFiles.length).toBeGreaterThan(0);
+      });
+
+      it('scans references/ subdirectory as auxiliary files', () => {
+        const core = result.skills.find(s => s.dirName === 'using-superpowers');
+        expect(core).toBeDefined();
+        const refs = core!.auxFiles.filter(f => f.relativePath.startsWith('references/'));
+        expect(refs.length).toBeGreaterThanOrEqual(2);
+        expect(refs.some(f => f.relativePath === 'references/codex-tools.md')).toBe(true);
+        expect(refs.some(f => f.relativePath === 'references/gemini-tools.md')).toBe(true);
+      });
+
+      it('preserves auxiliary file content', () => {
+        const core = result.skills.find(s => s.dirName === 'using-superpowers');
+        const codexTools = core!.auxFiles.find(f => f.relativePath === 'references/codex-tools.md');
+        expect(codexTools).toBeDefined();
+        expect(codexTools!.content.length).toBeGreaterThan(0);
+      });
+
+      it('skills without auxiliary files have empty auxFiles array', () => {
+        // Some skills may only have SKILL.md
+        for (const skill of result.skills) {
+          expect(Array.isArray(skill.auxFiles)).toBe(true);
+        }
+      });
     });
 
     // --- Agents ---
@@ -217,12 +249,14 @@ describe.skipIf(!repoExists)('superpowers plugin integration', () => {
       expect(result.platform).toBe('codex');
     });
 
-    it('converts all 14 skills to .agents/skills/', () => {
+    it('converts all 14 skills with auxiliary files to .agents/skills/', () => {
       const skillFiles = result.files.filter(f => f.type === 'skill');
-      expect(skillFiles.length).toBeGreaterThanOrEqual(14);
-      for (const f of skillFiles) {
-        expect(f.path).toMatch(/^\.agents\/skills\//);
-      }
+      // 14 SKILL.md + all auxiliary files
+      expect(skillFiles.length).toBeGreaterThan(14);
+      // Should include references/scripts subdirectories
+      const refFiles = skillFiles.filter(f => f.path.includes('/references/'));
+      expect(refFiles.length).toBeGreaterThan(0);
+      expect(refFiles[0].path).toMatch(/^\.agents\/skills\//);
     });
 
     it('converts agent to .codex/agents/*.toml', () => {

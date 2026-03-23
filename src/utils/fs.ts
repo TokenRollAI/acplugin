@@ -37,3 +37,18 @@ export function listDirs(dir: string): string[] {
     .filter(e => e.isDirectory())
     .map(e => path.join(dir, e.name));
 }
+
+export function listFilesRecursive(dir: string): string[] {
+  if (!fs.existsSync(dir)) return [];
+  const results: string[] = [];
+  const entries = fs.readdirSync(dir, { withFileTypes: true });
+  for (const entry of entries) {
+    const fullPath = path.join(dir, entry.name);
+    if (entry.isFile()) {
+      results.push(fullPath);
+    } else if (entry.isDirectory()) {
+      results.push(...listFilesRecursive(fullPath));
+    }
+  }
+  return results;
+}
