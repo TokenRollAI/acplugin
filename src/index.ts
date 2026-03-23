@@ -174,12 +174,24 @@ async function convertMarketplace(
     }
   }
 
+  // Determine whether to use subdirectories for each plugin
+  let useSubDirs = selectedIndices.length > 1;
+  if (!useSubDirs && selectedIndices.length === 1 && process.stdin.isTTY) {
+    const { confirm } = require('@inquirer/prompts') as { confirm: Function };
+    useSubDirs = await confirm({
+      message: `Output to subdirectory "${plugins[selectedIndices[0]].meta.name}/"?`,
+      default: false,
+    });
+  }
+
   log.info(`Converting ${selectedIndices.length} plugin(s) to ${platforms.join(', ')}...`);
 
   let totalFiles = 0;
   for (const idx of selectedIndices) {
     const plugin = plugins[idx];
-    const pluginOutputDir = path.join(outputDir, plugin.meta.name);
+    const pluginOutputDir = useSubDirs
+      ? path.join(outputDir, plugin.meta.name)
+      : outputDir;
     log.header(plugin.meta.name);
     totalFiles += convertSingleScan(plugin, platforms, pluginOutputDir, dryRun);
   }
