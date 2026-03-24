@@ -1,5 +1,7 @@
 # acplugin
 
+[![LINUX.DO](https://img.shields.io/badge/LINUX.DO-Community-f0b752?logo=data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI+PHBhdGggZmlsbD0id2hpdGUiIGQ9Ik0xMiAyQzYuNDggMiAyIDYuNDggMiAxMnM0LjQ4IDEwIDEwIDEwIDEwLTQuNDggMTAtMTBTMTcuNTIgMiAxMiAyem0wIDE4Yy00LjQyIDAtOC0zLjU4LTgtOHMzLjU4LTggOC04IDggMy41OCA4IDgtMy41OCA4LTggOHoiLz48L3N2Zz4=)](https://linux.do)
+
 [中文文档](./README.zh-CN.md)
 
 Convert [Claude Code](https://claude.ai/code) plugins to [Codex CLI](https://github.com/openai/codex), [OpenCode](https://opencode.ai/), [Cursor](https://cursor.com/), and [Google Antigravity](https://antigravity.google/) formats.
@@ -45,22 +47,22 @@ acplugin scan anthropics/claude-code
 
 ## Supported Conversions
 
-| Resource | Codex CLI | OpenCode | Cursor | Antigravity |
-|----------|-----------|----------|--------|-------------|
-| **Skills** | `.agents/skills/` | `.opencode/skills/` | `.cursor/skills/` | `.agent/skills/` |
-| **Instructions** | `AGENTS.md` | `AGENTS.md` | `.cursor/rules/*.mdc` | `GEMINI.md` |
-| **MCP Servers** | `.codex/config.toml` | `opencode.json` | `.cursor/mcp.json` | `.gemini/settings.json` |
-| **Agents** | `.codex/agents/*.toml` | `.opencode/agents/*.md` | `.cursor/agents/*.md` | `.gemini/agents/*.md` |
-| **Commands** | Converted to Skills | `.opencode/commands/` | `.cursor/commands/` | Converted to Skills |
-| **Hooks** | Documented in `AGENTS.md` | Documented in `AGENTS.md` | Warnings only | Warnings only |
+| Resource         | Codex CLI                 | OpenCode                  | Cursor                | Antigravity             |
+| ---------------- | ------------------------- | ------------------------- | --------------------- | ----------------------- |
+| **Skills**       | `.agents/skills/`         | `.opencode/skills/`       | `.cursor/skills/`     | `.agent/skills/`        |
+| **Instructions** | `AGENTS.md`               | `AGENTS.md`               | `.cursor/rules/*.mdc` | `GEMINI.md`             |
+| **MCP Servers**  | `.codex/config.toml`      | `opencode.json`           | `.cursor/mcp.json`    | `.gemini/settings.json` |
+| **Agents**       | `.codex/agents/*.toml`    | `.opencode/agents/*.md`   | `.cursor/agents/*.md` | `.gemini/agents/*.md`   |
+| **Commands**     | Converted to Skills       | `.opencode/commands/`     | `.cursor/commands/`   | Converted to Skills     |
+| **Hooks**        | Documented in `AGENTS.md` | Documented in `AGENTS.md` | Warnings only         | Warnings only           |
 
 ### Model Mapping
 
-| Claude Code | → Codex | → Antigravity |
-|-------------|---------|---------------|
-| `sonnet` / `opus` | `gpt-5.4` | `gemini-3-pro` |
-| `haiku` | `gpt-5.4` | `gemini-3-flash` |
-| (not specified) | `gpt-5.4` | `gemini-3-pro` |
+| Claude Code       | → Codex   | → Antigravity    |
+| ----------------- | --------- | ---------------- |
+| `sonnet` / `opus` | `gpt-5.4` | `gemini-3-pro`   |
+| `haiku`           | `gpt-5.4` | `gemini-3-flash` |
+| (not specified)   | `gpt-5.4` | `gemini-3-pro`   |
 
 OpenCode and Cursor keep the original model value.
 
@@ -94,13 +96,13 @@ acplugin convert . --dry-run                 # Preview without writing
 
 **Options:**
 
-| Option | Description |
-|--------|-------------|
+| Option                 | Description                                                                      |
+| ---------------------- | -------------------------------------------------------------------------------- |
 | `-t, --to <platforms>` | Target platforms (comma-separated: `codex`, `opencode`, `cursor`, `antigravity`) |
-| `-o, --output <path>` | Output directory |
-| `-a, --all` | Convert all plugins without interactive selection |
-| `-p, --path <subpath>` | Sub-path within repository |
-| `--dry-run` | Show what would be generated without writing |
+| `-o, --output <path>`  | Output directory                                                                 |
+| `-a, --all`            | Convert all plugins without interactive selection                                |
+| `-p, --path <subpath>` | Sub-path within repository                                                       |
+| `--dry-run`            | Show what would be generated without writing                                     |
 
 ## Examples
 
