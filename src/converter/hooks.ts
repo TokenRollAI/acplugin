@@ -90,7 +90,7 @@ function convertCursorHooks(hooks: Hooks): HookReport {
   if (Object.keys(cursorHooks).length > 0) {
     const content = JSON.stringify({ version: 1, hooks: cursorHooks }, null, 2);
     converted.push({
-      path: 'hooks/hooks-cursor.json',
+      path: 'hooks.json',
       content,
       type: 'hook',
     });

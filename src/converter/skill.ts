@@ -11,7 +11,7 @@ function getSkillOutputPath(platform: Platform, dirName: string): string {
     case 'opencode':
       return `.opencode/skills/${dirName}/SKILL.md`;
     case 'cursor':
-      return `.cursor/skills/${dirName}/SKILL.md`;
+      return `skills/${dirName}/SKILL.md`;
     case 'antigravity':
       return `.agent/skills/${dirName}/SKILL.md`;
   }

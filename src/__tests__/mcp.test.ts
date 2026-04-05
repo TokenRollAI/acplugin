@@ -42,7 +42,7 @@ describe('convertMCP', () => {
 
   it('converts to cursor JSON format', () => {
     const result = convertMCP(sampleMCP, 'cursor');
-    expect(result.path).toBe('.cursor/mcp.json');
+    expect(result.path).toBe('mcp.json');
     const data = JSON.parse(result.content);
     expect(data.mcpServers.filesystem.command).toBe('npx');
     expect(data.mcpServers.github.url).toBe('https://api.github.com/mcp');

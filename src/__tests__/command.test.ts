@@ -24,7 +24,7 @@ describe('convertCommand', () => {
 
   it('converts to cursor as command file', () => {
     const result = convertCommand(sampleCommand, 'cursor');
-    expect(result.path).toBe('.cursor/commands/deploy.md');
+    expect(result.path).toBe('commands/deploy.md');
     expect(result.content).toContain('Deploy to $1');
   });
 });

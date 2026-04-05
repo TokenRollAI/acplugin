@@ -236,7 +236,7 @@ describe('convertPluginManifestForCursor', () => {
     expect(manifest.name).toBe('my-plugin');
     expect(manifest.displayName).toBe('My Plugin');
     expect(manifest.logo).toBe('./assets/logo.png');
-    expect(manifest.skills).toBe('./skills/');
+    expect(manifest.skills).toBe('./.cursor/skills/');
   });
 
   it('falls back to interface.displayName when no top-level displayName', () => {

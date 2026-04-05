@@ -338,38 +338,37 @@ describe.skipIf(!repoExists)('superpowers plugin integration', () => {
       const manifest = JSON.parse(pluginJson!.content);
       expect(manifest.name).toBe('superpowers');
       expect(manifest.version).toBe('5.0.5');
-      expect(manifest.skills).toBe('./skills/');
-      expect(manifest.agents).toBe('./agents/');
-      expect(manifest.commands).toBe('./commands/');
+      expect(manifest.skills).toBe('./.cursor/skills/');
+      expect(manifest.agents).toBe('./.cursor/agents/');
+      expect(manifest.commands).toBe('./.cursor/commands/');
       // New fields from plugin.json passthrough
-      expect(manifest.hooks).toBe('./hooks/hooks-cursor.json');
+      expect(manifest.hooks).toBe('./.cursor/hooks.json');
       expect(manifest.author).toEqual({ name: 'Jesse Vincent', email: 'jesse@fsck.com' });
     });
 
-    it('remaps skill paths from .cursor/ to plugin root', () => {
+    it('adds .cursor/ prefix to skill paths', () => {
       const skillFiles = result.files.filter(f => f.type === 'skill');
       for (const f of skillFiles) {
-        expect(f.path).toMatch(/^skills\//);
-        expect(f.path).not.toMatch(/^\.cursor\//);
+        expect(f.path).toMatch(/^\.cursor\/skills\//);
       }
     });
 
-    it('remaps agent paths', () => {
+    it('adds .cursor/ prefix to agent paths', () => {
       const agentFiles = result.files.filter(f => f.type === 'agent');
       expect(agentFiles).toHaveLength(1);
-      expect(agentFiles[0].path).toBe('agents/code-reviewer.md');
+      expect(agentFiles[0].path).toBe('.cursor/agents/code-reviewer.md');
     });
 
-    it('remaps command paths', () => {
+    it('adds .cursor/ prefix to command paths', () => {
       const cmdFiles = result.files.filter(f => f.type === 'command');
       expect(cmdFiles).toHaveLength(3);
       for (const f of cmdFiles) {
-        expect(f.path).toMatch(/^commands\//);
+        expect(f.path).toMatch(/^\.cursor\/commands\//);
       }
     });
 
-    it('generates hooks/hooks-cursor.json with camelCase events', () => {
-      const hooksFile = result.files.find(f => f.path === 'hooks/hooks-cursor.json');
+    it('generates .cursor/hooks.json with camelCase events', () => {
+      const hooksFile = result.files.find(f => f.path === '.cursor/hooks.json');
       expect(hooksFile).toBeDefined();
       const hooksData = JSON.parse(hooksFile!.content);
       expect(hooksData.version).toBe(1);
@@ -379,7 +378,7 @@ describe.skipIf(!repoExists)('superpowers plugin integration', () => {
     });
 
     it('cursor hooks use relative paths (no ${CLAUDE_PLUGIN_ROOT})', () => {
-      const hooksFile = result.files.find(f => f.path === 'hooks/hooks-cursor.json');
+      const hooksFile = result.files.find(f => f.path === '.cursor/hooks.json');
       expect(hooksFile).toBeDefined();
       expect(hooksFile!.content).not.toContain('CLAUDE_PLUGIN_ROOT');
       expect(hooksFile!.content).toContain('./hooks/');

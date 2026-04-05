@@ -42,7 +42,7 @@ function convertToCursor(instruction: Instruction): ConvertedFile {
       alwaysApply: true,
     };
     return {
-      path: `.cursor/rules/${name}.mdc`,
+      path: `rules/${name}.mdc`,
       content: stringifyFrontmatter(frontmatter, instruction.content),
       type: 'instruction',
     };
@@ -54,7 +54,7 @@ function convertToCursor(instruction: Instruction): ConvertedFile {
     alwaysApply: true,
   };
   return {
-    path: '.cursor/rules/claude-instructions.mdc',
+    path: 'rules/claude-instructions.mdc',
     content: stringifyFrontmatter(frontmatter, instruction.content),
     type: 'instruction',
   };

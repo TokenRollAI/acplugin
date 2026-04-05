@@ -43,22 +43,25 @@ acplugin scan anthropics/claude-code
 
 ## 支持的转换
 
-| 资源类型 | Codex CLI | OpenCode | Cursor | Antigravity |
-|---------|-----------|----------|--------|-------------|
-| **Skills** | `.agents/skills/` | `.opencode/skills/` | `.cursor/skills/` | `.agent/skills/` |
-| **指令** | `AGENTS.md` | `AGENTS.md` | `.cursor/rules/*.mdc` | `GEMINI.md` |
-| **MCP 服务器** | `.codex/config.toml` | `opencode.json` | `.cursor/mcp.json` | `.gemini/settings.json` |
-| **Agents** | `.codex/agents/*.toml` | `.opencode/agents/*.md` | `.cursor/agents/*.md` | `.gemini/agents/*.md` |
-| **Commands** | 转换为 Skills | `.opencode/commands/` | `.cursor/commands/` | 转换为 Skills |
-| **Hooks** | 记录在 `AGENTS.md` | 记录在 `AGENTS.md` | 仅输出警告 | 仅输出警告 |
+| 资源类型             | Codex CLI                          | OpenCode                | Cursor                            | Antigravity             |
+| -------------------- | ---------------------------------- | ----------------------- | --------------------------------- | ----------------------- |
+| **Skills**           | `.agents/skills/`                  | `.opencode/skills/`     | `.cursor/skills/`                 | `.agent/skills/`        |
+| **指令**             | `AGENTS.md`                        | `AGENTS.md`             | `.cursor/rules/*.mdc`             | `GEMINI.md`             |
+| **MCP 服务器**       | `.codex/config.toml`               | `opencode.json`         | `.cursor/mcp.json`                | `.gemini/settings.json` |
+| **Agents**           | `.codex/agents/*.toml`             | `.opencode/agents/*.md` | `.cursor/agents/*.md`             | `.gemini/agents/*.md`   |
+| **Commands**         | 转换为 Skills                      | `.opencode/commands/`   | `.cursor/commands/`               | 转换为 Skills           |
+| **Hooks**            | 记录在 `AGENTS.md`                 | 记录在 `AGENTS.md`      | `.cursor/hooks.json`              | 仅输出警告              |
+| **plugin.json**      | `.codex-plugin/plugin.json`        | —                       | `.cursor-plugin/plugin.json`      | —                       |
+| **marketplace.json** | `.agents/plugins/marketplace.json` | —                       | `.cursor-plugin/marketplace.json` | —                       |
+| **Scripts**          | `scripts/`（保持原路径）           | `scripts/`（保持原路径） | `.cursor/scripts/`（保持原路径）  | `scripts/`（保持原路径）|
 
 ### 模型映射
 
-| Claude Code | → Codex | → Antigravity |
-|-------------|---------|---------------|
-| `sonnet` / `opus` | `gpt-5.4` | `gemini-3-pro` |
-| `haiku` | `gpt-5.4` | `gemini-3-flash` |
-| （未指定） | `gpt-5.4` | `gemini-3-pro` |
+| Claude Code       | → Codex   | → Antigravity    |
+| ----------------- | --------- | ---------------- |
+| `sonnet` / `opus` | `gpt-5.4` | `gemini-3-pro`   |
+| `haiku`           | `gpt-5.4` | `gemini-3-flash` |
+| （未指定）        | `gpt-5.4` | `gemini-3-pro`   |
 
 OpenCode 和 Cursor 保持原始模型值不映射。
 
@@ -92,13 +95,13 @@ acplugin convert . --dry-run                 # 预览模式，不写入文件
 
 **选项：**
 
-| 选项 | 说明 |
-|------|------|
+| 选项                   | 说明                                                               |
+| ---------------------- | ------------------------------------------------------------------ |
 | `-t, --to <platforms>` | 目标平台（逗号分隔：`codex`、`opencode`、`cursor`、`antigravity`） |
-| `-o, --output <path>` | 输出目录 |
-| `-a, --all` | 全部转换，跳过交互选择 |
-| `-p, --path <subpath>` | 仓库内子路径 |
-| `--dry-run` | 预览生成的文件，不实际写入 |
+| `-o, --output <path>`  | 输出目录                                                           |
+| `-a, --all`            | 全部转换，跳过交互选择                                             |
+| `-p, --path <subpath>` | 仓库内子路径                                                       |
+| `--dry-run`            | 预览生成的文件，不实际写入                                         |
 
 ## 使用示例
 

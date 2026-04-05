@@ -35,9 +35,9 @@ describe('mergeInstructions', () => {
   it('creates separate .mdc files for cursor', () => {
     const result = mergeInstructions([claudeMd, rule], 'cursor');
     expect(result).toHaveLength(2);
-    expect(result[0].path).toBe('.cursor/rules/claude-instructions.mdc');
+    expect(result[0].path).toBe('rules/claude-instructions.mdc');
     expect(result[0].content).toContain('alwaysApply: true');
-    expect(result[1].path).toBe('.cursor/rules/testing.mdc');
+    expect(result[1].path).toBe('rules/testing.mdc');
     expect(result[1].content).toContain('alwaysApply: true');
   });
 

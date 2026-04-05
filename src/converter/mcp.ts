@@ -121,7 +121,7 @@ function convertToCursor(mcp: MCPConfig): ConvertedFile {
 
   const content = JSON.stringify({ mcpServers }, null, 2);
   return {
-    path: '.cursor/mcp.json',
+    path: 'mcp.json',
     content,
     type: 'mcp',
   };

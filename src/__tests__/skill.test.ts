@@ -33,7 +33,7 @@ describe('convertSkill', () => {
 
   it('converts to cursor path', () => {
     const result = convertSkill(sampleSkill, 'cursor');
-    expect(result.path).toBe('.cursor/skills/test-skill/SKILL.md');
+    expect(result.path).toBe('skills/test-skill/SKILL.md');
   });
 
   it('preserves name and description in frontmatter', () => {
