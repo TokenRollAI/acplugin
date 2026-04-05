@@ -14,6 +14,7 @@ export function scanClaudeProject(rootDir: string): ScanResult {
     agents: scanAgentsDir(path.join(rootDir, '.claude', 'agents')),
     commands: scanCommandsDir(path.join(rootDir, '.claude', 'commands')),
     hooks: scanSettingsHooks(path.join(rootDir, '.claude', 'settings.json')),
+    pluginFiles: [],
     rootDir,
   };
 }
