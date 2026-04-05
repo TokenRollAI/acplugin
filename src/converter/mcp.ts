@@ -1,5 +1,28 @@
-import type { MCPConfig, MCPServer, Platform, ConvertedFile } from '../types.js';
+import type { MCPConfig, Platform, ConvertedFile } from '../types.js';
 import { toToml } from '../utils/toml.js';
+
+/**
+ * Replace ${CLAUDE_PLUGIN_ROOT} with relative path.
+ * All target platforms use relative paths from plugin root.
+ */
+function transformPluginRootPaths(value: string): string {
+  return value
+    .replace(/"\$\{CLAUDE_PLUGIN_ROOT\}\/([^"]+)"/g, './$1')
+    .replace(/\$\{CLAUDE_PLUGIN_ROOT\}\//g, './')
+    .replace(/\$\{CLAUDE_PLUGIN_ROOT\}/g, '.');
+}
+
+function transformArgs(args: string[]): string[] {
+  return args.map(a => transformPluginRootPaths(a));
+}
+
+function transformEnv(env: Record<string, string>): Record<string, string> {
+  const result: Record<string, string> = {};
+  for (const [k, v] of Object.entries(env)) {
+    result[k] = transformPluginRootPaths(v);
+  }
+  return result;
+}
 
 export function convertMCP(mcp: MCPConfig, platform: Platform): ConvertedFile {
   switch (platform) {
@@ -28,11 +51,11 @@ function convertToCodex(mcp: MCPConfig): ConvertedFile {
       }
     } else {
       if (server.command) config.command = server.command;
-      if (server.args) config.args = server.args;
+      if (server.args) config.args = transformArgs(server.args);
     }
 
     if (server.env && Object.keys(server.env).length > 0) {
-      config.env = server.env;
+      config.env = transformEnv(server.env);
     }
 
     config.enabled = true;
@@ -61,8 +84,8 @@ function convertToOpenCode(mcp: MCPConfig): ConvertedFile {
       mcpConfig[server.name] = {
         type: 'local',
         command: server.command,
-        args: server.args || [],
-        ...(server.env && Object.keys(server.env).length > 0 ? { env: server.env } : {}),
+        args: transformArgs(server.args || []),
+        ...(server.env && Object.keys(server.env).length > 0 ? { env: transformEnv(server.env) } : {}),
       };
     }
   }
@@ -87,9 +110,9 @@ function convertToCursor(mcp: MCPConfig): ConvertedFile {
       if (server.headers) config.headers = server.headers;
     } else {
       if (server.command) config.command = server.command;
-      if (server.args) config.args = server.args;
+      if (server.args) config.args = transformArgs(server.args);
       if (server.env && Object.keys(server.env).length > 0) {
-        config.env = server.env;
+        config.env = transformEnv(server.env);
       }
     }
 
@@ -116,9 +139,9 @@ function convertToAntigravity(mcp: MCPConfig): ConvertedFile {
       if (server.headers) config.headers = server.headers;
     } else {
       if (server.command) config.command = server.command;
-      if (server.args) config.args = server.args;
+      if (server.args) config.args = transformArgs(server.args);
       if (server.env && Object.keys(server.env).length > 0) {
-        config.env = server.env;
+        config.env = transformEnv(server.env);
       }
     }
 
