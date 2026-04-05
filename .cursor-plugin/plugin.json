@@ -1,0 +1,7 @@
+{
+  "name": "converted-plugin",
+  "description": "Converted from Claude Code plugin via acplugin",
+  "version": "1.0.0",
+  "skills": "./skills/",
+  "rules": "./rules/"
+}
