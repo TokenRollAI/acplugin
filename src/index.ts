@@ -141,7 +141,6 @@ program
 
       const dryRun = opts.dryRun || false;
       const detected = detectAndScan(rootDir);
-      console.log('detected: ', JSON.stringify(detected));
 
       if (detected.type === 'marketplace') {
         await convertMarketplace(detected.plugins, platforms, outputDir, dryRun, opts.all || false, detected.marketplaceMeta);
