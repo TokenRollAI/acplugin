@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:developers.openai.com)",
+      "WebFetch(domain:cursor.com)",
+      "Bash(xargs ls:*)",
+      "WebFetch(domain:opencode.ai)",
+      "WebSearch",
+      "WebFetch(domain:gist.github.com)",
+      "WebFetch(domain:deepwiki.com)",
+      "WebFetch(domain:github.com)",
+      "Bash(npx tsc:*)",
+      "Bash(npx vitest:*)",
+      "Bash(git clone:*)"
+    ]
+  }
+}

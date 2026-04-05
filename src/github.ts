@@ -68,14 +68,59 @@ export function parseGitHubSource(source: string): GitHubSource {
 }
 
 /**
- * Download a GitHub repo tarball and extract to a temp directory.
- * Returns the path to the extracted directory.
+ * Download a GitHub repo to a temp directory.
+ * Prefers `git clone --recurse-submodules` (handles submodules properly).
+ * Falls back to tarball download if git is unavailable.
+ * Returns the path to the extracted/cloned directory.
  */
 export async function downloadGitHubRepo(source: GitHubSource): Promise<string> {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'acplugin-'));
+
+  // Try git clone first (supports submodules)
+  if (isGitAvailable()) {
+    return cloneWithGit(source, tmpDir);
+  }
+
+  // Fallback: tarball download (no submodule support)
+  return downloadTarball(source, tmpDir);
+}
+
+function isGitAvailable(): boolean {
+  try {
+    execSync('git --version', { stdio: 'pipe' });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function cloneWithGit(source: GitHubSource, tmpDir: string): string {
+  const repoUrl = `https://github.com/${source.owner}/${source.repo}.git`;
+  const cloneDir = path.join(tmpDir, source.repo);
+
+  const args = ['clone', '--depth', '1', '--recurse-submodules', '--shallow-submodules'];
+  if (source.branch) {
+    args.push('--branch', source.branch);
+  }
+  args.push(repoUrl, cloneDir);
+
+  execSync(`git ${args.join(' ')}`, { stdio: 'pipe' });
+
+  let repoDir = cloneDir;
+  if (source.subPath) {
+    const subDir = path.join(repoDir, source.subPath);
+    if (!fs.existsSync(subDir)) {
+      throw new Error(`Sub-path "${source.subPath}" not found in repository`);
+    }
+    repoDir = subDir;
+  }
+
+  return repoDir;
+}
+
+async function downloadTarball(source: GitHubSource, tmpDir: string): Promise<string> {
   const branch = source.branch || 'HEAD';
   const tarballUrl = `https://api.github.com/repos/${source.owner}/${source.repo}/tarball/${branch}`;
-
-  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'acplugin-'));
   const tarballPath = path.join(tmpDir, 'repo.tar.gz');
 
   // Download tarball (follow redirects)
