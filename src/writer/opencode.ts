@@ -51,6 +51,11 @@ export function generateOpenCode(scan: ScanResult): ConvertResult {
     }
   }
 
+  // Plugin-level resource files (scripts/, etc. referenced by MCP)
+  for (const pf of scan.pluginFiles) {
+    files.push({ path: pf.relativePath, content: pf.content, type: 'resource' });
+  }
+
   return {
     platform: 'opencode',
     files: files.filter(f => !f.path.includes('.hook-')),

@@ -4,7 +4,7 @@ import { Command } from 'commander';
 import * as path from 'path';
 import * as fs from 'fs';
 import { scanClaudeProject } from './scanner/claude.js';
-import { hasMarketplace, isSinglePlugin, scanAllPlugins, scanPlugin, countResources } from './scanner/plugin.js';
+import { hasMarketplace, isSinglePlugin, scanAllPlugins, scanPlugin, countResources, scanMarketplaceFull } from './scanner/plugin.js';
 import { generateCodex } from './writer/codex.js';
 import { generateOpenCode } from './writer/opencode.js';
 import { generateCursor } from './writer/cursor.js';
@@ -12,7 +12,10 @@ import { generateAntigravity } from './writer/antigravity.js';
 import { writeFile } from './utils/fs.js';
 import { parseGitHubSource, downloadGitHubRepo, cleanupTempDir, getTempRoot } from './github.js';
 import { selectPlugins, selectPlatforms, runWizard, log } from './tui.js';
-import type { Platform, ConvertResult, ScanResult, PluginScanResult } from './types.js';
+import type { Platform, ConvertResult, ScanResult, PluginScanResult, MarketplaceScanResult } from './types.js';
+import { convertMarketplaceForCodex } from './converter/pluginManifest.js';
+// TODO: re-enable after Cursor marketplace test validation
+// import { convertMarketplaceForCursor } from './converter/pluginManifest.js';
 
 const program = new Command();
 
@@ -56,12 +59,17 @@ async function resolveSource(source: string, subPath?: string): Promise<[string,
 /**
  * Detect source type and scan.
  */
-function detectAndScan(rootDir: string): { type: 'marketplace'; plugins: PluginScanResult[] }
+function detectAndScan(rootDir: string): { type: 'marketplace'; plugins: PluginScanResult[]; marketplaceMeta: MarketplaceScanResult | null }
   | { type: 'plugin'; scan: PluginScanResult }
   | { type: 'project'; scan: ScanResult } {
 
   if (hasMarketplace(rootDir)) {
-    return { type: 'marketplace', plugins: scanAllPlugins(rootDir) };
+    const full = scanMarketplaceFull(rootDir);
+    return {
+      type: 'marketplace',
+      plugins: full?.plugins || scanAllPlugins(rootDir),
+      marketplaceMeta: full,
+    };
   }
   if (isSinglePlugin(rootDir)) {
     return { type: 'plugin', scan: scanPlugin(rootDir) };
@@ -133,9 +141,10 @@ program
 
       const dryRun = opts.dryRun || false;
       const detected = detectAndScan(rootDir);
+      console.log('detected: ', JSON.stringify(detected));
 
       if (detected.type === 'marketplace') {
-        await convertMarketplace(detected.plugins, platforms, outputDir, dryRun, opts.all || false);
+        await convertMarketplace(detected.plugins, platforms, outputDir, dryRun, opts.all || false, detected.marketplaceMeta);
       } else if (detected.type === 'plugin') {
         log.header(detected.scan.meta.name);
         convertSingleScan(detected.scan, platforms, outputDir, dryRun);
@@ -155,6 +164,7 @@ async function convertMarketplace(
   outputDir: string,
   dryRun: boolean,
   all: boolean,
+  marketplaceMeta?: MarketplaceScanResult | null,
 ): Promise<void> {
   if (plugins.length === 0) {
     log.warn('No plugins with convertible resources found.');
@@ -187,13 +197,37 @@ async function convertMarketplace(
   log.info(`Converting ${selectedIndices.length} plugin(s) to ${platforms.join(', ')}...`);
 
   let totalFiles = 0;
-  for (const idx of selectedIndices) {
-    const plugin = plugins[idx];
+  const selectedPlugins = selectedIndices.map(i => plugins[i]);
+
+  for (const plugin of selectedPlugins) {
     const pluginOutputDir = useSubDirs
       ? path.join(outputDir, plugin.meta.name)
       : outputDir;
     log.header(plugin.meta.name);
     totalFiles += convertSingleScan(plugin, platforms, pluginOutputDir, dryRun);
+  }
+
+  // Generate marketplace manifest files for each platform
+  if (marketplaceMeta?.marketplace) {
+    for (const platform of platforms) {
+      const marketplaceFiles = generateMarketplaceManifest(
+        platform,
+        marketplaceMeta.marketplace,
+        selectedPlugins,
+      );
+      for (const file of marketplaceFiles.files) {
+        if (!dryRun) {
+          writeFile(path.join(outputDir, file.path), file.content);
+        }
+        totalFiles++;
+      }
+      if (marketplaceFiles.files.length > 0) {
+        log.stat(`${platform} marketplace`, `${marketplaceFiles.files.length} file(s)`);
+      }
+      for (const w of marketplaceFiles.warnings) {
+        log.warn(w);
+      }
+    }
   }
 
   console.log();
@@ -246,6 +280,32 @@ function generateForPlatform(scan: ScanResult, platform: Platform): ConvertResul
     case 'cursor': return generateCursor(scan);
     case 'antigravity': return generateAntigravity(scan);
   }
+}
+
+/**
+ * Generate marketplace manifest files for a target platform.
+ */
+function generateMarketplaceManifest(
+  platform: Platform,
+  marketplace: import('./types.js').MarketplaceMeta,
+  plugins: PluginScanResult[],
+): { files: import('./types.js').ConvertedFile[]; warnings: string[] } {
+  const files: import('./types.js').ConvertedFile[] = [];
+  const warnings: string[] = [];
+
+  switch (platform) {
+    case 'codex':
+      files.push(convertMarketplaceForCodex(marketplace, plugins));
+      break;
+    // TODO: Cursor marketplace generation — pending test validation
+    // case 'cursor':
+    //   files.push(convertMarketplaceForCursor(marketplace, plugins));
+    //   break;
+    // OpenCode and Antigravity don't support plugin manifest/marketplace.
+    // Their resource conversion (skills, agents, etc.) is handled normally by the writers.
+  }
+
+  return { files, warnings };
 }
 
 // --- Print functions ---

@@ -5,6 +5,8 @@ import { convertMCP } from '../converter/mcp.js';
 import { convertAgent } from '../converter/agent.js';
 import { convertCommand } from '../converter/command.js';
 import { convertHooks } from '../converter/hooks.js';
+// TODO: re-enable after Cursor plugin manifest test validation
+// import { convertPluginManifestForCursor } from '../converter/pluginManifest.js';
 
 export function generateCursor(scan: ScanResult): ConvertResult {
   const files: ConvertedFile[] = [];
@@ -41,9 +43,14 @@ export function generateCursor(scan: ScanResult): ConvertResult {
     warnings.push(...hookResult.warnings);
   }
 
-  // Generate .cursor-plugin/plugin.json
-  const pluginJson = generatePluginJson(scan);
-  files.push(pluginJson);
+  // Plugin-level resource files (scripts/, etc. referenced by MCP)
+  for (const pf of scan.pluginFiles) {
+    files.push({ path: pf.relativePath, content: pf.content, type: 'resource' });
+  }
+
+  // TODO: Cursor plugin manifest generation — pending test validation
+  // const meta = (scan as PluginScanResult).meta;
+  // files.push(convertPluginManifestForCursor(scan, meta));
 
   // Remap paths: .cursor/xxx → plugin format (skills/, agents/, etc.)
   for (const file of files) {
@@ -51,41 +58,6 @@ export function generateCursor(scan: ScanResult): ConvertResult {
   }
 
   return { platform: 'cursor', files, warnings };
-}
-
-/**
- * Generate .cursor-plugin/plugin.json manifest.
- */
-function generatePluginJson(scan: ScanResult): ConvertedFile {
-  const meta = (scan as PluginScanResult).meta;
-  const manifest: Record<string, unknown> = {
-    name: meta?.name || 'converted-plugin',
-  };
-
-  if (meta?.displayName) manifest.displayName = meta.displayName;
-
-  manifest.description = meta?.description || 'Converted from Claude Code plugin via acplugin';
-  manifest.version = meta?.version || '1.0.0';
-
-  if (meta?.author) manifest.author = meta.author;
-  if (meta?.homepage) manifest.homepage = meta.homepage;
-  if (meta?.repository) manifest.repository = meta.repository;
-  if (meta?.license) manifest.license = meta.license;
-  if (meta?.keywords) manifest.keywords = meta.keywords;
-
-  // Only include paths for components that exist
-  if (scan.skills.length > 0) manifest.skills = './skills/';
-  if (scan.agents.length > 0) manifest.agents = './agents/';
-  if (scan.commands.length > 0) manifest.commands = './commands/';
-  if (scan.instructions.length > 0) manifest.rules = './rules/';
-  if (scan.mcp) manifest.mcpServers = './mcp.json';
-  if (scan.hooks) manifest.hooks = './hooks/hooks-cursor.json';
-
-  return {
-    path: '.cursor-plugin/plugin.json',
-    content: JSON.stringify(manifest, null, 2),
-    type: 'instruction',
-  };
 }
 
 /**

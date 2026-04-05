@@ -1,11 +1,11 @@
-import * as path from 'path';
-import type { ScanResult, ConvertedFile, ConvertResult } from '../types.js';
+import type { ScanResult, ConvertedFile, ConvertResult, PluginScanResult } from '../types.js';
 import { convertSkill, convertSkillCodexYaml, convertSkillAuxFiles } from '../converter/skill.js';
 import { mergeInstructions } from '../converter/instructions.js';
 import { convertMCP } from '../converter/mcp.js';
 import { convertAgent } from '../converter/agent.js';
 import { convertCommand } from '../converter/command.js';
 import { convertHooks } from '../converter/hooks.js';
+import { convertPluginManifestForCodex } from '../converter/pluginManifest.js';
 
 export function generateCodex(scan: ScanResult): ConvertResult {
   const files: ConvertedFile[] = [];
@@ -54,6 +54,17 @@ export function generateCodex(scan: ScanResult): ConvertResult {
         files.push({ path: 'AGENTS.md', content: hookContent.trim(), type: 'hook' });
       }
     }
+  }
+
+  // Plugin-level resource files (scripts/, etc. referenced by MCP)
+  for (const pf of scan.pluginFiles) {
+    files.push({ path: pf.relativePath, content: pf.content, type: 'resource' });
+  }
+
+  // Generate .codex-plugin/plugin.json manifest
+  const meta = (scan as PluginScanResult).meta;
+  if (meta) {
+    files.push(convertPluginManifestForCodex(scan, meta));
   }
 
   return {

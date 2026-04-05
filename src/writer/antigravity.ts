@@ -40,6 +40,11 @@ export function generateAntigravity(scan: ScanResult): ConvertResult {
     warnings.push(...hookResult.warnings);
   }
 
+  // Plugin-level resource files (scripts/, etc. referenced by MCP)
+  for (const pf of scan.pluginFiles) {
+    files.push({ path: pf.relativePath, content: pf.content, type: 'resource' });
+  }
+
   return {
     platform: 'antigravity',
     files,
