@@ -5,8 +5,7 @@ import { convertMCP } from '../converter/mcp.js';
 import { convertAgent } from '../converter/agent.js';
 import { convertCommand } from '../converter/command.js';
 import { convertHooks } from '../converter/hooks.js';
-// TODO: re-enable after Cursor plugin manifest test validation
-// import { convertPluginManifestForCursor } from '../converter/pluginManifest.js';
+import { convertPluginManifestForCursor } from '../converter/pluginManifest.js';
 
 export function generateCursor(scan: ScanResult): ConvertResult {
   const files: ConvertedFile[] = [];
@@ -48,9 +47,9 @@ export function generateCursor(scan: ScanResult): ConvertResult {
     files.push({ path: pf.relativePath, content: pf.content, type: 'resource' });
   }
 
-  // TODO: Cursor plugin manifest generation — pending test validation
-  // const meta = (scan as PluginScanResult).meta;
-  // files.push(convertPluginManifestForCursor(scan, meta));
+  // Cursor plugin manifest generation
+  const meta = (scan as PluginScanResult).meta;
+  files.push(convertPluginManifestForCursor(scan, meta));
 
   // Remap paths: .cursor/xxx → plugin format (skills/, agents/, etc.)
   for (const file of files) {

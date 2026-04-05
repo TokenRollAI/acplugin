@@ -13,9 +13,7 @@ import { writeFile } from './utils/fs.js';
 import { parseGitHubSource, downloadGitHubRepo, cleanupTempDir, getTempRoot } from './github.js';
 import { selectPlugins, selectPlatforms, runWizard, log } from './tui.js';
 import type { Platform, ConvertResult, ScanResult, PluginScanResult, MarketplaceScanResult } from './types.js';
-import { convertMarketplaceForCodex } from './converter/pluginManifest.js';
-// TODO: re-enable after Cursor marketplace test validation
-// import { convertMarketplaceForCursor } from './converter/pluginManifest.js';
+import { convertMarketplaceForCodex, convertMarketplaceForCursor } from './converter/pluginManifest.js';
 
 const program = new Command();
 
@@ -296,10 +294,9 @@ function generateMarketplaceManifest(
     case 'codex':
       files.push(convertMarketplaceForCodex(marketplace, plugins));
       break;
-    // TODO: Cursor marketplace generation — pending test validation
-    // case 'cursor':
-    //   files.push(convertMarketplaceForCursor(marketplace, plugins));
-    //   break;
+    case 'cursor':
+      files.push(convertMarketplaceForCursor(marketplace, plugins));
+      break;
     // OpenCode and Antigravity don't support plugin manifest/marketplace.
     // Their resource conversion (skills, agents, etc.) is handled normally by the writers.
   }
