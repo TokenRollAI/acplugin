@@ -1,6 +1,20 @@
 // Target platforms
 export type Platform = 'codex' | 'opencode' | 'cursor' | 'antigravity';
 
+// --- Platform resource paths (single source of truth) ---
+// These must match the actual output paths in each platform's writer/converter.
+
+export interface PlatformPaths {
+  pluginJson: string;           // manifest output path
+  marketplaceJson?: string;     // marketplace output path
+  skills?: string;              // skills directory reference
+  agents?: string;              // agents directory reference
+  commands?: string;            // commands directory reference
+  instructions?: string;        // instructions file reference
+  mcp?: string;                 // MCP config reference
+  hooks?: string;               // hooks config reference
+}
+
 // --- Skill ---
 export interface SkillFrontmatter {
   name?: string;
@@ -101,12 +115,30 @@ export interface Hooks {
   [event: string]: HookMatcher[];
 }
 
+// --- Plugin Interface (Marketplace display metadata) ---
+export interface PluginInterface {
+  displayName?: string;
+  shortDescription?: string;
+  longDescription?: string;
+  developerName?: string;
+  category?: string;
+  capabilities?: string[];
+  websiteURL?: string;
+  privacyPolicyURL?: string;
+  termsOfServiceURL?: string;
+  defaultPrompt?: string[];
+  brandColor?: string;
+  composerIcon?: string;
+  logo?: string;
+  screenshots?: string[];
+}
+
 // --- Plugin ---
 export interface PluginMeta {
   name: string;
   description?: string;
   version?: string;
-  author?: { name: string; email?: string };
+  author?: { name: string; email?: string; url?: string };
   source?: string;
   category?: string;
   displayName?: string;
@@ -114,6 +146,39 @@ export interface PluginMeta {
   repository?: string;
   license?: string;
   keywords?: string[];
+  // Resource path overrides (from plugin.json)
+  skills?: string;
+  agents?: string;
+  commands?: string | string[];
+  hooks?: string;
+  mcpServers?: string;
+  apps?: string;
+  // Marketplace display metadata
+  interface?: PluginInterface;
+}
+
+// --- Marketplace ---
+export interface MarketplaceMeta {
+  name: string;
+  version?: string;
+  description?: string;
+  owner?: { name: string; email?: string };
+  metadata?: { description?: string; version?: string; pluginRoot?: string };
+  plugins: MarketplacePluginEntry[];
+}
+
+export interface MarketplacePluginEntry {
+  name: string;
+  source: string;
+  description?: string;
+  version?: string;
+  category?: string;
+}
+
+// --- Plugin Resource File ---
+export interface PluginResourceFile {
+  relativePath: string;  // relative to plugin root, e.g. "scripts/mcp-server/start.js"
+  content: string;
 }
 
 // --- Scan Result ---
@@ -124,6 +189,7 @@ export interface ScanResult {
   agents: Agent[];
   commands: Command[];
   hooks: Hooks | null;
+  pluginFiles: PluginResourceFile[];  // plugin-level resource files (scripts/, etc.)
   rootDir: string;
 }
 
@@ -131,11 +197,16 @@ export interface PluginScanResult extends ScanResult {
   meta: PluginMeta;
 }
 
+export interface MarketplaceScanResult {
+  marketplace: MarketplaceMeta;
+  plugins: PluginScanResult[];
+}
+
 // --- Convert Result ---
 export interface ConvertedFile {
   path: string;
   content: string;
-  type: 'skill' | 'instruction' | 'mcp' | 'agent' | 'command' | 'hook';
+  type: 'skill' | 'instruction' | 'mcp' | 'agent' | 'command' | 'hook' | 'manifest' | 'resource';
 }
 
 export interface ConvertResult {
