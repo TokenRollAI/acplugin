@@ -1,6 +1,6 @@
 {
   "name": "@disdjj/acplugin",
-  "version": "1.5.2",
+  "version": "1.5.3",
   "description": "Convert Claude Code plugins to Codex, OpenCode, and Cursor formats",
   "main": "dist/index.js",
   "bin": {
@@ -31,8 +31,15 @@
     "mcp"
   ],
   "author": "",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/TokenRollAI/acplugin.git"
+  },
   "license": "MIT",
   "type": "commonjs",
+  "publishConfig": {
+    "access": "public"
+  },
   "dependencies": {
     "@iarna/toml": "^2.2.5",
     "@inquirer/prompts": "^8.3.2",

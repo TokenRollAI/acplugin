@@ -27,6 +27,8 @@
 - `src/utils/frontmatter.ts`: YAML frontmatter parse/stringify via gray-matter.
 - `src/utils/toml.ts`: TOML serialization via @iarna/toml.
 - `src/utils/fs.ts` (`writeFile`, `readFile`, `fileExists`): File system utilities with directory creation.
+- `.github/workflows/acplugin.yml`: Repository CI workflow that runs `TokenRollAI/acplugin-action@v1` on Claude source changes in `main`.
+- `.github/workflows/publish-npm.yml`: Release workflow. Triggers on `v*` tags, verifies the tag matches `package.json` version, runs install/build/test/package validation, then publishes to npm with GitHub Actions OIDC Trusted Publishing.
 
 ## 3. Execution Flow (LLM Retrieval Map)
 

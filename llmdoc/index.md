@@ -13,6 +13,7 @@ CLI tool that converts Claude Code plugins (skills, instructions, MCP configs, a
 ### Guides
 
 - [CLI Usage](guides/usage.md) - How to scan and convert resources from local paths or GitHub repos.
+- [npm Release](guides/release.md) - How tag-driven GitHub Actions publishing to npm works.
 
 ### Architecture
 
