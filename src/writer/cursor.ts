@@ -48,8 +48,10 @@ export function generateCursor(scan: ScanResult): ConvertResult {
   }
 
   // Cursor plugin manifest generation
-  const meta = (scan as PluginScanResult).meta;
-  files.push(convertPluginManifestForCursor(scan, meta));
+  if ('meta' in scan) {
+    const meta = (scan as PluginScanResult).meta;
+    files.push(convertPluginManifestForCursor(scan, meta));
+  }
 
   // Add .cursor/ prefix to resource paths (skip .cursor-plugin/ manifest files)
   for (const file of files) {
@@ -66,7 +68,7 @@ export function generateCursor(scan: ScanResult): ConvertResult {
  * Paths that already have a dot-prefix (.cursor-plugin/) are left unchanged.
  */
 function addCursorPrefix(filePath: string): string {
-  if (filePath.startsWith('.')) {
+  if (filePath.startsWith('.cursor-plugin/')) {
     return filePath;
   }
   return `.cursor/${filePath}`;
