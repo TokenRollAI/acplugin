@@ -107,7 +107,7 @@ function convertToCursor(agent: Agent): ConvertedFile {
   }
 
   const content = stringifyFrontmatter(fm, agent.body);
-  return { path: `.cursor/agents/${agent.fileName}.md`, content, type: 'agent' };
+  return { path: `agents/${agent.fileName}.md`, content, type: 'agent' };
 }
 
 // --- Antigravity: .gemini/agents/*.md (YAML frontmatter) ---

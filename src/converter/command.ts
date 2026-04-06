@@ -40,7 +40,7 @@ function convertToOpenCode(command: Command): ConvertedFile {
 
 function convertToCursor(command: Command): ConvertedFile {
   return {
-    path: `.cursor/commands/${command.name}.md`,
+    path: `commands/${command.name}.md`,
     content: command.content,
     type: 'command',
   };

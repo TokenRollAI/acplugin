@@ -73,7 +73,7 @@ describe('convertAgent', () => {
 
   it('converts to cursor as agent file', () => {
     const result = convertAgent(sampleAgent, 'cursor');
-    expect(result.path).toBe('.cursor/agents/code-reviewer.md');
+    expect(result.path).toBe('agents/code-reviewer.md');
     expect(result.content).toContain('name: code-reviewer');
     expect(result.content).toContain('description: Reviews code for bugs');
   });

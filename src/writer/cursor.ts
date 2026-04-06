@@ -48,28 +48,28 @@ export function generateCursor(scan: ScanResult): ConvertResult {
   }
 
   // Cursor plugin manifest generation
-  const meta = (scan as PluginScanResult).meta;
-  files.push(convertPluginManifestForCursor(scan, meta));
+  if ('meta' in scan) {
+    const meta = (scan as PluginScanResult).meta;
+    files.push(convertPluginManifestForCursor(scan, meta));
+  }
 
-  // Remap paths: .cursor/xxx → plugin format (skills/, agents/, etc.)
+  // Add .cursor/ prefix to resource paths (skip .cursor-plugin/ manifest files)
   for (const file of files) {
-    file.path = remapToPluginPath(file.path);
+    file.path = addCursorPrefix(file.path);
   }
 
   return { platform: 'cursor', files, warnings };
 }
 
 /**
- * Remap .cursor/ paths to plugin directory layout.
- * .cursor/skills/X/SKILL.md → skills/X/SKILL.md
- * .cursor/agents/X.md → agents/X.md
- * .cursor/commands/X.md → commands/X.md
- * .cursor/rules/X.mdc → rules/X.mdc
- * .cursor/mcp.json → mcp.json
+ * Add .cursor/ prefix to resource paths.
+ * Converters output clean paths (skills/, agents/, rules/, mcp.json, etc.)
+ * and this function adds the .cursor/ directory prefix.
+ * Paths that already have a dot-prefix (.cursor-plugin/) are left unchanged.
  */
-function remapToPluginPath(filePath: string): string {
-  if (filePath.startsWith('.cursor/')) {
-    return filePath.slice('.cursor/'.length);
+function addCursorPrefix(filePath: string): string {
+  if (filePath.startsWith('.cursor-plugin/')) {
+    return filePath;
   }
-  return filePath;
+  return `.cursor/${filePath}`;
 }

@@ -47,14 +47,17 @@ acplugin scan anthropics/claude-code
 
 ## Supported Conversions
 
-| Resource         | Codex CLI                 | OpenCode                  | Cursor                | Antigravity             |
-| ---------------- | ------------------------- | ------------------------- | --------------------- | ----------------------- |
-| **Skills**       | `.agents/skills/`         | `.opencode/skills/`       | `.cursor/skills/`     | `.agent/skills/`        |
-| **Instructions** | `AGENTS.md`               | `AGENTS.md`               | `.cursor/rules/*.mdc` | `GEMINI.md`             |
-| **MCP Servers**  | `.codex/config.toml`      | `opencode.json`           | `.cursor/mcp.json`    | `.gemini/settings.json` |
-| **Agents**       | `.codex/agents/*.toml`    | `.opencode/agents/*.md`   | `.cursor/agents/*.md` | `.gemini/agents/*.md`   |
-| **Commands**     | Converted to Skills       | `.opencode/commands/`     | `.cursor/commands/`   | Converted to Skills     |
-| **Hooks**        | Documented in `AGENTS.md` | Documented in `AGENTS.md` | Warnings only         | Warnings only           |
+| Resource             | Codex CLI                   | OpenCode                  | Cursor                         | Antigravity             |
+| -------------------- | --------------------------- | ------------------------- | ------------------------------ | ----------------------- |
+| **Skills**           | `.agents/skills/`           | `.opencode/skills/`       | `.cursor/skills/`              | `.agent/skills/`        |
+| **Instructions**     | `AGENTS.md`                 | `AGENTS.md`               | `.cursor/rules/*.mdc`          | `GEMINI.md`             |
+| **MCP Servers**      | `.codex/config.toml`        | `opencode.json`           | `.cursor/mcp.json`             | `.gemini/settings.json` |
+| **Agents**           | `.codex/agents/*.toml`      | `.opencode/agents/*.md`   | `.cursor/agents/*.md`          | `.gemini/agents/*.md`   |
+| **Commands**         | Converted to Skills         | `.opencode/commands/`     | `.cursor/commands/`            | Converted to Skills     |
+| **Hooks**            | Documented in `AGENTS.md`   | Documented in `AGENTS.md` | `.cursor/hooks.json`           | Warnings only           |
+| **Plugin Manifest**  | `.codex-plugin/plugin.json` | —                         | `.cursor-plugin/plugin.json`   | —                       |
+| **Marketplace**      | `.agents/plugins/marketplace.json` | —                  | `.cursor-plugin/marketplace.json` | —                    |
+| **Scripts**          | `scripts/` (preserved)      | `scripts/` (preserved)    | `.cursor/scripts/` (preserved)    | `scripts/` (preserved)  |
 
 ### Model Mapping
 

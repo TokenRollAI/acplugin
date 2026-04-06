@@ -29,12 +29,12 @@ const PLATFORM_PATHS: Record<ManifestPlatform, PlatformPaths> = {
   cursor: {
     pluginJson: '.cursor-plugin/plugin.json',
     marketplaceJson: '.cursor-plugin/marketplace.json',
-    skills: './skills/',
-    agents: './agents/',
-    commands: './commands/',
-    instructions: './rules/',
-    mcp: './mcp.json',
-    hooks: './hooks/hooks-cursor.json',
+    skills: './.cursor/skills/',
+    agents: './.cursor/agents/',
+    commands: './.cursor/commands/',
+    instructions: './.cursor/rules/',
+    mcp: './.cursor/mcp.json',
+    hooks: './.cursor/hooks.json',
   },
 };
 

@@ -11,7 +11,8 @@
       "WebFetch(domain:github.com)",
       "Bash(npx tsc:*)",
       "Bash(npx vitest:*)",
-      "Bash(git clone:*)"
+      "Bash(git clone:*)",
+      "mcp__ide__getDiagnostics"
     ]
   }
 }
