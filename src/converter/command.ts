@@ -11,7 +11,19 @@ export function convertCommand(command: Command, platform: Platform): ConvertedF
       return convertToCursor(command);
     case 'antigravity':
       return convertToAntigravity(command);
+    case 'pi':
+      return convertToPi(command);
   }
+}
+
+function convertToPi(command: Command): ConvertedFile {
+  // Pi has no dedicated command format; the closest native mechanism is a
+  // prompt template (.md under .pi/prompts/), exposed as a /name slash command.
+  return {
+    path: `.pi/prompts/${command.name}.md`,
+    content: command.content,
+    type: 'command',
+  };
 }
 
 function convertToCodex(command: Command): ConvertedFile {
@@ -54,7 +66,7 @@ function convertToAntigravity(command: Command): ConvertedFile {
   };
   const content = stringifyFrontmatter(fm, command.content);
   return {
-    path: `.agent/skills/cmd-${command.name}/SKILL.md`,
+    path: `.agents/skills/cmd-${command.name}/SKILL.md`,
     content,
     type: 'command',
   };

@@ -34,6 +34,10 @@ export function convertMCP(mcp: MCPConfig, platform: Platform): ConvertedFile {
       return convertToCursor(mcp);
     case 'antigravity':
       return convertToAntigravity(mcp);
+    case 'pi':
+      // Pi does not support MCP by design; the Pi writer emits a warning
+      // instead of calling this converter.
+      throw new Error('Pi does not support MCP');
   }
 }
 
@@ -78,14 +82,21 @@ function convertToOpenCode(mcp: MCPConfig): ConvertedFile {
       mcpConfig[server.name] = {
         type: 'remote',
         url: server.url,
+        enabled: true,
         ...(server.headers ? { headers: server.headers } : {}),
       };
     } else {
+      // OpenCode expects a single string array for command+args, and uses
+      // `environment` (not `env`) for env vars. See opencode.ai/docs/mcp-servers.
+      const commandArray = [
+        ...(server.command ? [server.command] : []),
+        ...transformArgs(server.args || []),
+      ];
       mcpConfig[server.name] = {
         type: 'local',
-        command: server.command,
-        args: transformArgs(server.args || []),
-        ...(server.env && Object.keys(server.env).length > 0 ? { env: transformEnv(server.env) } : {}),
+        command: commandArray,
+        enabled: true,
+        ...(server.env && Object.keys(server.env).length > 0 ? { environment: transformEnv(server.env) } : {}),
       };
     }
   }
@@ -128,14 +139,16 @@ function convertToCursor(mcp: MCPConfig): ConvertedFile {
 }
 
 function convertToAntigravity(mcp: MCPConfig): ConvertedFile {
-  // Antigravity uses .gemini/settings.json { mcpServers: { ... } }
+  // Antigravity uses a dedicated mcp_config.json (not the legacy Gemini CLI
+  // settings.json). Remote servers use `serverUrl` (not `url`/`httpUrl`).
+  // See github.com/github/github-mcp-server install-antigravity guide.
   const mcpServers: Record<string, unknown> = {};
 
   for (const server of mcp.servers) {
     const config: Record<string, unknown> = {};
 
     if (server.type === 'http' && server.url) {
-      config.url = server.url;
+      config.serverUrl = server.url;
       if (server.headers) config.headers = server.headers;
     } else {
       if (server.command) config.command = server.command;
@@ -150,7 +163,7 @@ function convertToAntigravity(mcp: MCPConfig): ConvertedFile {
 
   const content = JSON.stringify({ mcpServers }, null, 2);
   return {
-    path: '.gemini/settings.json',
+    path: '.agents/mcp_config.json',
     content,
     type: 'mcp',
   };

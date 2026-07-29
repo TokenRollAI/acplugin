@@ -13,6 +13,10 @@ export function convertAgent(agent: Agent, platform: Platform): ConvertedFile {
       return convertToCursor(agent);
     case 'antigravity':
       return convertToAntigravity(agent);
+    case 'pi':
+      // Pi intentionally has no subagent format; the Pi writer emits a warning
+      // instead of calling this converter.
+      throw new Error('Pi does not support subagents');
   }
 }
 
@@ -29,7 +33,7 @@ function convertToCodex(agent: Agent): ConvertedFile {
   if (agent.frontmatter.model) {
     tomlData.model = mapModel(agent.frontmatter.model, 'codex');
   } else {
-    tomlData.model = 'gpt-5.4';
+    tomlData.model = mapModel('inherit', 'codex');
   }
 
   if (agent.frontmatter.tools) {
@@ -110,7 +114,7 @@ function convertToCursor(agent: Agent): ConvertedFile {
   return { path: `.cursor/agents/${agent.fileName}.md`, content, type: 'agent' };
 }
 
-// --- Antigravity: .gemini/agents/*.md (YAML frontmatter) ---
+// --- Antigravity: .agents/agents/*.md (YAML frontmatter) ---
 
 function convertToAntigravity(agent: Agent): ConvertedFile {
   const name = agent.frontmatter.name || agent.fileName;
@@ -123,22 +127,14 @@ function convertToAntigravity(agent: Agent): ConvertedFile {
     fm.model = mapModel(agent.frontmatter.model, 'antigravity');
   }
 
-  // Map tools to allowed-tools list
+  // Antigravity's internal tool identifiers are not published, so we cannot
+  // safely emit an `allowed-tools` allowlist. Preserve the original Claude tool
+  // list as a comment instead of inventing tool names.
+  let body = agent.body;
   if (agent.frontmatter.tools) {
-    const toolList = agent.frontmatter.tools.split(',').map(t => t.trim().toLowerCase());
-    const mapped: string[] = [];
-    for (const t of toolList) {
-      if (t === 'read') mapped.push('read_file');
-      else if (t === 'grep') mapped.push('search_files');
-      else if (t === 'glob') mapped.push('list_files');
-      else if (t === 'bash') mapped.push('run_terminal_command');
-      else if (t === 'write') mapped.push('write_file');
-      else if (t === 'edit') mapped.push('edit_file');
-      else mapped.push(t);
-    }
-    fm['allowed-tools'] = mapped;
+    body = `${agent.body}\n<!-- Claude Code tools (map manually to Antigravity's tool allowlist):\n${agent.frontmatter.tools}\n-->\n`;
   }
 
-  const content = stringifyFrontmatter(fm, agent.body);
-  return { path: `.gemini/agents/${agent.fileName}.md`, content, type: 'agent' };
+  const content = stringifyFrontmatter(fm, body);
+  return { path: `.agents/agents/${agent.fileName}.md`, content, type: 'agent' };
 }

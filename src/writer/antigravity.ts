@@ -10,7 +10,7 @@ export function generateAntigravity(scan: ScanResult): ConvertResult {
   const files: ConvertedFile[] = [];
   const warnings: string[] = [];
 
-  // Skills → .agent/skills/
+  // Skills → .agents/skills/
   for (const skill of scan.skills) {
     files.push(convertSkill(skill, 'antigravity'));
     files.push(...convertSkillAuxFiles(skill, 'antigravity'));
@@ -19,12 +19,12 @@ export function generateAntigravity(scan: ScanResult): ConvertResult {
   // Instructions → GEMINI.md
   files.push(...mergeInstructions(scan.instructions, 'antigravity'));
 
-  // MCP → .gemini/settings.json
+  // MCP → .agents/mcp_config.json
   if (scan.mcp) {
     files.push(convertMCP(scan.mcp, 'antigravity'));
   }
 
-  // Agents → .gemini/agents/
+  // Agents → .agents/agents/
   for (const agent of scan.agents) {
     files.push(convertAgent(agent, 'antigravity'));
   }

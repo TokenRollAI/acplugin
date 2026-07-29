@@ -27,4 +27,10 @@ describe('convertCommand', () => {
     expect(result.path).toBe('.cursor/commands/deploy.md');
     expect(result.content).toContain('Deploy to $1');
   });
+
+  it('converts to pi as a prompt template', () => {
+    const result = convertCommand(sampleCommand, 'pi');
+    expect(result.path).toBe('.pi/prompts/deploy.md');
+    expect(result.content).toContain('Deploy to $1');
+  });
 });

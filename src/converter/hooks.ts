@@ -126,5 +126,8 @@ function convertCommandHook(
     case 'antigravity':
       // Antigravity doesn't have file-configurable hooks
       return null;
+    case 'pi':
+      // Pi handles hooks only via TypeScript extensions — no file format.
+      return null;
   }
 }

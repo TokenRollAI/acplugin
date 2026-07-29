@@ -2,7 +2,10 @@ import type { Skill, Platform, ConvertedFile } from '../types.js';
 import { stringifyFrontmatter } from '../utils/frontmatter.js';
 
 // Claude-specific fields that other platforms don't support
-const CLAUDE_ONLY_FIELDS = ['context', 'agent', 'effort', 'model', 'hooks', 'user-invocable'];
+const CLAUDE_ONLY_FIELDS = [
+  'context', 'agent', 'effort', 'model', 'hooks', 'user-invocable',
+  'when_to_use', 'disallowed-tools', 'background', 'paths', 'shell', 'arguments',
+];
 
 function getSkillOutputPath(platform: Platform, dirName: string): string {
   switch (platform) {
@@ -13,7 +16,11 @@ function getSkillOutputPath(platform: Platform, dirName: string): string {
     case 'cursor':
       return `.cursor/skills/${dirName}/SKILL.md`;
     case 'antigravity':
-      return `.agent/skills/${dirName}/SKILL.md`;
+      // Antigravity CLI workspace convention is .agents/ (plural), not .agent/.
+      return `.agents/skills/${dirName}/SKILL.md`;
+    case 'pi':
+      // Pi adopts the Claude-style Agent Skills standard under .pi/skills/.
+      return `.pi/skills/${dirName}/SKILL.md`;
   }
 }
 

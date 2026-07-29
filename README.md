@@ -4,7 +4,7 @@
 
 [中文文档](./README.zh-CN.md)
 
-Convert [Claude Code](https://claude.ai/code) plugins to [Codex CLI](https://github.com/openai/codex), [OpenCode](https://opencode.ai/), [Cursor](https://cursor.com/), and [Google Antigravity](https://antigravity.google/) formats.
+Convert [Claude Code](https://claude.ai/code) plugins to [Codex CLI](https://github.com/openai/codex), [OpenCode](https://opencode.ai/), [Cursor](https://cursor.com/), [Google Antigravity](https://antigravity.google/), and [Pi](https://github.com/earendil-works/pi) formats.
 
 ## Install
 
@@ -37,7 +37,7 @@ acplugin scan anthropics/claude-code
 ## Features
 
 - Converts Skills, Instructions, MCP configs, Agents, Commands, and Hooks
-- **4 target platforms**: Codex CLI, OpenCode, Cursor, Google Antigravity
+- **5 target platforms**: Codex CLI, OpenCode, Cursor, Google Antigravity, Pi
 - Full subagent conversion with proper format for each platform
 - Automatic model mapping (Claude → GPT-5.4 / Gemini 3 Pro)
 - Supports Claude Code Plugin marketplace format (multi-plugin repos)
@@ -47,24 +47,26 @@ acplugin scan anthropics/claude-code
 
 ## Supported Conversions
 
-| Resource         | Codex CLI                 | OpenCode                  | Cursor                | Antigravity             |
-| ---------------- | ------------------------- | ------------------------- | --------------------- | ----------------------- |
-| **Skills**       | `.agents/skills/`         | `.opencode/skills/`       | `.cursor/skills/`     | `.agent/skills/`        |
-| **Instructions** | `AGENTS.md`               | `AGENTS.md`               | `.cursor/rules/*.mdc` | `GEMINI.md`             |
-| **MCP Servers**  | `.codex/config.toml`      | `opencode.json`           | `.cursor/mcp.json`    | `.gemini/settings.json` |
-| **Agents**       | `.codex/agents/*.toml`    | `.opencode/agents/*.md`   | `.cursor/agents/*.md` | `.gemini/agents/*.md`   |
-| **Commands**     | Converted to Skills       | `.opencode/commands/`     | `.cursor/commands/`   | Converted to Skills     |
-| **Hooks**        | Documented in `AGENTS.md` | Documented in `AGENTS.md` | Warnings only         | Warnings only           |
+| Resource         | Codex CLI                 | OpenCode                  | Cursor                | Antigravity               | Pi                 |
+| ---------------- | ------------------------- | ------------------------- | --------------------- | ------------------------- | ------------------ |
+| **Skills**       | `.agents/skills/`         | `.opencode/skills/`       | `.cursor/skills/`     | `.agents/skills/`         | `.pi/skills/`      |
+| **Instructions** | `AGENTS.md`               | `AGENTS.md`               | `.cursor/rules/*.mdc` | `GEMINI.md`               | `AGENTS.md`        |
+| **MCP Servers**  | `.codex/config.toml`      | `opencode.json`           | `.cursor/mcp.json`    | `.agents/mcp_config.json` | Unsupported (warn) |
+| **Agents**       | `.codex/agents/*.toml`    | `.opencode/agents/*.md`   | `.cursor/agents/*.md` | `.agents/agents/*.md`     | Unsupported (warn) |
+| **Commands**     | Converted to Skills       | `.opencode/commands/`     | `.cursor/commands/`   | Converted to Skills       | `.pi/prompts/*.md` |
+| **Hooks**        | Documented in `AGENTS.md` | Documented in `AGENTS.md` | Warnings only         | Warnings only             | Warnings only      |
+
+[Pi](https://github.com/earendil-works/pi) (pi-coding-agent) is a minimal terminal harness whose only native file formats are Claude-style Skills and instruction files. Commands degrade to prompt templates; MCP/Agents/Hooks have no target format (Pi extends via TypeScript extensions) and emit warnings.
 
 ### Model Mapping
 
-| Claude Code       | → Codex   | → Antigravity    |
-| ----------------- | --------- | ---------------- |
-| `sonnet` / `opus` | `gpt-5.4` | `gemini-3-pro`   |
-| `haiku`           | `gpt-5.4` | `gemini-3-flash` |
-| (not specified)   | `gpt-5.4` | `gemini-3-pro`   |
+| Claude Code       | → Codex        | → Antigravity           |
+| ----------------- | -------------- | ----------------------- |
+| `sonnet` / `opus` | `gpt-5.6-sol`  | `gemini-3.1-pro-preview` |
+| `haiku`           | `gpt-5.6-terra`| `gemini-3.6-flash`      |
+| (not specified)   | `gpt-5.6-sol`  | `gemini-3.1-pro-preview` |
 
-OpenCode and Cursor keep the original model value.
+OpenCode, Cursor, and Pi keep the original model value.
 
 ## CLI Reference
 
@@ -98,7 +100,7 @@ acplugin convert . --dry-run                 # Preview without writing
 
 | Option                 | Description                                                                      |
 | ---------------------- | -------------------------------------------------------------------------------- |
-| `-t, --to <platforms>` | Target platforms (comma-separated: `codex`, `opencode`, `cursor`, `antigravity`) |
+| `-t, --to <platforms>` | Target platforms (comma-separated: `codex`, `opencode`, `cursor`, `antigravity`, `pi`) |
 | `-o, --output <path>`  | Output directory                                                                 |
 | `-a, --all`            | Convert all plugins without interactive selection                                |
 | `-p, --path <subpath>` | Sub-path within repository                                                       |

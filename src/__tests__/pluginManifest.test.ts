@@ -422,7 +422,8 @@ describe('MCP converter - ${CLAUDE_PLUGIN_ROOT} transformation', () => {
     };
     const result = convertMCP(mcp, 'opencode');
     const parsed = JSON.parse(result.content);
-    expect(parsed.mcp.test.args[0]).toBe('./scripts/start.js');
+    // OpenCode merges command+args into a single string array.
+    expect(parsed.mcp.test.command).toEqual(['node', './scripts/start.js']);
   });
 
   it('handles bare ${CLAUDE_PLUGIN_ROOT} without trailing path', () => {

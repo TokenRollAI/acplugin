@@ -11,14 +11,24 @@ export function convertInstruction(instruction: Instruction, platform: Platform)
       return convertToCursor(instruction);
     case 'antigravity':
       return convertToAntigravity(instruction);
+    case 'pi':
+      return convertToPi(instruction);
   }
 }
 
-function convertToCodex(instruction: Instruction): ConvertedFile {
-  // CLAUDE.md → AGENTS.md (content is directly usable)
-  const path = instruction.isRule ? `AGENTS.md` : 'AGENTS.md';
+function convertToPi(instruction: Instruction): ConvertedFile {
+  // Pi loads AGENTS.md (or CLAUDE.md), concatenating all matches up the tree.
   return {
-    path,
+    path: 'AGENTS.md',
+    content: instruction.content,
+    type: 'instruction',
+  };
+}
+
+function convertToCodex(instruction: Instruction): ConvertedFile {
+  // CLAUDE.md and rules both map to AGENTS.md (content is directly usable).
+  return {
+    path: 'AGENTS.md',
     content: instruction.content,
     type: 'instruction',
   };

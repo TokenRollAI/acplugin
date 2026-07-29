@@ -27,19 +27,19 @@ describe('convertAgent', () => {
     expect(result.content).toContain('You are a code reviewer');
   });
 
-  it('maps Claude model to gpt-5.4 for codex', () => {
+  it('maps Claude model to gpt-5.6-sol for codex', () => {
     const result = convertAgent(sampleAgent, 'codex');
-    expect(result.content).toContain('model = "gpt-5.4"');
+    expect(result.content).toContain('model = "gpt-5.6-sol"');
     expect(result.content).not.toContain('sonnet');
   });
 
-  it('defaults to gpt-5.4 when no model specified', () => {
+  it('defaults to gpt-5.6-sol when no model specified', () => {
     const noModelAgent: Agent = {
       ...sampleAgent,
       frontmatter: { ...sampleAgent.frontmatter, model: undefined },
     };
     const result = convertAgent(noModelAgent, 'codex');
-    expect(result.content).toContain('model = "gpt-5.4"');
+    expect(result.content).toContain('model = "gpt-5.6-sol"');
   });
 
   it('maps tools to sandbox_mode for codex', () => {
@@ -80,9 +80,11 @@ describe('convertAgent', () => {
 
   it('converts to antigravity as agent file', () => {
     const result = convertAgent(sampleAgent, 'antigravity');
-    expect(result.path).toBe('.gemini/agents/code-reviewer.md');
+    expect(result.path).toBe('.agents/agents/code-reviewer.md');
     expect(result.content).toContain('name: code-reviewer');
-    expect(result.content).toContain('model: gemini-3-pro');
-    expect(result.content).toContain('read_file');
+    expect(result.content).toContain('model: gemini-3.1-pro-preview');
+    // Tool identifiers are not published; original tools preserved as a comment.
+    expect(result.content).toContain('Read, Grep, Bash');
+    expect(result.content).not.toContain('read_file');
   });
 });

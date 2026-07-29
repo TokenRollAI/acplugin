@@ -2,3 +2,6 @@ node_modules/
 dist/
 *.tgz
 .DS_Store
+
+# llmdoc local temporary context cache (not project knowledge)
+.llmdoc-tmp/

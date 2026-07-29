@@ -1,5 +1,5 @@
 // Target platforms
-export type Platform = 'codex' | 'opencode' | 'cursor' | 'antigravity';
+export type Platform = 'codex' | 'opencode' | 'cursor' | 'antigravity' | 'pi';
 
 // --- Platform resource paths (single source of truth) ---
 // These must match the actual output paths in each platform's writer/converter.
@@ -19,14 +19,20 @@ export interface PlatformPaths {
 export interface SkillFrontmatter {
   name?: string;
   description?: string;
+  'when_to_use'?: string;
   'argument-hint'?: string;
+  arguments?: unknown;
   'disable-model-invocation'?: boolean;
   'user-invocable'?: boolean;
   'allowed-tools'?: string;
+  'disallowed-tools'?: string;
   model?: string;
   effort?: string;
   context?: string;
   agent?: string;
+  background?: boolean;
+  paths?: string | string[];
+  shell?: string;
   hooks?: Record<string, unknown>;
 }
 
@@ -83,6 +89,8 @@ export interface AgentFrontmatter {
   background?: boolean;
   effort?: string;
   isolation?: string;
+  color?: string;
+  initialPrompt?: string;
 }
 
 export interface Agent {

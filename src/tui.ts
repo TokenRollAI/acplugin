@@ -65,7 +65,7 @@ export async function runWizard(): Promise<WizardResult> {
   const platforms = await selectPlatforms();
   if (platforms.length === 0) {
     log.warn('No platforms selected, defaulting to all.');
-    return { action, source, platforms: ['codex', 'opencode', 'cursor'], all: true, dryRun: false };
+    return { action, source, platforms: ['codex', 'opencode', 'cursor', 'antigravity', 'pi'], all: true, dryRun: false };
   }
 
   // Step 4: Output directory
@@ -127,7 +127,7 @@ export async function selectPlugins(plugins: PluginScanResult[]): Promise<number
  */
 export async function selectPlatforms(): Promise<Platform[]> {
   if (!process.stdin.isTTY) {
-    return ['codex', 'opencode', 'cursor', 'antigravity'];
+    return ['codex', 'opencode', 'cursor', 'antigravity', 'pi'];
   }
 
   const choices = [
@@ -135,6 +135,7 @@ export async function selectPlatforms(): Promise<Platform[]> {
     { name: 'OpenCode', value: 'opencode' as Platform, checked: true },
     { name: 'Cursor', value: 'cursor' as Platform, checked: true },
     { name: 'Antigravity (Google)', value: 'antigravity' as Platform, checked: true },
+    { name: 'Pi (pi-coding-agent)', value: 'pi' as Platform, checked: true },
   ];
 
   const selected: Platform[] = await checkbox({

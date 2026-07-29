@@ -1,6 +1,6 @@
 # acplugin
 
-将 [Claude Code](https://claude.ai/code) 插件转换为 [Codex CLI](https://github.com/openai/codex)、[OpenCode](https://opencode.ai/)、[Cursor](https://cursor.com/) 和 [Google Antigravity](https://antigravity.google/) 格式。
+将 [Claude Code](https://claude.ai/code) 插件转换为 [Codex CLI](https://github.com/openai/codex)、[OpenCode](https://opencode.ai/)、[Cursor](https://cursor.com/)、[Google Antigravity](https://antigravity.google/) 和 [Pi](https://github.com/earendil-works/pi) 格式。
 
 ## 安装
 
@@ -33,7 +33,7 @@ acplugin scan anthropics/claude-code
 ## 功能特性
 
 - 转换 Skills、指令、MCP 配置、Agents、Commands 和 Hooks
-- **4 个目标平台**：Codex CLI、OpenCode、Cursor、Google Antigravity
+- **5 个目标平台**：Codex CLI、OpenCode、Cursor、Google Antigravity、Pi
 - 完整的 subagent 转换，为每个平台生成正确格式
 - 自动模型映射（Claude → GPT-5.4 / Gemini 3 Pro）
 - 支持 Claude Code Plugin marketplace 格式（多插件仓库）
@@ -43,24 +43,26 @@ acplugin scan anthropics/claude-code
 
 ## 支持的转换
 
-| 资源类型 | Codex CLI | OpenCode | Cursor | Antigravity |
-|---------|-----------|----------|--------|-------------|
-| **Skills** | `.agents/skills/` | `.opencode/skills/` | `.cursor/skills/` | `.agent/skills/` |
-| **指令** | `AGENTS.md` | `AGENTS.md` | `.cursor/rules/*.mdc` | `GEMINI.md` |
-| **MCP 服务器** | `.codex/config.toml` | `opencode.json` | `.cursor/mcp.json` | `.gemini/settings.json` |
-| **Agents** | `.codex/agents/*.toml` | `.opencode/agents/*.md` | `.cursor/agents/*.md` | `.gemini/agents/*.md` |
-| **Commands** | 转换为 Skills | `.opencode/commands/` | `.cursor/commands/` | 转换为 Skills |
-| **Hooks** | 记录在 `AGENTS.md` | 记录在 `AGENTS.md` | 仅输出警告 | 仅输出警告 |
+| 资源类型 | Codex CLI | OpenCode | Cursor | Antigravity | Pi |
+|---------|-----------|----------|--------|-------------|----|
+| **Skills** | `.agents/skills/` | `.opencode/skills/` | `.cursor/skills/` | `.agents/skills/` | `.pi/skills/` |
+| **指令** | `AGENTS.md` | `AGENTS.md` | `.cursor/rules/*.mdc` | `GEMINI.md` | `AGENTS.md` |
+| **MCP 服务器** | `.codex/config.toml` | `opencode.json` | `.cursor/mcp.json` | `.agents/mcp_config.json` | 不支持（警告） |
+| **Agents** | `.codex/agents/*.toml` | `.opencode/agents/*.md` | `.cursor/agents/*.md` | `.agents/agents/*.md` | 不支持（警告） |
+| **Commands** | 转换为 Skills | `.opencode/commands/` | `.cursor/commands/` | 转换为 Skills | `.pi/prompts/*.md` |
+| **Hooks** | 记录在 `AGENTS.md` | 记录在 `AGENTS.md` | 仅输出警告 | 仅输出警告 | 仅输出警告 |
+
+Pi（[pi-coding-agent](https://github.com/earendil-works/pi)）是极简终端 harness，仅原生支持 Skills 与指令文件；Commands 降级为 prompt templates，MCP/Agents/Hooks 无对应格式（Pi 设计上通过 TypeScript extension 扩展），转换时输出警告。
 
 ### 模型映射
 
 | Claude Code | → Codex | → Antigravity |
 |-------------|---------|---------------|
-| `sonnet` / `opus` | `gpt-5.4` | `gemini-3-pro` |
-| `haiku` | `gpt-5.4` | `gemini-3-flash` |
-| （未指定） | `gpt-5.4` | `gemini-3-pro` |
+| `sonnet` / `opus` | `gpt-5.6-sol` | `gemini-3.1-pro-preview` |
+| `haiku` | `gpt-5.6-terra` | `gemini-3.6-flash` |
+| （未指定） | `gpt-5.6-sol` | `gemini-3.1-pro-preview` |
 
-OpenCode 和 Cursor 保持原始模型值不映射。
+OpenCode、Cursor 和 Pi 保持原始模型值不映射。
 
 ## CLI 参考
 
@@ -94,7 +96,7 @@ acplugin convert . --dry-run                 # 预览模式，不写入文件
 
 | 选项 | 说明 |
 |------|------|
-| `-t, --to <platforms>` | 目标平台（逗号分隔：`codex`、`opencode`、`cursor`、`antigravity`） |
+| `-t, --to <platforms>` | 目标平台（逗号分隔：`codex`、`opencode`、`cursor`、`antigravity`、`pi`） |
 | `-o, --output <path>` | 输出目录 |
 | `-a, --all` | 全部转换，跳过交互选择 |
 | `-p, --path <subpath>` | 仓库内子路径 |

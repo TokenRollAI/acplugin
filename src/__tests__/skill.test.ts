@@ -36,6 +36,15 @@ describe('convertSkill', () => {
     expect(result.path).toBe('.cursor/skills/test-skill/SKILL.md');
   });
 
+  it('converts to pi path', () => {
+    const result = convertSkill(sampleSkill, 'pi');
+    expect(result.path).toBe('.pi/skills/test-skill/SKILL.md');
+    // Pi supports Claude-style allowed-tools + disable-model-invocation natively.
+    expect(result.content).toContain('allowed-tools:');
+    expect(result.content).toContain('Read, Grep');
+    expect(result.content).toContain('disable-model-invocation: true');
+  });
+
   it('preserves name and description in frontmatter', () => {
     const result = convertSkill(sampleSkill, 'codex');
     expect(result.content).toContain('name: test-skill');

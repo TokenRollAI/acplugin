@@ -35,9 +35,14 @@ describe('convertMCP', () => {
     expect(result.path).toBe('opencode.json');
     const data = JSON.parse(result.content);
     expect(data.mcp.filesystem.type).toBe('local');
-    expect(data.mcp.filesystem.command).toBe('npx');
+    // command is a single string array (command + args merged)
+    expect(data.mcp.filesystem.command).toEqual(['npx', '-y', '@modelcontextprotocol/server-filesystem', '/tmp']);
+    expect(data.mcp.filesystem.enabled).toBe(true);
+    // env vars use the `environment` key, not `env`
+    expect(data.mcp.filesystem.environment).toEqual({ NODE_ENV: 'dev' });
     expect(data.mcp.github.type).toBe('remote');
     expect(data.mcp.github.url).toBe('https://api.github.com/mcp');
+    expect(data.mcp.github.enabled).toBe(true);
   });
 
   it('converts to cursor JSON format', () => {

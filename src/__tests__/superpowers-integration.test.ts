@@ -398,25 +398,25 @@ describe.skipIf(!repoExists)('superpowers plugin integration', () => {
       expect(result.platform).toBe('antigravity');
     });
 
-    it('converts skills to .agent/skills/', () => {
+    it('converts skills to .agents/skills/', () => {
       const skillFiles = result.files.filter(f => f.type === 'skill');
       expect(skillFiles.length).toBeGreaterThanOrEqual(14);
       for (const f of skillFiles) {
-        expect(f.path).toMatch(/^\.agent\/skills\//);
+        expect(f.path).toMatch(/^\.agents\/skills\//);
       }
     });
 
-    it('converts agent to .gemini/agents/*.md', () => {
+    it('converts agent to .agents/agents/*.md', () => {
       const agentFiles = result.files.filter(f => f.type === 'agent');
       expect(agentFiles).toHaveLength(1);
-      expect(agentFiles[0].path).toBe('.gemini/agents/code-reviewer.md');
+      expect(agentFiles[0].path).toBe('.agents/agents/code-reviewer.md');
     });
 
-    it('converts commands to skills (.agent/skills/cmd-*)', () => {
+    it('converts commands to skills (.agents/skills/cmd-*)', () => {
       const cmdFiles = result.files.filter(f => f.type === 'command');
       expect(cmdFiles).toHaveLength(3);
       for (const f of cmdFiles) {
-        expect(f.path).toMatch(/^\.agent\/skills\/cmd-/);
+        expect(f.path).toMatch(/^\.agents\/skills\/cmd-/);
       }
     });
   });
