@@ -105,7 +105,7 @@ program
   .command('convert')
   .description('Convert Claude Code plugins to other platforms')
   .argument('[source]', 'Local path or GitHub repo (owner/repo)', '.')
-  .option('-t, --to <platforms>', 'Target platforms (codex,opencode,cursor,antigravity)')
+  .option('-t, --to <platforms>', 'Target platforms (codex,opencode,cursor,antigravity,pi)')
   .option('-o, --output <path>', 'Output directory')
   .option('-a, --all', 'Convert all plugins without selection')
   .option('-p, --path <subpath>', 'Sub-path within the repository')
