@@ -15,8 +15,14 @@ import {
   scanProject,
 } from '../src/index.js';
 
+/** 每个测试创建并在 afterEach 中统一删除的临时目录。 */
 const temporaryDirectories: string[] = [];
 
+/**
+ * 创建当前 Core 测试独占的临时工程目录。
+ *
+ * @returns 自动登记清理的绝对目录路径。
+ */
 async function temporaryProject(): Promise<string> {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'acplugin-core-test-'));
   temporaryDirectories.push(root);
@@ -172,6 +178,7 @@ describe('managed output transaction', () => {
       });
 
       await expect(commitManagedOutput(outDir, new Map([['codex', graph.artifacts]]), {
+        /** 在指定事务阶段注入失败以验证旧输出恢复。 */
         onPhase(current) {
           if (current === phase)
             throw new Error(`fail at ${phase}`);
@@ -222,17 +229,23 @@ describe('Module lifecycle', () => {
     const events: string[] = [];
     const first: AcpluginModule<string, string> = {
       name: 'first',
+      /** 记录第一个 Module 的配置阶段。 */
       configResolved() { events.push('first:config'); },
+      /** 产生供依赖方读取的 discover 状态。 */
       discover() {
         events.push('first:discover');
         return 'first-state';
       },
+      /** 记录第一个 Module 的验证阶段。 */
       validate() { events.push('first:validate'); },
+      /** 产生供依赖方 generate 阶段读取的构建状态。 */
       build() {
         events.push('first:build');
         return 'first-built';
       },
+      /** 记录第一个 Module 的目标生成阶段。 */
       generate() { events.push('first:generate'); },
+      /** 验证依赖方清理失败会作为 error 传递给依赖。 */
       buildEnd(context) {
         events.push(context.error ? 'first:end:error' : 'first:end');
       },
@@ -240,19 +253,25 @@ describe('Module lifecycle', () => {
     const second: AcpluginModule<string, string> = {
       name: 'second',
       dependsOn: ['first'],
+      /** 记录依赖 Module 的配置阶段。 */
       configResolved() { events.push('second:config'); },
+      /** 验证 discover 阶段可读取直接依赖状态。 */
       discover(context) {
         events.push(`second:discover:${String(context.dependencyState.get('first'))}`);
         return 'second-state';
       },
+      /** 记录依赖 Module 的验证阶段。 */
       validate() { events.push('second:validate'); },
+      /** 验证 build 阶段仍可读取 discover 依赖状态。 */
       build(context) {
         events.push(`second:build:${String(context.dependencyState.get('first'))}`);
         return 'second-built';
       },
+      /** 验证 generate 阶段可读取依赖的 builtState。 */
       generate(context) {
         events.push(`second:generate:${String(context.dependencyBuiltState.get('first'))}`);
       },
+      /** 注入清理失败并验证逆序传播。 */
       buildEnd() {
         events.push('second:end');
         throw new Error('cleanup failed');
@@ -260,6 +279,7 @@ describe('Module lifecycle', () => {
     };
     const compiler: Compiler = {
       id: 'codex',
+      /** 记录 Compiler 位于 Module generate 之后。 */
       compile() {
         events.push('compiler');
         return { artifacts: [bytesArtifact('manifest.json', '{}\n')], compatibility: [] };
@@ -303,15 +323,18 @@ describe('Module lifecycle', () => {
     await fs.writeFile(path.join(outDir, 'codex/version.txt'), 'old');
     const module: AcpluginModule = {
       name: 'unsafe-module',
+      /** 使用空状态进入后续生命周期。 */
       discover() {
         return undefined;
       },
+      /** 注入同时包含凭据和本机路径的清理异常。 */
       buildEnd() {
         throw new Error(`Bearer top-secret ${path.join(root, 'private.txt')}`);
       },
     };
     const compiler: Compiler = {
       id: 'codex',
+      /** 提供足以触发真实提交事务的最小 Artifact。 */
       compile() {
         return { artifacts: [bytesArtifact('manifest.json', '{}\n')], compatibility: [] };
       },

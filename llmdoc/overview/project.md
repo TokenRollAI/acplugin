@@ -1,5 +1,7 @@
 # Project Overview
 
+> [中文对照](project.zh-CN.md)
+
 ## Identity
 
 acplugin is a canonical AI Plugin framework and CLI. Authors maintain one framework-owned source layout and compile complete installable plugins for Claude Code and Codex.
@@ -22,12 +24,14 @@ Default targets are Claude Code and Codex. Claude supports all Core Components n
 
 ## Runtime and tooling
 
-- Node.js >=20, ESM-only TypeScript
+- Node.js >=20, ESM-only TypeScript 7 for package builds and typechecking
 - pnpm workspace, no Turborepo
 - Commander.js and `@inquirer/prompts` for CLI/TUI
 - tsdown for package bundles/declarations/package validation
 - Rolldown for local Hook/MCP executable bundles
 - Vitest for private repository tests
+
+The root ESLint toolchain temporarily retains the TypeScript 6 API required by `typescript-eslint`; every actual workspace package resolves the shared TypeScript 7 compiler from the pnpm catalog.
 
 The CLI entry is `packages/acplugin/src/cli.ts`; the facade/config loader is `packages/acplugin/src/index.ts`.
 

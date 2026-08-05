@@ -1,5 +1,7 @@
 # Target support matrix
 
+> [中文对照](conversion-matrix.zh-CN.md)
+
 This matrix describes canonical acplugin 1.0 builds. The tolerant converters retained below `packages/acplugin/src/migration/legacy/` are Migration implementation details, not additional build targets.
 
 | Capability | Claude Code | Codex |

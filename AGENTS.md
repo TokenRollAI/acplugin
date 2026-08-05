@@ -97,6 +97,7 @@ Migration 位于 `packages/acplugin/src/migration/`，CLI 使用动态 import。
 - Core 单元测试：`packages/core/test/`
 - 跨包集成：`packages/test/test/`
 - Migration 集成：`packages/test/test/migration.test.ts`
+- 各 package 使用 catalog 中的 TypeScript 7 编译和类型检查；根 workspace 暂时保留 TypeScript 6，仅作为 `typescript-eslint` 尚未支持原生 TS 7 时的解析 API。
 
 ```bash
 pnpm run lint
@@ -111,12 +112,12 @@ pnpm run release:verify
 ## 发行
 
 - 三个公开包统一版本，由 Changesets fixed group 管理。
-- tag 格式为 `tokenroll-vX.Y.Z`。
-- 首次 npm identity 需要手工 2FA bootstrap；不得由实现/测试自动发布。
-- 后续 workflow 使用受保护 `npm` environment 和 OIDC/provenance，无长期 npm token。
-- 发布顺序：Hooks Module → MCP Module → 主包；精确版本存在时跳过并验证。
-- GitHub Release 只能在三个 Registry 精确版本均验证后创建。
-- 禁止自动 unpublish、修改 dist-tag 或创建 tag，除非用户明确要求实际发布。
+- `Check` Workflow 在 PR 上自动执行 lint 和 typecheck。
+- `Patch` Workflow 只能手工触发；从默认分支选择目标分支，消费其 Changesets、生成 changelog、升级固定公开包版本，并创建回到该目标分支的版本 PR。
+- 所有版本均由维护者从已验证 tarball 手工发布；仓库不得添加 Tag/npm 自动发布 Workflow。
+- 手工发布顺序：Hooks Module → MCP Module → 主包；每一步都要验证 Registry 精确版本。
+- 三个 npm 版本全部存在后，再由维护者手工创建 `tokenroll-vX.Y.Z` Tag 和 GitHub Release。
+- 禁止自动 publish/unpublish、修改 dist-tag、创建 Tag 或 GitHub Release，除非用户明确要求执行对应操作。
 
 ## Git 与改动安全
 

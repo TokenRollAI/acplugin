@@ -1,5 +1,7 @@
 # Using acplugin
 
+> [中文对照](usage.zh-CN.md)
+
 acplugin projects author one canonical plugin and compile installable Claude Code and Codex packages. Node.js 20 or newer and pnpm are required.
 
 ## Create a project

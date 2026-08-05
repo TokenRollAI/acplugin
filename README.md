@@ -343,7 +343,9 @@ pnpm run release:verify
 
 `release:verify` creates pnpm tarballs, inspects their files/manifests, installs all three into a clean external consumer, typechecks its config, imports the API, and builds both target plugins. It performs no npm publication.
 
-The first npm release is a manual 2FA bootstrap from verified tarballs. Later `tokenroll-vX.Y.Z` tags use the protected OIDC workflow, publish Modules before the main package, verify exact registry versions, and only then create the GitHub Release.
+Pull requests automatically run lint and typecheck. The manually dispatched `Patch` workflow accepts a target branch containing at least one Changeset, consumes its Changesets to bump versions and generate changelogs, and opens a version PR back to that branch.
+
+Every npm release is manual. A maintainer publishes the verified tarballs in Hooks → MCP → main order, verifies each exact Registry version, and only then manually creates the matching `tokenroll-vX.Y.Z` tag and GitHub Release. The repository contains no automated publication workflow.
 
 ## License
 

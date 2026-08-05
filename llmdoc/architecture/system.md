@@ -1,5 +1,7 @@
 # System Architecture
 
+> [中文对照](system.zh-CN.md)
+
 ## Pipeline
 
 ```text

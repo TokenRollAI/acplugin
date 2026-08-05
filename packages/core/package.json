@@ -11,12 +11,12 @@
     "typecheck": "tsc -p tsconfig.json"
   },
   "dependencies": {
-    "semver": "catalog:",
-    "yaml": "catalog:"
+    "semver": "^7.8.5",
+    "yaml": "^2.9.0"
   },
   "devDependencies": {
     "@types/node": "catalog:",
-    "@types/semver": "catalog:",
+    "@types/semver": "^7.7.1",
     "tsdown": "catalog:",
     "typescript": "catalog:",
     "vitest": "catalog:"

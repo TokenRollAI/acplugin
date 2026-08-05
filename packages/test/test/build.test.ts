@@ -4,8 +4,15 @@ import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { runProject } from '@tokenroll/acplugin';
 
+/** 当前测试创建并在 afterEach 中统一删除的临时工程根目录。 */
 const roots: string[] = [];
 
+/**
+ * 创建包含最小 Skill 和可选自定义配置的测试工程。
+ *
+ * @param config 可选的完整配置源码。
+ * @returns 自动登记清理的工程绝对路径。
+ */
 async function project(config = ''): Promise<string> {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'acplugin-build-test-'));
   roots.push(root);

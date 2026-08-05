@@ -327,7 +327,9 @@ pnpm run release:verify
 
 `release:verify` 会创建三个 pnpm tarball、检查 Manifest/文件列表、安装到 monorepo 外的干净消费者、执行配置类型检查、API import 和双目标构建，不会发布 npm。
 
-第一次 npm 发布需要从已验证 tarball 手工完成 2FA bootstrap。后续 `tokenroll-vX.Y.Z` 标签使用受保护 OIDC workflow，先发布 Modules，再发布主包，验证 Registry 精确版本后才创建 GitHub Release。
+PR 会自动执行 lint 和 typecheck。手工触发的 `Patch` Workflow 接收一个至少包含一份 Changeset 的目标分支，消费 Changesets 以升级版本并生成 changelog，随后创建一个合并回该目标分支的版本 PR。
+
+所有 npm 版本都从已验证 tarball 手工发布，顺序为 Hooks → MCP → 主包。逐一验证 Registry 精确版本后，再由维护者手工创建对应的 `tokenroll-vX.Y.Z` Tag 和 GitHub Release；仓库不包含自动发布 Workflow。
 
 ## License
 

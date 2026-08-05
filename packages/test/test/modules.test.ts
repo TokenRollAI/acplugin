@@ -13,12 +13,23 @@ import { codexCompiler } from '@acplugin/compiler-codex';
 import hooks, { defineHook } from '@tokenroll/acplugin-module-hooks';
 import mcp, { defineMcpServer } from '@tokenroll/acplugin-module-mcp';
 
+/** 当前测试创建并在 afterEach 中统一删除的临时工程目录。 */
 const roots: string[] = [];
 
+/**
+ * 执行构建产物中的 Hook Handler 或本地 MCP Server 并捕获完整输出。
+ *
+ * @param file 待执行 ESM 文件。
+ * @param input 写入进程 stdin 的协议输入。
+ * @returns 子进程退出码和完整 stdout/stderr。
+ */
 async function runNode(file: string, input: string): Promise<{ code: number | null; stdout: string; stderr: string }> {
   return new Promise((resolve, reject) => {
+    /** 真实执行目标 Bundle 的 Node 子进程。 */
     const child = spawn(process.execPath, [file], { stdio: ['pipe', 'pipe', 'pipe'] });
+    /** 子进程累计标准输出。 */
     let stdout = '';
+    /** 子进程累计标准错误。 */
     let stderr = '';
     child.stdout.setEncoding('utf8').on('data', chunk => stdout += chunk);
     child.stderr.setEncoding('utf8').on('data', chunk => stderr += chunk);
@@ -94,16 +105,19 @@ process.stdin.on('data', (chunk) => {
       event: 'PreToolUse',
       matcher: 'Bash',
       timeout: 5,
+      /** 返回可验证目标平台决策映射的 allow 结果。 */
       async run() { return { decision: 'allow' }; },
     });
     const permissionDefinition = defineHook({
       event: 'PermissionRequest',
+      /** 返回应被 Codex 映射为空输出的 defer 结果。 */
       async run() {
         return { decision: 'defer' };
       },
     });
     const compactDefinition = defineHook({
       event: 'PreCompact',
+      /** 返回应被 Codex 映射为空输出的 continue 结果。 */
       async run() {
         return { decision: 'continue' };
       },
@@ -111,6 +125,7 @@ process.stdin.on('data', (chunk) => {
     const invalidSessionEndDefinition = {
       __acpluginHook: true,
       event: 'SessionEnd',
+      /** 故意返回事件契约不允许的决策，验证运行时结果校验。 */
       async run() {
         return { decision: 'stop' };
       },

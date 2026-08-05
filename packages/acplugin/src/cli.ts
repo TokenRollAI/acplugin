@@ -15,14 +15,27 @@ import {
   type TargetId,
 } from './index.js';
 
+/** validate、inspect、build 和 dev 命令共享的 CLI 选项。 */
 interface ProjectCliOptions {
+  /** 可选的 TypeScript 配置文件覆盖路径。 */
   config?: string;
+  /** 可选的目标平台集合覆盖。 */
   target?: string[];
+  /** 传递给配置函数的开发或生产模式。 */
   mode: BuildMode;
+  /** 是否把能力降级和不支持视为错误。 */
   strict: boolean;
+  /** 是否只在 stdout 输出一个稳定 JSON 对象。 */
   json?: boolean;
 }
 
+/**
+ * 为项目 Pipeline 子命令注册一致的配置、目标、模式和报告选项。
+ *
+ * @param command 待扩展的 Commander 子命令。
+ * @param defaultMode 该子命令使用的默认配置模式。
+ * @returns 同一个 Command，便于继续链式注册 action。
+ */
 function addProjectOptions(command: Command, defaultMode: BuildMode): Command {
   return command
     .option('-c, --config <path>', 'Use another TypeScript config file')
@@ -32,11 +45,20 @@ function addProjectOptions(command: Command, defaultMode: BuildMode): Command {
     .option('--json', 'Emit one stable JSON report on stdout');
 }
 
+/**
+ * 按人类可读或机器可读模式输出完整构建报告。
+ *
+ * JSON 模式严格只写 stdout；普通模式把摘要写 stdout、问题写 stderr。
+ *
+ * @param report Core Pipeline 产生的构建报告。
+ * @param json 是否启用稳定 JSON 输出。
+ */
 function writeReport(report: BuildReport, json: boolean | undefined): void {
   if (json) {
     process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
     return;
   }
+  /** 普通文本摘要使用的稳定状态词。 */
   const status = report.success ? 'success' : 'failed';
   process.stdout.write(`${report.command}: ${status} (${report.targets.join(', ')})\n`);
   for (const diagnostic of report.diagnostics)
@@ -47,14 +69,28 @@ function writeReport(report: BuildReport, json: boolean | undefined): void {
   }
 }
 
+/** 在 Pipeline 尚未产生 BuildReport 时使用的最小 CLI 失败报告。 */
 interface CliFailureReport {
+  /** CLI 失败报告协议版本。 */
   schemaVersion: '1';
+  /** 触发失败的子命令名称。 */
   command: string;
+  /** 可安全向用户展示的诊断。 */
   diagnostics: readonly Diagnostic[];
+  /** 失败报告固定为 false。 */
   success: false;
 }
 
+/**
+ * 将配置错误或其他命令异常转换为不会泄露内部详情的 CLI 报告。
+ *
+ * @param command 当前子命令名称。
+ * @param error 捕获到的未知异常。
+ * @param internal 是否属于框架内部失败。
+ * @returns 可序列化的统一失败报告。
+ */
 function failureReport(command: string, error: unknown, internal: boolean): CliFailureReport {
+  /** 配置错误保留原诊断，其他异常只输出固定安全消息。 */
   const diagnostics = error instanceof ProjectConfigError
     ? error.diagnostics
     : [{
@@ -66,7 +102,16 @@ function failureReport(command: string, error: unknown, internal: boolean): CliF
   return { schemaVersion: '1', command, diagnostics, success: false };
 }
 
+/**
+ * 按 CLI 输出模式展示尚未进入 Core 报告阶段的失败。
+ *
+ * @param command 当前子命令名称。
+ * @param error 捕获到的未知异常。
+ * @param json 是否启用稳定 JSON 输出。
+ * @param internal 是否属于框架内部失败。
+ */
 function writeFailure(command: string, error: unknown, json: boolean | undefined, internal: boolean): void {
+  /** 从未知异常收敛出的安全失败报告。 */
   const report = failureReport(command, error, internal);
   if (json) {
     process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
@@ -76,8 +121,15 @@ function writeFailure(command: string, error: unknown, json: boolean | undefined
     process.stderr.write(`${diagnostic.severity} ${diagnostic.code}: ${diagnostic.message}\n`);
 }
 
+/**
+ * 运行一次 validate、inspect 或 build，并按失败类型设置进程退出码。
+ *
+ * @param commandName 待执行的非持续型 Pipeline 命令。
+ * @param options Commander 解析后的共享项目选项。
+ */
 async function runPipeline(commandName: 'validate' | 'inspect' | 'build', options: ProjectCliOptions): Promise<void> {
   try {
+    /** 官方 Compiler Pipeline 的执行结果。 */
     const result = await runProject({
       command: commandName,
       mode: options.mode,
@@ -97,9 +149,21 @@ async function runPipeline(commandName: 'validate' | 'inspect' | 'build', option
   }
 }
 
+/**
+ * 启动监听模式，并串行合并构建期间到达的文件变化。
+ *
+ * 始终保留最后一次成功提交的输出；同一时刻最多运行一个构建，期间的多次变化合并为一次补充重建。
+ *
+ * @param options Commander 解析后的共享项目选项。
+ */
 async function runDev(options: ProjectCliOptions): Promise<void> {
+  /** 当前是否已有构建正在执行。 */
   let running = false;
+  /** 当前构建期间是否至少收到过一次新的文件变化。 */
   let pending = false;
+  /**
+   * 串行执行一次 dev 构建，必要时在完成后消费合并的待处理变化。
+   */
   const rebuild = async (): Promise<void> => {
     if (running) {
       pending = true;
@@ -107,6 +171,7 @@ async function runDev(options: ProjectCliOptions): Promise<void> {
     }
     running = true;
     try {
+      /** 当前 dev 重建的 Pipeline 结果。 */
       const result = await runProject({
         command: 'dev',
         mode: options.mode,
@@ -130,11 +195,15 @@ async function runDev(options: ProjectCliOptions): Promise<void> {
   };
 
   await rebuild();
+  /** dev 模式实际使用的配置绝对路径。 */
   const configPath = path.resolve(options.config ?? 'acplugin.config.ts');
+  /** 监听范围以配置文件目录为工程根目录。 */
   const projectRoot = path.dirname(configPath);
+  /** 忽略依赖、产物、Git 和 acplugin 事务目录的递归文件监听器。 */
   const watcher = watch(projectRoot, {
     ignoreInitial: true,
     ignored: (candidate) => {
+      /** 候选路径相对于监听根目录的 POSIX 表示。 */
       const relative = path.relative(projectRoot, candidate).split(path.sep).join('/');
       return relative === 'node_modules'
         || relative.startsWith('node_modules/')
@@ -145,6 +214,7 @@ async function runDev(options: ProjectCliOptions): Promise<void> {
         || /(^|\/)\.acplugin-(?:work|stage|backup|transaction|lock)/.test(relative);
     },
   });
+  /** 合并短时间文件事件使用的定时器。 */
   let debounce: NodeJS.Timeout | undefined;
   watcher.on('all', () => {
     if (debounce)
@@ -155,6 +225,9 @@ async function runDev(options: ProjectCliOptions): Promise<void> {
     }, 50);
   });
   await new Promise<void>((resolve) => {
+    /**
+     * 响应终止信号，清理定时器和 watcher，并使用 130 表示信号中断。
+     */
     const stop = (): void => {
       if (debounce)
         clearTimeout(debounce);
@@ -166,7 +239,13 @@ async function runDev(options: ProjectCliOptions): Promise<void> {
   });
 }
 
+/**
+ * 构造完整 Commander 命令树，但不读取 argv 或退出进程。
+ *
+ * @returns 可供 main、测试或嵌入方调用的根 Command。
+ */
 export function createCli(): Command {
+  /** 注册全局元数据和错误处理策略的 CLI 根命令。 */
   const program = new Command()
     .name('acplugin')
     .description('Build canonical AI plugins for Claude Code and Codex')
@@ -196,6 +275,7 @@ export function createCli(): Command {
       json?: boolean;
     }) => {
       try {
+        /** init 参数与交互结果共同生成的脚手架结果。 */
         const result = await initializeProject({
           ...(directory === undefined ? {} : { directory }),
           ...(options.yes === undefined ? {} : { yes: options.yes }),
@@ -241,7 +321,9 @@ export function createCli(): Command {
       json?: boolean;
     }) => {
       try {
+        // Migration 通过动态导入保持在独立 chunk 中，不进入常规构建和配置加载路径。
         const { migrate } = await import('./migration/index.js');
+        /** 旧工程转换产生的结构化迁移报告。 */
         const report = await migrate({
           source,
           ...(destination === undefined ? {} : { destination }),
@@ -277,7 +359,13 @@ export function createCli(): Command {
   return program;
 }
 
-export async function main(argv = process.argv): Promise<void> {
+/**
+ * 解析 CLI 参数并把 Commander 使用错误与框架内部错误映射为稳定退出码。
+ *
+ * @param argv 完整进程参数，默认为 process.argv。
+ */
+export async function main(argv: readonly string[] = process.argv): Promise<void> {
+  /** 当前调用独占的 Commander 命令树。 */
   const program = createCli();
   if (argv.length <= 2) {
     program.outputHelp();
@@ -297,4 +385,5 @@ export async function main(argv = process.argv): Promise<void> {
   }
 }
 
+// 仅 CLI 入口模块执行 main；库入口不会触发参数解析。
 await main();

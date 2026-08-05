@@ -5,7 +5,9 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { migrate } from '../../acplugin/src/migration/index.js';
 import { parseGitHubSource } from '../../acplugin/src/migration/legacy/github.js';
 
+/** 当前测试创建并在 afterEach 中统一删除的临时目录。 */
 const roots: string[] = [];
+/** 仓库内用于验证旧 Claude 工程迁移的固定 Fixture。 */
 const legacyProjectFixture = path.resolve(import.meta.dirname, '../fixtures/migration/claude-project');
 
 afterEach(async () => {
@@ -35,6 +37,9 @@ describe('legacy Migration', () => {
     expect(report.sourceType).toBe('project');
     expect(report.items).toContainEqual(expect.objectContaining({ kind: 'instruction', outcome: 'unmapped' }));
     expect(await fs.readFile(path.join(root, 'migrated/src/skills/my-skill/SKILL.md'), 'utf8')).toContain('description:');
+    expect(JSON.parse(await fs.readFile(path.join(root, 'migrated/package.json'), 'utf8'))).toMatchObject({
+      devDependencies: { typescript: '^7.0.2' },
+    });
     expect(JSON.parse(await fs.readFile(path.join(root, 'migrated/.acplugin-migration/report.json'), 'utf8'))).toMatchObject({ schemaVersion: '1' });
   });
 

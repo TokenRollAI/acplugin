@@ -15,8 +15,9 @@
     "changeset": "changeset",
     "version-packages": "changeset version",
     "release:verify": "node scripts/verify-release.mjs",
-    "lint": "eslint .",
+    "lint": "pnpm run comments:check && eslint .",
     "lint:fix": "eslint . --fix",
+    "comments:check": "node scripts/check-comments.mjs",
     "typecheck": "pnpm -r --if-present run typecheck",
     "check": "pnpm run lint && pnpm run typecheck && pnpm run test && pnpm run build",
     "prepare": "husky"
@@ -25,18 +26,18 @@
     "*.{ts,mts,cts,js,mjs,cjs}": "eslint --fix"
   },
   "devDependencies": {
-    "@arethetypeswrong/core": "catalog:",
-    "@changesets/cli": "catalog:",
-    "@eslint/js": "catalog:",
-    "@stylistic/eslint-plugin": "catalog:",
+    "@arethetypeswrong/core": "^0.18.5",
+    "@changesets/cli": "^2.31.1",
+    "@eslint/js": "^10.0.1",
+    "@stylistic/eslint-plugin": "^5.10.0",
     "@types/node": "catalog:",
-    "eslint": "catalog:",
-    "husky": "catalog:",
-    "lint-staged": "catalog:",
-    "publint": "catalog:",
+    "eslint": "^10.8.0",
+    "husky": "^9.1.7",
+    "lint-staged": "^17.2.0",
+    "publint": "^0.3.23",
     "tsdown": "catalog:",
-    "typescript": "catalog:",
-    "typescript-eslint": "catalog:",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.66.0",
     "vitest": "catalog:"
   }
 }

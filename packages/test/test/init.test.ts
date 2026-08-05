@@ -4,6 +4,7 @@ import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { initializeProject } from '@tokenroll/acplugin';
 
+/** 当前测试创建并在 afterEach 中统一删除的临时目录。 */
 const roots: string[] = [];
 
 afterEach(async () => {
@@ -19,6 +20,9 @@ describe('init', () => {
     expect(result.directory).toBe('demo-plugin');
     expect(result.modules).toEqual([]);
     expect(await fs.readFile(path.join(cwd, 'demo-plugin/src/skills/demo-plugin/SKILL.md'), 'utf8')).toContain('description:');
+    expect(JSON.parse(await fs.readFile(path.join(cwd, 'demo-plugin/package.json'), 'utf8'))).toMatchObject({
+      devDependencies: { typescript: '^7.0.2' },
+    });
   });
 
   it('adds selected Modules without generating fake handlers or servers', async () => {
