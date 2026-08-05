@@ -1,44 +1,45 @@
 ---
 name: npm-publish
-description: 'Publish acplugin to npm with version bump, build, test, and 2FA handling'
-disable-model-invocation: true
+description: Prepare, verify, or explicitly publish the fixed @tokenroll/acplugin public package cohort with Changesets, pnpm tarballs, manual first-release 2FA, or the protected OIDC tag workflow. Use for release planning, versioning, dry runs, registry verification, and npm publication.
 ---
 
-# npm 发布流程
+# Release the public cohort
 
-## 步骤
+Never create a tag, publish, unpublish, or change a dist-tag without explicit user authorization for that live mutation.
 
-1. **版本升级**
-   ```bash
-   npm version <major|minor|patch> --no-git-tag-version
-   ```
+## Prepare and verify
 
-2. **构建 + 测试**
-   ```bash
-   npm run build && npm test
-   ```
+1. Confirm the three public packages have one version and Modules use `workspace:^` for the main peer:
+   - `@tokenroll/acplugin-module-hooks`
+   - `@tokenroll/acplugin-module-mcp`
+   - `@tokenroll/acplugin`
+2. Add a Changeset and run `pnpm version-packages` when changing an existing release version. Keep private packages ignored.
+3. Run:
 
-3. **检查打包内容**（确认无测试文件）
-   ```bash
-   npm pack --dry-run
-   ```
+```bash
+pnpm install --frozen-lockfile
+pnpm run check
+pnpm run release:verify
+```
 
-4. **发布**
-   账号有 2FA，需要用户手动输入 OTP：
-   ```
-   提示用户运行: ! npm publish --access=public
-   ```
+`release:verify` must prove that tarballs contain no private runtime dependency/source tests and that all three install, typecheck, import, validate, and build in an external clean consumer.
 
-5. **Commit + Push**
-   ```bash
-   git add package.json package-lock.json
-   git commit -m "chore: bump version to $(node -p 'require("./package.json").version')"
-   git push
-   ```
+## First npm identity bootstrap
 
-## 注意事项
+The first `1.0.0` publication is manual because each scoped package identity and 2FA must exist before Trusted Publishing can be configured. From the verified source revision, create pnpm tarballs and ask the authorized user to publish them in this order with `--access public` and OTP:
 
-- 包名是 `@disdjj/acplugin`（scoped），必须加 `--access=public`
-- 不要尝试在脚本中自动发布，2FA 会阻塞
-- `prepublishOnly` 脚本会自动编译
-- `files` 字段已排除 `dist/__tests__/`
+1. Hooks Module
+2. MCP Module
+3. Main package
+
+Verify every exact version with `npm view <name>@<version> version`. Do not create the release tag until the cohort is complete.
+
+## Subsequent OIDC releases
+
+After npm Trusted Publishing is configured for `.github/workflows/publish-npm.yml` and the protected `npm` environment, push only the exact tag:
+
+```text
+tokenroll-vX.Y.Z
+```
+
+The workflow reruns verification, skips exact versions already present, publishes Modules before the main package, waits for registry visibility, and creates the GitHub Release last. It must not require a long-lived npm token and must never call unpublish.

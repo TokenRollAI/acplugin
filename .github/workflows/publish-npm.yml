@@ -1,35 +1,62 @@
-name: Publish to npm
+name: Release @tokenroll/acplugin
 
 on:
   push:
     tags:
-      - "v*"
+      - "tokenroll-v*"
 
 permissions:
   contents: read
-  id-token: write
 
 jobs:
-  publish:
+  verify:
+    name: Verify Node ${{ matrix.node }}
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node: [20, 24]
     steps:
       - uses: actions/checkout@v6
-
+      - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v6
         with:
-          node-version: "24"
-          registry-url: "https://registry.npmjs.org"
+          node-version: ${{ matrix.node }}
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm run check
+      - run: pnpm run release:verify
 
-      - name: Verify tag matches package version
+  publish:
+    name: Publish fixed cohort
+    needs: verify
+    runs-on: ubuntu-latest
+    environment: npm
+    permissions:
+      contents: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@v6
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: pnpm
+          registry-url: https://registry.npmjs.org
+      - run: pnpm install --frozen-lockfile
+
+      - name: Verify tag, cohort versions, and peer ranges
+        run: node scripts/verify-release-cohort.mjs "$GITHUB_REF_NAME"
+
+      - name: Rebuild and verify publishable tarballs
         run: |
-          package_version=$(node -p "require('./package.json').version")
-          if [ "v$package_version" != "$GITHUB_REF_NAME" ]; then
-            echo "Tag $GITHUB_REF_NAME does not match package.json version v$package_version" >&2
-            exit 1
-          fi
+          pnpm run check
+          pnpm run release:verify
 
-      - run: npm ci
-      - run: npm run build
-      - run: npm test
-      - run: npm pack --dry-run
-      - run: npm publish
+      - name: Publish missing exact versions and verify registry
+        run: node scripts/publish-release-cohort.mjs
+
+      - name: Create GitHub Release after registry verification
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1 || gh release create "$GITHUB_REF_NAME" --verify-tag --generate-notes --title "$GITHUB_REF_NAME"

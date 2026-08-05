@@ -1,57 +1,42 @@
 {
-  "name": "@disdjj/acplugin",
-  "version": "1.6.1",
-  "description": "Convert Claude Code plugins to Codex, OpenCode, and Cursor formats",
-  "main": "dist/index.js",
-  "bin": {
-    "acplugin": "dist/index.js"
+  "name": "acplugin-workspace",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@10.34.5",
+  "engines": {
+    "node": ">=20"
   },
-  "files": [
-    "dist/**/*",
-    "!dist/__tests__",
-    "README.md"
-  ],
   "scripts": {
-    "build": "tsc",
-    "start": "node dist/index.js",
-    "dev": "tsc && node dist/index.js",
-    "test": "vitest run",
-    "test:watch": "vitest",
-    "prepublishOnly": "npm run build"
+    "build": "pnpm -r --if-present run build",
+    "dev": "pnpm --filter @tokenroll/acplugin run dev",
+    "test": "pnpm -r --if-present run test",
+    "test:watch": "pnpm --filter @acplugin/test run test:watch",
+    "changeset": "changeset",
+    "version-packages": "changeset version",
+    "release:verify": "node scripts/verify-release.mjs",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "typecheck": "pnpm -r --if-present run typecheck",
+    "check": "pnpm run lint && pnpm run typecheck && pnpm run test && pnpm run build",
+    "prepare": "husky"
   },
-  "keywords": [
-    "claude-code",
-    "codex",
-    "opencode",
-    "cursor",
-    "plugin",
-    "converter",
-    "ai-coding",
-    "skill",
-    "mcp"
-  ],
-  "author": "",
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/TokenRollAI/acplugin.git"
-  },
-  "license": "MIT",
-  "type": "commonjs",
-  "publishConfig": {
-    "access": "public"
-  },
-  "dependencies": {
-    "@iarna/toml": "^2.2.5",
-    "@inquirer/prompts": "^8.3.2",
-    "chalk": "^4.1.2",
-    "commander": "^14.0.3",
-    "glob": "^13.0.6",
-    "gray-matter": "^4.0.3",
-    "ora": "^5.4.1",
-    "typescript": "^5.9.3"
+  "lint-staged": {
+    "*.{ts,mts,cts,js,mjs,cjs}": "eslint --fix"
   },
   "devDependencies": {
-    "@types/node": "^25.5.0",
-    "vitest": "^3.2.1"
+    "@arethetypeswrong/core": "catalog:",
+    "@changesets/cli": "catalog:",
+    "@eslint/js": "catalog:",
+    "@stylistic/eslint-plugin": "catalog:",
+    "@types/node": "catalog:",
+    "eslint": "catalog:",
+    "husky": "catalog:",
+    "lint-staged": "catalog:",
+    "publint": "catalog:",
+    "tsdown": "catalog:",
+    "typescript": "catalog:",
+    "typescript-eslint": "catalog:",
+    "vitest": "catalog:"
   }
 }

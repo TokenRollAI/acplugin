@@ -1,0 +1,27 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "baseUrl": ".",
+    "paths": {
+      "@acplugin/core": ["packages/core/src/index.ts"],
+      "@acplugin/compiler-claude-code": ["packages/compiler-claude-code/src/index.ts"],
+      "@acplugin/compiler-codex": ["packages/compiler-codex/src/index.ts"],
+      "@tokenroll/acplugin": ["packages/acplugin/src/index.ts"],
+      "@tokenroll/acplugin-module-hooks": ["packages/module-hooks/src/index.ts"],
+      "@tokenroll/acplugin-module-mcp": ["packages/module-mcp/src/index.ts"]
+    },
+    "lib": ["ES2022"],
+    "types": ["node"],
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
+    "verbatimModuleSyntax": true,
+    "isolatedModules": true,
+    "resolveJsonModule": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "noEmit": true
+  }
+}

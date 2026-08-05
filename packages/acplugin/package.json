@@ -1,0 +1,42 @@
+{
+  "name": "@tokenroll/acplugin",
+  "version": "1.0.0",
+  "description": "Build canonical AI plugins for Claude Code and Codex.",
+  "type": "module",
+  "license": "MIT",
+  "homepage": "https://github.com/TokenRollAI/acplugin#readme",
+  "repository": { "type": "git", "url": "git+https://github.com/TokenRollAI/acplugin.git" },
+  "bugs": { "url": "https://github.com/TokenRollAI/acplugin/issues" },
+  "sideEffects": false,
+  "engines": { "node": ">=20" },
+  "bin": { "acplugin": "./dist/cli.mjs" },
+  "exports": { ".": { "types": "./dist/index.d.mts", "import": "./dist/index.mjs" } },
+  "files": ["dist", "README.md", "LICENSE"],
+  "publishConfig": { "access": "public", "provenance": true },
+  "scripts": {
+    "build": "tsdown",
+    "dev": "tsdown --watch",
+    "test": "vitest run --passWithNoTests",
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@iarna/toml": "catalog:",
+    "@inquirer/prompts": "catalog:",
+    "chalk": "catalog:",
+    "chokidar": "catalog:",
+    "commander": "catalog:",
+    "gray-matter": "catalog:",
+    "glob": "catalog:",
+    "jiti": "catalog:",
+    "ora": "catalog:"
+  },
+  "devDependencies": {
+    "@acplugin/compiler-claude-code": "workspace:*",
+    "@acplugin/compiler-codex": "workspace:*",
+    "@acplugin/core": "workspace:*",
+    "@types/node": "catalog:",
+    "tsdown": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  }
+}

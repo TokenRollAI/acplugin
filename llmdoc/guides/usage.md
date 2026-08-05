@@ -1,17 +1,76 @@
-# How to Scan and Convert Claude Code Resources
+# Using acplugin
 
-A guide for using the `acplugin` CLI to scan a project for Claude Code resources and convert them to other platform formats. The source argument is positional and auto-detects GitHub repos vs local paths.
+acplugin projects author one canonical plugin and compile installable Claude Code and Codex packages. Node.js 20 or newer and pnpm are required.
 
-1. **Build the project:** Run `npm run build` to compile TypeScript to `dist/`.
+## Create a project
 
-2. **Scan a local project:** Run `acplugin scan .` or `acplugin scan /path/to/project` to list all discoverable resources. This is read-only and produces no output files.
+```bash
+pnpm dlx @tokenroll/acplugin init my-plugin --yes
+cd my-plugin
+pnpm install
+pnpm build
+```
 
-3. **Scan a GitHub repo:** Run `acplugin scan owner/repo` to download and scan a GitHub repository without cloning. Also supports `github:owner/repo#branch` and full GitHub URLs. Use `-p <subpath>` for monorepos.
+`init` can add the official Hooks and MCP Modules with `--hooks` and `--mcp`. The default configuration builds both targets and uses `src/`, `public/`, and `dist/`.
 
-4. **Convert to specific platforms:** Run `acplugin convert . --to codex,opencode,cursor,antigravity,pi` to generate output for specified platforms. When `--to` is omitted, an interactive checkbox lets you choose platforms (includes "Antigravity (Google)" and "Pi (pi-coding-agent)" options).
+## Author Components
 
-5. **Convert a marketplace repo:** Run `acplugin convert owner/repo` on a repo with `.claude-plugin/marketplace.json`. An interactive TUI lets you select which plugins to convert. Use `--all` (`-a`) to skip selection.
+Put Commands in `src/commands/<id>.md`, Skills in `src/skills/<id>/SKILL.md`, and Agents in `src/agents/<id>.md`. Component IDs use lowercase kebab-case. Markdown files require YAML Frontmatter and a non-empty body.
 
-6. **Preview without writing:** Add `--dry-run` to see what files would be generated without writing anything to disk.
+The required top-level identity belongs directly in `acplugin.config.ts`:
 
-7. **Custom output directory:** Use `-o <output-dir>` to write generated files to a different location. For GitHub sources, output defaults to the current directory instead of the temp download path.
+```ts
+import { defineConfig } from '@tokenroll/acplugin';
+
+export default defineConfig({
+  name: 'my-plugin',
+  version: '1.0.0',
+  description: 'Reusable AI workflows.',
+});
+```
+
+There is no Instructions Component. Hooks and MCP directories are accepted only when their official Module is enabled.
+
+The TypeScript config and enabled Hook/MCP descriptors are trusted executable project code. Review them like build scripts. Legacy Migration sources are scanned as untrusted data and are not executed as descriptors.
+
+## Validate and build
+
+```bash
+pnpm exec acplugin validate
+pnpm exec acplugin inspect
+pnpm exec acplugin build
+pnpm exec acplugin dev
+```
+
+- `validate` generates and materializes every selected target in temporary storage without changing `dist`.
+- `inspect` adds Artifact details without changing `dist`.
+- `build` atomically replaces the complete managed output only after every target succeeds.
+- `dev` watches inputs, coalesces changes, and retains the last successful output after a failed rebuild.
+
+Common options are `--config`, repeatable `--target`, `--mode`, `--no-strict`, and `--json`. Strict mode is on by default. For example, a Codex build containing an Agent fails because Codex can only receive an explicit degraded Skill fallback; use `--no-strict` when that result is intentional.
+
+## Public files
+
+Regular files in `public/` are copied to every target root by default. Use explicit rules when only part of the directory should be copied:
+
+```ts
+public: {
+  dir: 'public',
+  copy: [
+    { from: 'assets', to: 'assets' },
+    { from: 'NOTICE.md', to: 'NOTICE.md' },
+  ],
+},
+```
+
+Symlinks, traversal, collisions, and sources outside approved roots are rejected.
+
+## Migrate legacy input
+
+```bash
+pnpm exec acplugin migrate ./legacy-project ./new-plugin \
+  --name new-plugin \
+  --description "Migrated plugin"
+```
+
+Migration also accepts supported GitHub forms, single Claude plugins, and marketplaces. Use `--dry-run` to avoid destination writes and `--strict` to fail on any degraded or unmapped resource. Non-portable resources are preserved under `.acplugin-migration/unmapped/` with a report; Migration never writes in place.

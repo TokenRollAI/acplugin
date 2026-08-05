@@ -1,158 +1,334 @@
 # acplugin
 
-将 [Claude Code](https://claude.ai/code) 插件转换为 [Codex CLI](https://github.com/openai/codex)、[OpenCode](https://opencode.ai/)、[Cursor](https://cursor.com/)、[Google Antigravity](https://antigravity.google/) 和 [Pi](https://github.com/earendil-works/pi) 格式。
+[English](./README.md)
 
-## 安装
+acplugin 是一个统一的 AI Plugin 框架和 CLI。开发者只维护一套 Commands、Skills、Agents，以及可选的 Hooks/MCP 源码，acplugin 将其构建为可安装的 Claude Code 和 Codex Plugin。
 
-```bash
-npm install -g @disdjj/acplugin
-```
+它不再以 Claude 工程为默认输入进行“格式转换”。规范化工程才是唯一事实来源，每个目标 Compiler 负责最终 Manifest、路径、兼容性判断和确定性序列化。旧 Claude 工程/Plugin 的导入由隔离的 `acplugin migrate` 负责。
 
-或直接使用 `npx`：
+## 环境要求
 
-```bash
-npx @disdjj/acplugin convert .
-```
+- Node.js 20 或更高版本
+- 生成工程和本仓库统一使用 pnpm
 
 ## 快速开始
 
 ```bash
-# 交互式引导 — 直接运行 acplugin！
-acplugin
-
-# 转换当前项目
-acplugin convert .
-
-# 从 GitHub 转换
-acplugin convert anthropics/claude-code --all --to cursor
-
-# 仅扫描资源（不转换）
-acplugin scan anthropics/claude-code
+pnpm dlx @tokenroll/acplugin init my-plugin --yes
+cd my-plugin
+pnpm install
+pnpm build
 ```
 
-## 功能特性
-
-- 转换 Skills、指令、MCP 配置、Agents、Commands 和 Hooks
-- **5 个目标平台**：Codex CLI、OpenCode、Cursor、Google Antigravity、Pi
-- 完整的 subagent 转换，为每个平台生成正确格式
-- 自动模型映射（Claude → GPT-5.4 / Gemini 3 Pro）
-- 支持 Claude Code Plugin marketplace 格式（多插件仓库）
-- 交互式 TUI，支持 checkbox 多选插件和平台
-- 直接支持 GitHub 仓库 — 无需先 clone
-- 智能检测：自动识别本地项目、单插件和 marketplace 仓库
-
-## 支持的转换
-
-| 资源类型 | Codex CLI | OpenCode | Cursor | Antigravity | Pi |
-|---------|-----------|----------|--------|-------------|----|
-| **Skills** | `.agents/skills/` | `.opencode/skills/` | `.cursor/skills/` | `.agents/skills/` | `.pi/skills/` |
-| **指令** | `AGENTS.md` | `AGENTS.md` | `.cursor/rules/*.mdc` | `GEMINI.md` | `AGENTS.md` |
-| **MCP 服务器** | `.codex/config.toml` | `opencode.json` | `.cursor/mcp.json` | `.agents/mcp_config.json` | 不支持（警告） |
-| **Agents** | `.codex/agents/*.toml` | `.opencode/agents/*.md` | `.cursor/agents/*.md` | `.agents/agents/*.md` | 不支持（警告） |
-| **Commands** | 转换为 Skills | `.opencode/commands/` | `.cursor/commands/` | 转换为 Skills | `.pi/prompts/*.md` |
-| **Hooks** | 记录在 `AGENTS.md` | 记录在 `AGENTS.md` | 仅输出警告 | 仅输出警告 | 仅输出警告 |
-
-Pi（[pi-coding-agent](https://github.com/earendil-works/pi)）是极简终端 harness，仅原生支持 Skills 与指令文件；Commands 降级为 prompt templates，MCP/Agents/Hooks 无对应格式（Pi 设计上通过 TypeScript extension 扩展），转换时输出警告。
-
-### 模型映射
-
-| Claude Code | → Codex | → Antigravity |
-|-------------|---------|---------------|
-| `sonnet` / `opus` | `gpt-5.6-sol` | `gemini-3.1-pro-preview` |
-| `haiku` | `gpt-5.6-terra` | `gemini-3.6-flash` |
-| （未指定） | `gpt-5.6-sol` | `gemini-3.1-pro-preview` |
-
-OpenCode、Cursor 和 Pi 保持原始模型值不映射。
-
-## CLI 参考
-
-### `acplugin scan [source]`
-
-扫描并列出可转换的资源。
+也可以在空工程中安装：
 
 ```bash
-acplugin scan .                              # 当前目录
-acplugin scan ./my-project                   # 本地路径
-acplugin scan anthropics/claude-code         # GitHub 仓库
-acplugin scan https://github.com/owner/repo  # 完整 GitHub URL
-acplugin scan owner/repo --path plugins/foo  # 仓库内子路径
+pnpm add -D @tokenroll/acplugin
 ```
 
-### `acplugin convert [source]`
+```ts
+// acplugin.config.ts
+import { defineConfig } from '@tokenroll/acplugin';
 
-将 Claude Code 插件转换为目标平台格式。
+export default defineConfig({
+  name: 'my-plugin',
+  version: '1.0.0',
+  description: '可复用的 AI 工作流。',
+});
+```
+
+默认同时生成 `dist/claude-code` 和 `dist/codex`。
+
+`acplugin.config.ts`、Hook descriptor 和 MCP descriptor 是由本地 Node.js 进程加载的可信工程代码，应按构建脚本同等标准审查。Migration 输入始终作为不可信数据处理，不会被当作规范 descriptor 执行。
+
+## 工程目录
+
+```text
+my-plugin/
+├── acplugin.config.ts
+├── package.json
+├── public/                         # 可选，复制到每个目标根目录
+└── src/
+    ├── commands/
+    │   └── review.md
+    ├── skills/
+    │   └── review/
+    │       ├── SKILL.md
+    │       └── references/
+    ├── agents/
+    │   └── reviewer.md
+    ├── hooks/                      # 仅启用 Hooks Module 后使用
+    │   └── policy/hook.ts
+    └── mcp/                        # 仅启用 MCP Module 后使用
+        └── docs/mcp.ts
+```
+
+ID 和目录名使用小写 kebab-case。Markdown Component 必须包含 YAML Frontmatter 和非空正文。符号链接、逃逸工程根目录的路径会被拒绝。
+
+acplugin 不提供 Instructions Component。仓库级 Instructions 属于宿主/工程配置，而不是可安装 Plugin 的能力边界。
+
+## 配置
+
+`acplugin.config.ts` 可以导出对象，也可以导出接收 `{ command, mode }` 的同步/异步函数。
+
+```ts
+import { defineConfig } from '@tokenroll/acplugin';
+
+export default defineConfig(({ mode }) => ({
+  name: 'team-review',
+  version: '1.0.0',
+  description: '团队代码审查工作流。',
+  displayName: 'Team Review',
+  targets: [
+    'claude-code',
+    { id: 'codex', strict: mode === 'production' },
+  ],
+  public: {
+    dir: 'public',
+    copy: [
+      { from: 'assets', to: 'assets' },
+      { from: 'NOTICE.md', to: 'NOTICE.md' },
+    ],
+  },
+  build: {
+    outDir: 'dist',
+    strict: true,
+  },
+}));
+```
+
+| 字段 | 含义 |
+| --- | --- |
+| `name/version/description` | 必填 Plugin 身份。 |
+| `displayName` | 可选展示名称。 |
+| `srcDir` | 规范化源码目录，默认 `src`。 |
+| `public` | `false`、目录，或明确 copy 规则。 |
+| `targets` | 目标集合，默认 Claude Code + Codex。 |
+| `modules` | Hooks/MCP 等生命周期 Module。 |
+| `build.outDir` | 托管输出目录，默认 `dist`。 |
+| `build.strict` | 遇到 degraded/unsupported 是否失败，默认 `true`。 |
+| `extensions` | 明确的目标平台逃生口。 |
+
+## 核心 Components
+
+### Skill
+
+```md
+---
+description: 审查代码的正确性和可维护性。
+invocation:
+  user: true
+  model: true
+requires:
+  agents: [reviewer]
+---
+审查选定的改动并报告可执行的问题。
+```
+
+文件位置为 `src/skills/review/SKILL.md`。同目录下其他普通文件会作为 Skill 辅助资源复制。
+
+### Command
+
+```md
+---
+description: 审查指定改动。
+argumentHint: <commit-or-branch>
+requires:
+  skills: [review]
+---
+使用 review Skill 审查 {{arguments}}。
+```
+
+文件位置为 `src/commands/review.md`。
+
+### Agent
+
+```md
+---
+description: 专注的只读代码审查者。
+model: capable
+capabilities: [filesystem:read, search]
+---
+检查改动和证据，只报告可执行的问题。
+```
+
+文件位置为 `src/agents/reviewer.md`。模型分级为 `inherit/fast/capable`；Capabilities 是语义声明，而不是目标平台工具名。
+
+Components 可以依赖 Skills 和 Agents。缺失依赖、自依赖和循环依赖都会导致构建失败。
+
+## 平台兼容性
+
+| Component | Claude Code | Codex |
+| --- | --- | --- |
+| Skill | 原生 | 原生 |
+| Command | 原生 Command | 显式调用的 `command-<id>` Skill |
+| Agent | 原生 Agent | 降级为仅模型可调用的 `agent-<id>` fallback Skill |
+
+Codex 可安装 Plugin 不能注册自定义的工程/用户 Agent。因此包含 Agent 时，严格 Codex 构建会失败；使用 `--no-strict` 才会生成 fallback，并明确报告模型、能力约束和注册语义丢失。
+
+## Hooks Module
 
 ```bash
-acplugin convert .                           # 交互式选择平台
-acplugin convert . --to cursor               # 指定平台
-acplugin convert . --to codex,antigravity    # 多个平台
-acplugin convert anthropics/claude-code      # 从 GitHub，交互式
-acplugin convert anthropics/claude-code --all  # 全部插件，跳过选择
-acplugin convert . -o ./output               # 自定义输出目录
-acplugin convert . --dry-run                 # 预览模式，不写入文件
+pnpm add -D @tokenroll/acplugin-module-hooks
 ```
 
-**选项：**
+```ts
+import { defineConfig } from '@tokenroll/acplugin';
+import hooks from '@tokenroll/acplugin-module-hooks';
 
-| 选项 | 说明 |
-|------|------|
-| `-t, --to <platforms>` | 目标平台（逗号分隔：`codex`、`opencode`、`cursor`、`antigravity`、`pi`） |
-| `-o, --output <path>` | 输出目录 |
-| `-a, --all` | 全部转换，跳过交互选择 |
-| `-p, --path <subpath>` | 仓库内子路径 |
-| `--dry-run` | 预览生成的文件，不实际写入 |
+export default defineConfig({
+  name: 'policy-plugin',
+  version: '1.0.0',
+  description: '可移植策略 Hooks。',
+  modules: [hooks()],
+});
+```
 
-## 使用示例
+```ts
+// src/hooks/policy/hook.ts
+import { defineHook } from '@tokenroll/acplugin-module-hooks';
 
-### 转换本地项目
+export default defineHook({
+  event: 'PreToolUse',
+  matcher: 'Bash',
+  timeout: 5,
+  async run(input) {
+    return input.cwd
+      ? { decision: 'allow' }
+      : { decision: 'deny', reason: '缺少工作目录。' };
+  },
+});
+```
+
+11 个可移植事件：
+
+```text
+SessionStart, SessionEnd, UserPromptSubmit, PreToolUse, PermissionRequest,
+PostToolUse, PreCompact, PostCompact, SubagentStart, SubagentStop, Stop
+```
+
+20 个 Claude-only 事件会为 Claude 构建，并在 Codex 目标报告 unsupported：
+
+```text
+Setup, UserPromptExpansion, PermissionDenied, PostToolUseFailure, PostToolBatch,
+Notification, MessageDisplay, TaskCreated, TaskCompleted, StopFailure,
+TeammateIdle, InstructionsLoaded, ConfigChange, CwdChanged, DirectoryAdded,
+FileChanged, WorktreeCreate, WorktreeRemove, Elicitation, ElicitationResult
+```
+
+acplugin 负责 bundle、输入规范化、语义结果校验、有界 JSON I/O、错误脱敏和第三方许可证产物。目标协议以最新的 [Claude Code Hooks](https://code.claude.com/docs/en/hooks) 与 [Codex Hooks](https://learn.chatgpt.com/docs/hooks) 为准。
+
+## MCP Module
 
 ```bash
-cd my-project
-acplugin convert . --to cursor,antigravity
+pnpm add -D @tokenroll/acplugin-module-mcp
 ```
 
-### 从 GitHub Plugin Marketplace 转换
+远程 Streamable HTTP：
+
+```ts
+// src/mcp/docs/mcp.ts
+import { defineMcpServer } from '@tokenroll/acplugin-module-mcp';
+
+export default defineMcpServer({
+  transport: 'http',
+  url: 'https://example.com/mcp',
+  auth: { type: 'bearer', env: 'DOCS_TOKEN' },
+  headers: { 'X-Tenant': { env: 'TENANT_ID' } },
+});
+```
+
+本地 stdio：
+
+```ts
+// src/mcp/local-tools/mcp.ts
+import { defineMcpServer } from '@tokenroll/acplugin-module-mcp';
+
+export default defineMcpServer({
+  transport: 'stdio',
+  entry: 'server.ts',
+  env: { API_TOKEN: { env: 'LOCAL_API_TOKEN' } },
+});
+```
+
+本地 MCP 需要由作者提供完整的 stdio MCP 实现，acplugin 将其 bundle 为 Node 20 ESM。HTTP MCP 只需要声明远程 endpoint、认证和 Header 引用。构建期间不会读取环境变量的秘密值。生产 HTTP 必须使用 HTTPS，开发模式仅允许 loopback HTTP。
+
+参考 [Claude Code MCP](https://code.claude.com/docs/en/mcp) 和 [Codex MCP](https://learn.chatgpt.com/docs/extend/mcp)。
+
+## Module 生命周期
+
+```text
+configResolved → discover → validate → build → generate(target) → buildEnd
+```
+
+Module 可声明 `dependsOn`，只能使用 Core 提供的工作目录，输出 Artifact、归属明确的 Manifest 字段和兼容性结果。Module 不能替换 Compiler，也不能直接写 `dist`。`buildEnd` 始终按初始化逆序执行。
+
+## CLI
+
+```text
+acplugin init [directory]
+acplugin dev
+acplugin validate
+acplugin inspect
+acplugin build
+acplugin migrate <source> [destination]
+```
+
+通用参数包括 `--config`、`--target`、`--mode`、`--no-strict` 和 `--json`。
+
+- `validate`：完整生成并验证目标，但不写 `dist`。
+- `inspect`：额外返回 Artifact 详情，但不写 `dist`。
+- `build`：所有目标成功后才原子替换完整 `dist`。
+- `dev`：监听工程输入；失败时保留上次成功产物，修复后恢复构建。
+- 裸 `acplugin` 只打印 Help，不发起交互。
+
+退出码：`0` 成功、`1` 工程/构建/Migration 失败、`2` CLI 用法或框架内部失败、`130` 取消。非 watch 命令的 JSON 模式只向 stdout 输出一个带版本的文档。
+
+## 确定性与安全
+
+- Artifact 只允许普通文件，带 owner、mode、size 和 SHA-256。
+- 拒绝绝对/穿越路径、符号链接、大小写/Unicode 冲突和未授权来源。
+- 构建使用同文件系统 stage、锁、事务记录、备份和完整目录 swap。
+- 任意目标失败都会保留上次完整 `dist`。
+- 生成内容/报告不包含时间戳、临时路径、环境变量值或凭据。
+- 未启用对应 Module 时，`src/hooks`/`src/mcp` 中存在内容会直接报错。
+
+## 旧版本 Migration
+
+Migration 只属于 CLI，采用动态加载，并与 Core/Compiler/正常启动路径隔离。
 
 ```bash
-# 交互式：浏览并选择插件
-acplugin convert anthropics/claude-code
+acplugin migrate ./legacy-project ./new-plugin \
+  --name new-plugin \
+  --description "迁移后的 Plugin"
 
-# 全部插件转换到所有平台
-acplugin convert anthropics/claude-code --all -o ./converted
+acplugin migrate owner/repository ./new-workspace --all
 ```
 
-### 扫描仓库查看可用资源
+支持本地 Claude 工程、单 Plugin、Marketplace 和 GitHub 来源。Skills、Commands、Agents 和可移植远程 HTTP MCP 会尽量映射；Instructions、原始 Hooks、Hook 实现文件、本地外部命令 MCP 和不支持的资源保存在 `.acplugin-migration/unmapped/`，同时生成稳定报告和人工处理项。Migration 不允许原地写入。
+
+`--dry-run` 不写目标目录；`--strict` 在出现 degraded/unmapped 时失败。
+
+## 包与仓库开发
+
+公开包：
+
+- `@tokenroll/acplugin`
+- `@tokenroll/acplugin-module-hooks`
+- `@tokenroll/acplugin-module-mcp`
+
+Core、Claude/Codex Compiler 和 Vitest Test workspace 均为私有实现包，不会成为公开运行时依赖。
 
 ```bash
-$ acplugin scan anthropics/claude-code
-
-Claude Code Plugin Marketplace
-✔ Found 13 plugin(s) with resources
-
-1. agent-sdk-dev [development] — 3 resource(s)
-2. code-review [productivity] — 1 resource(s)
-3. commit-commands [productivity] — 3 resource(s)
-...
+pnpm install
+pnpm run check
+pnpm run release:verify
 ```
 
-### 私有仓库
+`release:verify` 会创建三个 pnpm tarball、检查 Manifest/文件列表、安装到 monorepo 外的干净消费者、执行配置类型检查、API import 和双目标构建，不会发布 npm。
 
-设置 `GITHUB_TOKEN` 环境变量访问私有仓库：
+第一次 npm 发布需要从已验证 tarball 手工完成 2FA bootstrap。后续 `tokenroll-vX.Y.Z` 标签使用受保护 OIDC workflow，先发布 Modules，再发布主包，验证 Registry 精确版本后才创建 GitHub Release。
 
-```bash
-export GITHUB_TOKEN=ghp_xxx
-acplugin convert my-org/private-plugins --all --to codex
-```
-
-## 工作原理
-
-1. **扫描** — 检测 Claude Code 资源：`.claude/` 项目结构、`.claude-plugin/` 插件格式或 marketplace 仓库
-2. **选择** — 交互式 TUI 让你选择要转换的插件和目标平台
-3. **转换** — 将每个资源转换为目标平台格式，自动映射模型和字段
-4. **报告** — 显示生成结果，对无法完全转换的资源输出警告
-
-Claude 特有的功能（如 `context: fork`、`agent: Explore`）会以 HTML 注释的形式保留在输出文件中，供参考。
-
-## 许可证
+## License
 
 MIT

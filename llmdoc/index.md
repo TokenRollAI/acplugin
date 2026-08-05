@@ -1,24 +1,20 @@
-# acplugin - Documentation Index
+# acplugin documentation
 
-## Project Summary
+acplugin is a canonical AI Plugin framework and CLI. Authors write Commands, Skills, Agents, and optional Module sources once, then build complete installable Claude Code and Codex plugins.
 
-CLI tool that converts Claude Code plugins (skills, instructions, MCP configs, agents, commands, hooks) to compatible formats for Codex CLI, OpenCode, Cursor IDE, Google Antigravity, and Pi (pi-coding-agent). Supports local projects, single plugins, marketplace repos, and direct GitHub download.
+## Overview
 
-## Document Map
+- [Project overview](overview/project.md) — product boundary, packages, runtime, and Migration isolation.
 
-### Overview
+## Guides
 
-- [Project Overview](overview/project.md) - What acplugin is, supported input formats, and tech stack.
+- [Using acplugin](guides/usage.md) — scaffold, author, validate, build, and migrate.
+- [Release guide](guides/release.md) — fixed public cohort verification and trusted tag publishing.
 
-### Guides
+## Architecture
 
-- [CLI Usage](guides/usage.md) - How to scan and convert resources from local paths or GitHub repos.
-- [npm Release](guides/release.md) - How tag-driven GitHub Actions publishing to npm works.
+- [System architecture](architecture/system.md) — Core-owned lifecycle, Compilers, Modules, Artifact graph, and managed output transaction.
 
-### Architecture
+## Reference
 
-- [System Architecture](architecture/system.md) - Source resolution, scanner pipeline, TUI selection, converter-writer flow.
-
-### Reference
-
-- [Conversion Matrix](reference/conversion-matrix.md) - Resource type support per target platform, input formats, and source types.
+- [Target support matrix](reference/conversion-matrix.md) — native, transformed, and degraded target capabilities plus implementation ownership.

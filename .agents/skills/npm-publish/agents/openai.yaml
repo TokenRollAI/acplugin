@@ -1,1 +1,6 @@
-allow_implicit_invocation: false
+interface:
+  display_name: "Publish acplugin"
+  short_description: "Verify and publish the fixed public package cohort"
+  default_prompt: "Use $npm-publish to prepare and verify an acplugin release without performing unapproved registry mutations."
+policy:
+  allow_implicit_invocation: false

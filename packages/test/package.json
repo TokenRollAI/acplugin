@@ -1,0 +1,26 @@
+{
+  "name": "@acplugin/test",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "pretest": "pnpm --filter \"...@tokenroll/acplugin\" run build",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@acplugin/compiler-claude-code": "workspace:*",
+    "@acplugin/compiler-codex": "workspace:*",
+    "@acplugin/core": "workspace:*",
+    "@tokenroll/acplugin": "workspace:*",
+    "@tokenroll/acplugin-module-hooks": "workspace:*",
+    "@tokenroll/acplugin-module-mcp": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  }
+}

@@ -1,16 +1,38 @@
-# acplugin
+# Project Overview
 
-## 1. Identity
+## Identity
 
-- **What it is:** A CLI tool that converts Claude Code plugin configurations into equivalent formats for Codex CLI, OpenCode, Cursor IDE, Google Antigravity, and Pi (pi-coding-agent).
-- **Purpose:** Enables developers to maintain a single Claude Code configuration and automatically generate compatible configurations for other AI coding platforms.
+acplugin is a canonical AI Plugin framework and CLI. Authors maintain one framework-owned source layout and compile complete installable plugins for Claude Code and Codex.
 
-## 2. High-Level Description
+The public release cohort is:
 
-acplugin follows a scan-convert-write pipeline. It scans a local directory or a GitHub repository for Claude Code resources (skills, instructions, MCP server configs, agents, commands, and hooks), then converts each resource type into the target platform's native format, and writes the output files. Conversion is one-way (Claude Code to others, never bidirectional). Claude-specific fields that have no equivalent on a target platform are preserved as HTML comments or generate compatibility warnings. A model mapping module (`src/utils/model.ts`) translates Claude model names to platform equivalents (e.g., `gpt-5.6-sol` for Codex, `gemini-3.1-pro-preview`/`gemini-3.6-flash` for Antigravity).
+- `@tokenroll/acplugin`
+- `@tokenroll/acplugin-module-hooks`
+- `@tokenroll/acplugin-module-mcp`
 
-The tool supports three input formats: standard Claude Code project layout (`.claude/` directory), single plugin (`.claude-plugin/plugin.json`), and multi-plugin marketplace (`.claude-plugin/marketplace.json`). Sources can be local paths or GitHub repositories (auto-detected from `owner/repo` syntax). For marketplace repos, an interactive TUI allows selecting which plugins and target platforms to convert. Cursor output uses `.cursor-plugin/` format with `plugin.json` manifest and resources at plugin root (`skills/`, `agents/`, `commands/`, `rules/`, `mcp.json`); the plugin/marketplace format was introduced in Cursor 3.9 (2026-06). OpenCode generates `.opencode/agents/*.md` with `mode: subagent`, `steps`, `permission` fields; Antigravity generates `.agents/agents/*.md` (Claude tool list preserved as a comment, since its internal tool identifiers are unpublished). GitHub Actions also handles automation around the project itself: `.github/workflows/acplugin.yml` runs conversion on push to main, and `.github/workflows/publish-npm.yml` publishes `@disdjj/acplugin` to npm from matching `v*` tags via npm Trusted Publishing.
+Core, both built-in Compilers, and the integration-test workspace are private packages. The main public package bundles Core and the Compilers so consumers never depend on `@acplugin/*`.
 
-**Tech Stack:** TypeScript, Node.js, Commander.js, gray-matter, @iarna/toml, glob, @inquirer/prompts, chalk, ora.
+## Authoring boundary
 
-**Entry point:** `src/index.ts` - CLI binary registered as `acplugin` in package.json.
+Core Components are Commands, Skills, and Agents. `acplugin.config.ts` defines top-level `name`, `version`, `description`, targets, Public copy behavior, Modules, and strictness.
+
+Instructions are intentionally outside the installable Plugin boundary. Hooks and MCP are optional Modules: enabling one extends the same Core-owned lifecycle rather than replacing the Compiler.
+
+Default targets are Claude Code and Codex. Claude supports all Core Components natively. Codex transforms Commands to explicit Skills and degrades Agents to model-only fallback Skills because installable Codex plugins cannot register custom project/user Agents.
+
+## Runtime and tooling
+
+- Node.js >=20, ESM-only TypeScript
+- pnpm workspace, no Turborepo
+- Commander.js and `@inquirer/prompts` for CLI/TUI
+- tsdown for package bundles/declarations/package validation
+- Rolldown for local Hook/MCP executable bundles
+- Vitest for private repository tests
+
+The CLI entry is `packages/acplugin/src/cli.ts`; the facade/config loader is `packages/acplugin/src/index.ts`.
+
+## Migration boundary
+
+`acplugin migrate` accepts legacy Claude projects, single plugins, marketplaces, and supported GitHub forms. Migration is dynamically imported and isolated under `packages/acplugin/src/migration/`. Its tolerant legacy scanner/converter implementation is retained only below `migration/legacy/`.
+
+Only the tolerant GitHub download and Claude/plugin scanning helpers remain below `migration/legacy/`; the retired multi-platform converter, writer, CLI, TUI, and test copies were removed. Untrusted or non-portable content is preserved under `.acplugin-migration/unmapped/`; it is never fabricated into canonical Hooks, MCP implementations, or Instructions Components.

@@ -1,51 +1,79 @@
 # System Architecture
 
-## 1. Identity
+## Pipeline
 
-- **What it is:** A multi-stage pipeline: Source Resolution, Scanner, Converters, and Writers, with interactive TUI for plugin selection.
-- **Purpose:** Transforms Claude Code plugin resources into platform-specific output files.
+```text
+acplugin.config.ts
+  → resolve/validate config
+  → order and initialize Modules
+  → discover canonical Components/Public
+  → validate Component dependency graph
+  → Module target contributions
+  → built-in Compiler per target
+  → immutable Artifact graph
+  → compatibility strictness/final validation
+  → validate-only materialization or managed output transaction
+  → stable report
+```
 
-## 2. Core Components
+`validate`, `inspect`, and `build` run this same pipeline. Only report detail and commit behavior differ. `dev` creates a fresh pipeline per coalesced rebuild and keeps the last successful complete output after failures.
 
-- `src/index.ts` (`program`, `generateForPlatform`, `isGitHubSource`, `resolveSource`, `detectAndScan`): CLI entry point. Defines `scan` and `convert` commands. Auto-detects GitHub vs local source. Routes to marketplace, plugin, or project scan. Dispatches to platform-specific writers.
-- `src/github.ts` (`parseGitHubSource`, `downloadGitHubRepo`, `cleanupTempDir`, `getTempRoot`): GitHub repo download without git clone. Parses `owner/repo`, `github:owner/repo#branch`, and full URLs. Downloads tarball via GitHub API, extracts to temp dir. Supports `GITHUB_TOKEN` env var for private repos.
-- `src/tui.ts` (`selectPlugins`, `selectPlatforms`, `parseSelection`, `log`): Interactive checkbox selection via @inquirer/prompts. Falls back to select-all in non-TTY environments. Provides styled console output helpers via chalk.
-- `src/types.ts` (`Skill`, `Instruction`, `MCPConfig`, `Agent`, `Command`, `Hooks`, `ScanResult`, `PluginMeta`, `PluginScanResult`, `ConvertResult`, `ConvertedFile`): Unified type definitions shared across all stages. `PluginMeta` includes `displayName`, `homepage`, `repository`, `license`, `keywords` optional fields for rich plugin metadata passthrough.
-- `src/scanner/claude.ts` (`scanClaudeProject`): Scans a standard Claude Code project directory (`.claude/` layout). Returns a `ScanResult`.
-- `src/scanner/plugin.ts` (`hasMarketplace`, `isSinglePlugin`, `scanMarketplace`, `scanPlugin`, `scanAllPlugins`, `countResources`): Scans Claude Code official plugin format. Handles `.claude-plugin/marketplace.json` (multi-plugin) and `.claude-plugin/plugin.json` (single plugin). Plugin resources live directly in plugin root (`skills/`, `agents/`, `commands/`, `hooks/`), not under `.claude/`.
-- `src/converter/skill.ts`: Converts `Skill` objects to target platform format.
-- `src/converter/instructions.ts`: Converts `Instruction` (CLAUDE.md, rules) to AGENTS.md or .mdc files.
-- `src/converter/mcp.ts`: Converts `.mcp.json` servers to config.toml / opencode.json / .cursor/mcp.json.
-- `src/converter/agent.ts` (`convertAgent`, `convertToCodex`, `convertToOpenCode`, `convertToCursor`, `convertToAntigravity`): Converts `.claude/agents/*.md` to platform-specific formats. Cursor outputs `.cursor/agents/*.md` with `name`, `description`, `model`, `readonly`. OpenCode outputs `.opencode/agents/*.md` with `mode: subagent`, `steps`, `permission` (edit/bash deny). Antigravity outputs `.agents/agents/*.md`; the Claude tool list is preserved as an HTML comment rather than mapped to an `allowed-tools` allowlist, since Antigravity's internal tool identifiers are unpublished.
-- `src/converter/command.ts`: Converts `.claude/commands/*.md` to platform commands.
-- `src/converter/hooks.ts` (`convertHooks`, `convertCursorHooks`, `CURSOR_EVENT_MAP`): Converts `settings.json` hooks with compatibility warnings for non-portable events. Cursor hooks use dedicated `convertCursorHooks()` path: maps PascalCase events to camelCase (`PostToolUse` → `postToolUse`), strips `${CLAUDE_PLUGIN_ROOT}` to relative paths, outputs `{ version: 1, hooks: {...} }` JSON at `hooks/hooks-cursor.json`.
-- `src/writer/codex.ts` (`generateCodex`): Orchestrates all converters for Codex output.
-- `src/writer/opencode.ts` (`generateOpenCode`): Orchestrates all converters for OpenCode output.
-- `src/writer/cursor.ts` (`generateCursor`, `generatePluginJson`, `remapToPluginPath`): Orchestrates all converters for Cursor output. Generates `.cursor-plugin/plugin.json` manifest with auto-detected components from scan result. Plugin.json passes through `displayName`, `homepage`, `repository`, `license`, `keywords` from source `PluginMeta`. Includes `hooks` field pointing to `hooks/hooks-cursor.json` when hooks exist. Remaps all `.cursor/` output paths to plugin root layout (`skills/`, `agents/`, `commands/`, `rules/`, `mcp.json`). Targets the Cursor plugin/marketplace format introduced in Cursor 3.9 (2026-06).
-- `src/writer/antigravity.ts` (`generateAntigravity`): Orchestrates all converters for Antigravity (Google) output. Skills → `.agents/skills/`, Instructions → `GEMINI.md`, MCP → `.agents/mcp_config.json`, Agents → `.agents/agents/*.md`, Commands → Skills. Uses the CLI workspace convention (plural `.agents/`), not the IDE `.agent/` convention.
-- `src/writer/pi.ts` (`generatePi`): Orchestrates converters for Pi (pi-coding-agent) output. Skills → `.pi/skills/`, Instructions → `AGENTS.md`, Commands → `.pi/prompts/*.md`. MCP/agents/hooks have no Pi file format (Pi extends via TypeScript extensions), so the writer skips them and pushes warnings rather than calling those converters.
-- `src/utils/model.ts` (`mapModel`, `CODEX_MODEL_MAP`, `ANTIGRAVITY_MODEL_MAP`): Maps Claude model names to platform equivalents. Codex → `gpt-5.6-sol` (haiku → `gpt-5.6-terra`), Antigravity → `gemini-3.1-pro-preview`/`gemini-3.6-flash`. OpenCode and Cursor pass models through unchanged.
-- `src/utils/frontmatter.ts`: YAML frontmatter parse/stringify via gray-matter.
-- `src/utils/toml.ts`: TOML serialization via @iarna/toml.
-- `src/utils/fs.ts` (`writeFile`, `readFile`, `fileExists`): File system utilities with directory creation.
-- `.github/workflows/acplugin.yml`: Repository CI workflow that runs `TokenRollAI/acplugin-action@v1` on Claude source changes in `main`.
-- `.github/workflows/publish-npm.yml`: Release workflow. Triggers on `v*` tags, verifies the tag matches `package.json` version, runs install/build/test/package validation, then publishes to npm with GitHub Actions OIDC Trusted Publishing.
+## Core package
 
-## 3. Execution Flow (LLM Retrieval Map)
+`packages/core/src/` owns:
 
-- **1. CLI Parse:** User invokes `acplugin scan [source]` or `acplugin convert [source]`. Commander.js parses args in `src/index.ts:16-21`. Source is a positional argument defaulting to `.`.
-- **2. Source Resolution:** `isGitHubSource()` at `src/index.ts:26-36` auto-detects GitHub sources. `resolveSource()` at `src/index.ts:41-53` either downloads via `src/github.ts:74-109` or resolves a local path. Cleanup callback is returned for temp dirs.
-- **3. Detection & Scan:** `detectAndScan()` at `src/index.ts:58-69` checks for marketplace (`hasMarketplace`), single plugin (`isSinglePlugin`), or standard project, then calls the appropriate scanner.
-- **4. Interactive Selection (convert only):** If `--to` not specified, `selectPlatforms()` from `src/tui.ts:39-56` prompts for platform selection. For marketplace repos without `--all`, `selectPlugins()` from `src/tui.ts:10-34` prompts for plugin selection.
-- **5. Convert:** Each writer (e.g., `src/writer/codex.ts`) calls converter modules (`src/converter/*.ts`) for each resource type, collecting `ConvertedFile[]` and warnings.
-- **6. Write:** `convertSingleScan()` at `src/index.ts:193-227` iterates over `ConvertedFile[]` and writes each to disk via `src/utils/fs.ts`, unless `--dry-run` is set.
-- **7. Report:** `printConvertReport()` at `src/index.ts:288-303` outputs a summary of generated files and warnings.
+- `types.ts`: public config, Component, Module, Compiler, Artifact, compatibility, and report contracts;
+- `config.ts`: strict config normalization and safe project-relative directories;
+- `scanner.ts`: canonical Markdown/Public discovery, Frontmatter validation, dependency graph checks, and Module-directory gating;
+- `diagnostics.ts`: stable sorted diagnostics and compatibility strictness;
+- `artifacts.ts`: ownership, hashing, file-source roots, modes, and collision checks;
+- `builder.ts`: lifecycle orchestration, Compiler dispatch, final graph/report creation;
+- `transaction.ts`: validation materialization and whole-`dist` lock/backup/swap/recovery;
+- `serialization.ts`: deterministic JSON/YAML/Markdown serialization.
 
-## 4. Design Rationale
+Artifacts reject absolute/traversal paths, symlinks, unsupported modes, source escapes, and exact/case-insensitive/Unicode-normalized collisions.
 
-- **One-way conversion only:** Claude Code is the source of truth. Bidirectional sync would create conflict resolution complexity with no clear benefit.
-- **HTML comment preservation:** Claude-specific frontmatter fields (e.g., `allowed-tools`, `effort`) are embedded as HTML comments in output so they are not lost but do not break target platforms.
-- **Native subagent support:** Codex, OpenCode, Cursor, and Antigravity support agents natively; each writer generates platform-specific agent frontmatter (Cursor: `readonly`; OpenCode: `mode`, `steps`, `permission`; Antigravity: Claude tool list preserved as a comment). Pi has no subagent format, so its writer emits a warning.
-- **Model mapping:** `src/utils/model.ts` centralizes Claude-to-platform model translation, defaulting to the platform's strongest model when no mapping exists.
-- **Auto-detection over flags:** Source type (GitHub/local) and format (marketplace/plugin/project) are auto-detected to minimize required CLI arguments.
-- **Non-TTY fallback:** TUI selection defaults to "all" when stdin is not a TTY, enabling CI/script usage without interactive prompts.
+## Module lifecycle
+
+```text
+configResolved → discover → validate → build → generate(target) → buildEnd
+```
+
+Modules are topologically ordered by `dependsOn`, preserving config order among peers. A Module may access only declared dependency State/Built State and write only its Core-provided work directory. It returns target Artifacts, uniquely owned top-level Manifest fields, and compatibility entries. Compilers retain complete Manifest and target-schema ownership.
+
+`buildEnd` runs in reverse initialized order after success or failure. On a candidate commit, the transaction keeps the prior output as a rollback backup while reverse cleanup runs. A cleanup failure is reported, passed to remaining cleanup hooks, and rolls the swap back to the previous complete output. Failures before the swap reach cleanup through the normal error path.
+
+## Built-in Compilers
+
+`packages/compiler-claude-code/` emits native Commands, Skills, Agents, and `.claude-plugin/plugin.json`.
+
+`packages/compiler-codex/` emits native Skills, Command fallback Skills, Agent fallback Skills, invocation policy metadata, and `.codex-plugin/plugin.json`. Generated identities are reserved case-insensitively; collisions fail visibly.
+
+Both packages are private and bundled into `@tokenroll/acplugin` by tsdown.
+
+## Official Modules
+
+`packages/module-hooks/` discovers `src/hooks/<id>/hook.ts`, validates event/matcher/timeout/semantic results, and bundles a self-contained bounded JSON runner per supported target. Literal dynamic imports ensure the handler and dependencies enter the bundle. Runtime failures emit fixed codes without input payloads. Third-party dependency licenses are emitted adjacent to handlers.
+
+`packages/module-mcp/` discovers `src/mcp/<id>/mcp.ts`. Streamable HTTP declarations map URL/auth/header environment references without reading secrets. Local stdio entries are bundled as Node 20 ESM and carry adjacent third-party license notices.
+
+## Managed output transaction
+
+`dist` is a complete managed target set:
+
+1. acquire an exclusive sibling lock;
+2. recover a retained backup/transaction record;
+3. materialize all selected targets into a same-filesystem stage;
+4. recompute and verify every Artifact size, SHA-256, mode, and regular-file status;
+5. write the transaction record and rename old output to backup;
+6. rename stage to output while retaining the rollback boundary;
+7. finish Module cleanup successfully or roll back;
+8. remove transaction and best-effort cleanup backup.
+
+Pre-commit failure leaves old output untouched. Failure after backup/swap rolls back. If cleanup alone is interrupted, the next run deterministically reconciles output and backup. Core tests inject failures at each observable phase.
+
+## CLI and package boundary
+
+`packages/acplugin/src/index.ts` loads fresh trusted TypeScript config/descriptor modules with Jiti and wires the two bundled Compilers. Nested config objects are runtime-schema checked before pipeline use. `cli.ts` owns commands, JSON/text output discipline, exit codes, watch coalescing, and lazy Migration import. Stable diagnostics redact external exceptions, absolute paths, and recognizable credential forms.
+
+The normal facade and CLI startup do not import `migration/`. The packed main tarball contains no private package imports or runtime dependencies; `scripts/verify-release.mjs` proves this in an external consumer.
