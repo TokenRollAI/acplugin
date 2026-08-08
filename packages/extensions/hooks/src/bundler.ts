@@ -6,6 +6,19 @@ import { EXTENSION_NAME } from './constants.js';
 import type { DiscoveredHook, DiscoveredHooks } from './discovery.js';
 import { createRunnerSource } from './runtime-source.js';
 
+/**
+ * 按 UTF-16 code unit 比较 Bundle 元数据，不依赖宿主 locale/ICU。
+ *
+ * @param left 左侧字符串。
+ * @param right 右侧字符串。
+ * @returns 与 Array.sort 约定一致的 -1、0 或 1。
+ */
+function compareCodeUnits(left: string, right: string): number {
+  if (left === right)
+    return 0;
+  return left < right ? -1 : 1;
+}
+
 /** 单个 Hook 构建完成的可执行 Handler 与可选第三方许可材料。 */
 export interface BundledHook {
   /** Hook 的稳定作者 ID。 */
@@ -94,7 +107,7 @@ async function packageLicenseForModule(moduleId: string): Promise<PackageLicense
         const noticeFiles = entries
           .filter(entry => entry.isFile() && /^(?:licen[cs]e|notice)(?:\..*)?$/iu.test(entry.name))
           .map(entry => entry.name)
-          .sort((left, right) => left.localeCompare(right, 'en'));
+          .sort(compareCodeUnits);
         if (noticeFiles.length === 0)
           throw new Error(`Bundled dependency ${manifest.name}@${manifest.version} has no license or notice file.`);
         return {
@@ -128,7 +141,7 @@ async function writeThirdPartyLicenses(chunk: OutputChunk, directory: string): P
   /** 按包名和版本去重的许可记录。 */
   const records = new Map<string, PackageLicense>();
   /** moduleId 表示当前 Bundle Module，用于追溯第三方许可。 */
-  for (const moduleId of Object.keys(chunk.modules).sort((left, right) => left.localeCompare(right, 'en'))) {
+  for (const moduleId of Object.keys(chunk.modules).sort(compareCodeUnits)) {
     /** 当前 Bundle Module 所属的可选第三方包许可。 */
     const record = await packageLicenseForModule(moduleId);
     if (record !== undefined)
@@ -138,7 +151,7 @@ async function writeThirdPartyLicenses(chunk: OutputChunk, directory: string): P
     return undefined;
   /** 按确定顺序拼接的许可文件段落。 */
   const sections = ['THIRD-PARTY LICENSES'];
-  for (const [id, record] of [...records].sort(([left], [right]) => left.localeCompare(right, 'en'))) {
+  for (const [id, record] of [...records].sort(([left], [right]) => compareCodeUnits(left, right))) {
     sections.push(`## ${id}\nSPDX: ${record.license}`);
     /** notice 表示当前包的一个 LICENSE 或 NOTICE 文件。 */
     for (const notice of record.notices)

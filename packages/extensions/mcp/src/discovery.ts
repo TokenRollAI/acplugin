@@ -11,6 +11,19 @@ import {
   type ValueSource,
 } from './types.js';
 
+/**
+ * 按 UTF-16 code unit 比较 MCP 目录项，不依赖宿主 locale/ICU。
+ *
+ * @param left 左侧名称。
+ * @param right 右侧名称。
+ * @returns 与 Array.sort 约定一致的 -1、0 或 1。
+ */
+function compareCodeUnits(left: string, right: string): number {
+  if (left === right)
+    return 0;
+  return left < right ? -1 : 1;
+}
+
 /** discover 阶段保存的 MCP 描述、目录与已执行定义。 */
 export interface DiscoveredMcpServer {
   /** 从一级目录名称取得的 MCP Server ID。 */
@@ -115,7 +128,7 @@ export async function discoverMcpServers(
   const servers: DiscoveredMcpServer[] = [];
   /** include 中已经在源码目录找到的 Server ID。 */
   const includedIds = new Set<string>();
-  for (const entry of entries.sort((left, right) => left.name.localeCompare(right.name, 'en'))) {
+  for (const entry of entries.sort((left, right) => compareCodeUnits(left.name, right.name))) {
     /** 当前 MCP Server 候选目录的绝对路径。 */
     const directory = path.join(root, entry.name);
     if (!entry.isDirectory() || !MCP_ID_PATTERN.test(entry.name)) {

@@ -19,6 +19,19 @@ import {
 } from './constants.js';
 import type { ValueSource } from './types.js';
 
+/**
+ * 按 UTF-16 code unit 比较 MCP 配置键，不依赖宿主 locale/ICU。
+ *
+ * @param left 左侧名称。
+ * @param right 右侧名称。
+ * @returns 与 Array.sort 约定一致的 -1、0 或 1。
+ */
+function compareCodeUnits(left: string, right: string): number {
+  if (left === right)
+    return 0;
+  return left < right ? -1 : 1;
+}
+
 /** 拆分后可分别映射到平台字面量和环境引用字段的值。 */
 interface MappedValues {
   /** 可以直接写入目标清单的非敏感字面量。 */
@@ -39,7 +52,7 @@ function mapValues(values: Readonly<Record<string, ValueSource>> | undefined): M
   /** 只写变量名称、由安装运行时读取真实值的引用。 */
   const environment: Record<string, string> = {};
   /** [name, source] 表示当前已验证的 ValueSource 映射。 */
-  for (const [name, source] of Object.entries(values ?? {}).sort(([left], [right]) => left.localeCompare(right, 'en'))) {
+  for (const [name, source] of Object.entries(values ?? {}).sort(([left], [right]) => compareCodeUnits(left, right))) {
     if ('value' in source)
       literal[name] = source.value;
     else

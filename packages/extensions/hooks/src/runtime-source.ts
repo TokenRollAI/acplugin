@@ -137,7 +137,7 @@ function stableErrorCode(error, fallback) {
 }
 
 function intercept(chunk, encoding, callback) {
-  interceptedBytes += Buffer.byteLength(typeof chunk === 'string' ? chunk : chunk);
+  interceptedBytes += Buffer.byteLength(chunk);
   if (interceptedBytes > MAX_BYTES) {
     interceptedFailure = 'HANDLER_OUTPUT_TOO_LARGE';
     throw new Error(interceptedFailure);

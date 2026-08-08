@@ -371,21 +371,24 @@ describe('MCP Extension', () => {
     expect(local.diagnostics).toContainEqual(expect.objectContaining({ code: 'MCP_ENTRY_ESCAPE' }));
   });
 
-  it('rejects local bundles that do not complete the MCP protocol smoke', async () => {
-    /** 立即退出且不响应 initialize 的无效本地实现。 */
-    const root = await createProject({
-      remote: false,
-      serverSource: 'process.exit(0);\n',
-    });
-    /** 构建必须在提交任何 Platform 产物前执行真实协议探测。 */
-    const result = await runProject({ cwd: root, command: 'build', mode: 'production' });
-    expect(result.success).toBe(false);
-    expect(result.committed).toBe(false);
-    expect(result.diagnostics).toContainEqual(expect.objectContaining({
-      code: 'MCP_STDIO_SMOKE_FAILED',
-      phase: 'build',
-    }));
-    await expect(fs.access(path.join(root, 'dist'))).rejects.toThrow();
+  it('rejects local bundles that fail the MCP protocol smoke in both build modes', async () => {
+    /** mode 表示当前必须执行真实 initialize/tools-list 探测的构建模式。 */
+    for (const mode of ['development', 'production'] as const) {
+      /** 立即退出且不响应 initialize 的无效本地实现。 */
+      const root = await createProject({
+        remote: false,
+        serverSource: 'process.exit(0);\n',
+      });
+      /** 两种模式都必须在提交任何 Platform 产物前执行真实协议探测。 */
+      const result = await runProject({ cwd: root, command: 'build', mode });
+      expect(result.success).toBe(false);
+      expect(result.committed).toBe(false);
+      expect(result.diagnostics).toContainEqual(expect.objectContaining({
+        code: 'MCP_STDIO_SMOKE_FAILED',
+        phase: 'build',
+      }));
+      await expect(fs.access(path.join(root, 'dist'))).rejects.toThrow();
+    }
   });
 
   it('rejects unresolved runtime dynamic imports in local MCP bundles', async () => {
