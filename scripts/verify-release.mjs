@@ -1,10 +1,12 @@
 import { spawn } from 'node:child_process';
 import { promises as fs } from 'node:fs';
+import { builtinModules } from 'node:module';
 import os from 'node:os';
 import path from 'node:path';
 import process from 'node:process';
 import { fileURLToPath, URL } from 'node:url';
 import { checkPackage, createPackageFromTarballData } from '@arethetypeswrong/core';
+import { init as initializeModuleLexer, parse as parseModule } from 'es-module-lexer';
 import { publint } from 'publint';
 
 /** 当前 monorepo 根目录。 */
@@ -28,6 +30,37 @@ const privateNames = new Set([
 ]);
 /** ESM-only 正式包按 ATTW esm-only Profile 有意不提供的旧/CJS 解析模式。 */
 const esmOnlyIgnoredResolutions = new Set(['node10', 'node16-cjs']);
+/** Node 同时允许 `node:fs` 和 legacy `fs` 形式的内建模块边。 */
+const nodeBuiltinSpecifiers = new Set(builtinModules.flatMap(name => [name, `node:${name.replace(/^node:/u, '')}`]));
+
+/**
+ * 解析可选的 tarball 保留目录，并拒绝含糊或可能覆盖已有文件的调用。
+ *
+ * @param args Node 入口之后的命令行参数。
+ * @returns 显式目录的绝对路径；本地默认临时验证时返回 undefined。
+ */
+async function retainedTarballDirectory(args) {
+  /** pnpm 10 会把 `pnpm run <script> -- ...` 中的分隔符原样传给脚本。 */
+  const normalized = args[0] === '--' ? args.slice(1) : args;
+  if (normalized.length === 0)
+    return undefined;
+  if (normalized.length !== 2 || normalized[0] !== '--tarball-dir'
+    || typeof normalized[1] !== 'string' || normalized[1].includes('\0')) {
+    throw new Error('Usage: pnpm run release:verify -- --tarball-dir <empty-directory>');
+  }
+  /** 调用方要求保留精确已验证 tarball 的绝对目录。 */
+  const directory = path.resolve(process.cwd(), normalized[1]);
+  /** 已有目录内容；不存在时按空目录处理。 */
+  let entries = [];
+  try {
+    entries = await fs.readdir(directory);
+  } catch (error) {
+    if (error === null || typeof error !== 'object' || !('code' in error) || error.code !== 'ENOENT')
+      throw error;
+  }
+  assert(entries.length === 0, `Tarball output directory must be empty: ${directory}`);
+  return directory;
+}
 
 /**
  * 运行发布验证所需的子进程，并统一处理捕获输出与非零退出码。
@@ -73,6 +106,154 @@ function run(command, args, cwd, options = {}) {
 function assert(condition, message) {
   if (!condition)
     throw new Error(message);
+}
+
+/**
+ * 递归列出一个目录中的全部 ESM 运行时文件。
+ *
+ * @param directory 当前遍历目录。
+ * @param packageRoot 解压后 package 根，用于生成稳定相对路径。
+ * @returns 按 code-unit 排序的 package 相对 `.mjs` 路径。
+ */
+async function esmFiles(directory, packageRoot) {
+  /** 当前目录按 code-unit 排序后的文件系统项。 */
+  const entries = (await fs.readdir(directory, { withFileTypes: true }))
+    .sort((left, right) => left.name < right.name ? -1 : left.name > right.name ? 1 : 0);
+  /** 当前子树累计的 ESM 文件。 */
+  const files = [];
+  for (const entry of entries) {
+    /** 当前目录项的绝对路径。 */
+    const target = path.join(directory, entry.name);
+    if (entry.isDirectory())
+      files.push(...await esmFiles(target, packageRoot));
+    else if (entry.isFile() && entry.name.endsWith('.mjs'))
+      files.push(path.relative(packageRoot, target).split(path.sep).join('/'));
+  }
+  return files;
+}
+
+/**
+ * 从 exports/bin 的嵌套条件中提取所有 ESM 运行时入口。
+ *
+ * @param value 当前 manifest 字段或条件分支。
+ * @param entries 累计的 package 相对入口。
+ */
+function collectRuntimeEntries(value, entries) {
+  if (typeof value === 'string') {
+    if (value.endsWith('.mjs'))
+      entries.add(value.replace(/^\.\//u, ''));
+    return;
+  }
+  if (value === null || typeof value !== 'object')
+    return;
+  for (const child of Object.values(value))
+    collectRuntimeEntries(child, entries);
+}
+
+/**
+ * 把裸 ESM specifier 收敛为 manifest 使用的依赖包名。
+ *
+ * @param specifier 模块源码中的非相对导入。
+ * @returns scope/name 或首个路径段。
+ */
+function dependencyName(specifier) {
+  if (specifier.startsWith('@'))
+    return specifier.split('/').slice(0, 2).join('/');
+  return specifier.split('/')[0];
+}
+
+/**
+ * 从一个已解压主包的真实 ESM 语法建立静态/动态模块图并验证可选 MCP 边界。
+ *
+ * @param packageRoot 主包 tarball 的解压 package 根。
+ * @param manifest tarball 内真实发布清单。
+ */
+async function verifyMainModuleGraph(packageRoot, manifest) {
+  await initializeModuleLexer;
+  /** tarball 中全部可执行 ESM 模块。 */
+  const files = await esmFiles(path.join(packageRoot, 'dist'), packageRoot);
+  /** 模块到其静态、动态本地边和外部边的完整解析结果。 */
+  const graph = new Map();
+  for (const file of files) {
+    /** 当前构建模块的真实源码。 */
+    const source = await fs.readFile(path.join(packageRoot, file), 'utf8');
+    /** ESM lexer 返回的全部 import/export 边。 */
+    const [imports] = parseModule(source, file);
+    /** 当前模块可由字面量精确解析的静态本地边。 */
+    const staticLocal = [];
+    /** 当前模块可由字面量精确解析的动态本地边。 */
+    const dynamicLocal = [];
+    /** 当前模块声明的裸外部依赖边。 */
+    const external = [];
+    for (const imported of imports) {
+      if (imported.n === undefined)
+        continue;
+      /** lexer 已解码的模块 specifier。 */
+      const specifier = imported.n;
+      if (specifier.startsWith('./') || specifier.startsWith('../')) {
+        /** 相对于导入方解析后的 package 内目标。 */
+        const target = path.posix.normalize(path.posix.join(path.posix.dirname(file), specifier));
+        assert(!target.startsWith('../') && target !== '..', `Module ${file} imports outside the packed package: ${specifier}`);
+        (imported.d === -1 ? staticLocal : dynamicLocal).push(target);
+      } else {
+        external.push(specifier);
+      }
+    }
+    graph.set(file, Object.freeze({ staticLocal, dynamicLocal, external }));
+  }
+
+  /** exports 与 bin 共同定义的全部公开 eager 运行时入口。 */
+  const entries = new Set();
+  collectRuntimeEntries(manifest.exports, entries);
+  collectRuntimeEntries(manifest.bin, entries);
+  assert(entries.size > 0, 'Main package manifest exposes no ESM runtime entry.');
+  /** 从所有公开入口只沿静态边可达的 eager 图。 */
+  const eager = new Set();
+  /** 尚未展开静态依赖边的入口或 chunk。 */
+  const pending = [...entries];
+  while (pending.length > 0) {
+    /** 当前待遍历的 package 相对模块。 */
+    const current = pending.pop();
+    if (eager.has(current))
+      continue;
+    /** 每个 manifest 或静态图目标都必须真实随 tarball 发布。 */
+    const edges = graph.get(current);
+    assert(edges !== undefined, `Packed runtime module is missing: ${current}`);
+    eager.add(current);
+    for (const target of edges.staticLocal)
+      pending.push(target);
+  }
+
+  /** CLI 通过字面量动态 import 暴露的 Migration lazy chunk。 */
+  const cliEntry = typeof manifest.bin === 'string'
+    ? manifest.bin.replace(/^\.\//u, '')
+    : manifest.bin?.acplugin?.replace(/^\.\//u, '');
+  assert(typeof cliEntry === 'string', 'Main package manifest is missing the acplugin CLI entry.');
+  /** CLI 的动态本地边应保留至少一个不属于 eager 图的独立 chunk。 */
+  const lazyTargets = graph.get(cliEntry)?.dynamicLocal ?? [];
+  assert(lazyTargets.length > 0, 'Main CLI has no statically identifiable lazy Migration edge.');
+  for (const target of lazyTargets) {
+    assert(graph.has(target), `Main CLI lazy chunk is missing from the tarball: ${target}`);
+    assert(!eager.has(target), `Main CLI lazy chunk became statically reachable: ${target}`);
+  }
+
+  /** 公开包清单允许存在的全部运行时外部依赖。 */
+  const declared = new Set([
+    ...Object.keys(manifest.dependencies ?? {}),
+    ...Object.keys(manifest.peerDependencies ?? {}),
+    ...Object.keys(manifest.optionalDependencies ?? {}),
+  ]);
+  assert(!declared.has('@tokenroll/acplugin-extension-mcp'), 'Main package manifest must not depend on the optional MCP Extension.');
+  for (const [file, edges] of graph) {
+    for (const specifier of edges.external) {
+      if (nodeBuiltinSpecifiers.has(specifier))
+        continue;
+      /** 外部子路径按其所属 package 与 manifest runtime edge 对齐。 */
+      const dependency = dependencyName(specifier);
+      assert(declared.has(dependency), `Packed module ${file} imports undeclared runtime dependency ${dependency}.`);
+      assert(dependency !== '@tokenroll/acplugin-extension-mcp', `Packed module ${file} externalizes the optional MCP Extension.`);
+    }
+  }
 }
 
 /**
@@ -138,6 +319,8 @@ async function inspectTarball(tarball, expectedName, extractRoot) {
   /** publint 对实际发布目录返回的结构化诊断。 */
   const lint = await publint({ pkgDir: packageRoot, pack: false, strict: true });
   assert(lint.messages.length === 0, `${expectedName} tarball failed publint: ${lint.messages.map(message => message.code).join(', ')}`);
+  if (expectedName === '@tokenroll/acplugin')
+    await verifyMainModuleGraph(packageRoot, manifest);
   return manifest;
 }
 
@@ -322,11 +505,13 @@ export default defineHook({
  * 打包公开 Cohort、验证内容与版本关系，并执行干净消费者测试。
  */
 async function main() {
+  /** CI 可显式保留 tarball；本地无参数调用仍完全使用临时目录。 */
+  const retained = await retainedTarballDirectory(process.argv.slice(2));
   /** 无论成功失败默认都会删除的发布验证临时目录。 */
   const temporary = await fs.mkdtemp(path.join(os.tmpdir(), 'acplugin-release-verify-'));
   try {
-    /** 存放三个新 tarball 的目录。 */
-    const tarballDirectory = path.join(temporary, 'tarballs');
+    /** 存放三个新 tarball 的显式保留目录或临时目录。 */
+    const tarballDirectory = retained ?? path.join(temporary, 'tarballs');
     /** 各包独立解压和清单检查的根目录。 */
     const extractRoot = path.join(temporary, 'extract');
     await fs.mkdir(tarballDirectory, { recursive: true });
@@ -354,6 +539,8 @@ async function main() {
     await verifyMainOnlyMigration(tarballs.get('@tokenroll/acplugin'), temporary);
     await verifyConsumer(tarballs, temporary);
     process.stdout.write(`Verified three @tokenroll/acplugin ${version} tarballs in a clean consumer.\n`);
+    if (retained)
+      process.stdout.write(`Verified tarballs retained at ${retained}\n`);
   } finally {
     if (process.env.ACPLUGIN_KEEP_RELEASE_TEMP !== '1')
       await fs.rm(temporary, { recursive: true, force: true });

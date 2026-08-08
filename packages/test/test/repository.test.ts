@@ -51,11 +51,13 @@ describe('repository release and documentation guards', () => {
     const check = await read('.github/workflows/check.yml');
     /** 手动消费 Changeset 并创建版本 PR 的 Action 内容。 */
     const patch = await read('.github/workflows/patch.yml');
+    /** 手工构建并跨 Node 版本消费 tarball 的只读 Action 内容。 */
+    const verify = await read('.github/workflows/verify.yml');
 
     await expect(fs.access(path.join(root, '.github/workflows/publish-npm.yml'))).rejects.toThrow();
     await expect(fs.access(path.join(root, 'scripts/publish-release-cohort.mjs'))).rejects.toThrow();
     await expect(fs.access(path.join(root, 'scripts/verify-release-cohort.mjs'))).rejects.toThrow();
-    expect(`${check}\n${patch}`).not.toMatch(/npm publish|pnpm publish|gh release|id-token: write|NPM_TOKEN/i);
+    expect(`${check}\n${patch}\n${verify}`).not.toMatch(/npm publish|pnpm publish|gh release|dist-tag|id-token: write|NPM_TOKEN/i);
   });
 
   it('checks pull requests and creates version PRs only on manual dispatch', async () => {
@@ -63,12 +65,15 @@ describe('repository release and documentation guards', () => {
     const check = await read('.github/workflows/check.yml');
     /** 用于验证手动分支输入和版本 PR 的 Patch Action。 */
     const patch = await read('.github/workflows/patch.yml');
+    /** 用于验证手动只读 tarball 构建和 Node 20 消费边界的 Verify Action。 */
+    const verify = await read('.github/workflows/verify.yml');
 
     expect(check).toContain('pull_request:');
     expect(check).not.toMatch(/\bpush:/);
     expect(check).toContain('pnpm run lint');
     expect(check).toContain('pnpm run typecheck');
     expect(check).not.toMatch(/pnpm run (?:test|build|release:verify)/);
+    expect(check).toContain('node-version: 22.18.0');
     expect(patch).toContain('workflow_dispatch:');
     expect(patch).toContain('target_branch:');
     expect(patch).toContain('pnpm changeset status --output');
@@ -76,6 +81,36 @@ describe('repository release and documentation guards', () => {
     expect(patch).toContain('pnpm version-packages');
     expect(patch).toContain('peter-evans/create-pull-request@v8');
     expect(patch).toContain('base: ${{ inputs.target_branch }}');
+    expect(patch).toContain('node-version: 22.18.0');
+    expect(verify).toContain('workflow_dispatch:');
+    expect(verify).not.toMatch(/\b(?:pull_request|push|schedule):/);
+    expect(verify).toContain('permissions:\n  contents: read');
+    expect(verify).toContain('node-version: 22.18.0');
+    expect(verify).toContain('node-version: 20.19.0');
+    expect(verify).toContain('release:verify -- --tarball-dir');
+    expect(verify.match(/name: acplugin-verified-tarballs/g)).toHaveLength(2);
+    expect(verify).toContain('actions/upload-artifact@v7');
+    expect(verify).toContain('actions/download-artifact@v8');
+  });
+
+  it('separates the repository Node toolchain from published runtime support', async () => {
+    /** 根工具链和三个公开包的精确清单路径。 */
+    const files = [
+      'package.json',
+      'packages/acplugin/package.json',
+      'packages/extensions/hooks/package.json',
+      'packages/extensions/mcp/package.json',
+    ];
+    /** 当前根与公开 manifest 的 engine/dependency 边界。 */
+    const [repository, main, hooks, mcp] = await Promise.all(files.map(async file => JSON.parse(await read(file)) as {
+      engines?: { node?: string };
+      dependencies?: Record<string, string>;
+    }));
+
+    expect(repository.engines?.node).toBe('^22.18.0 || >=24.11.0');
+    for (const manifest of [main, hooks, mcp])
+      expect(manifest.engines?.node).toBe('^20.19.0 || ^22.13.0 || >=23.5.0');
+    expect(main.dependencies?.commander).toBe('14.0.1');
   });
 
   it('keeps current docs free of the retired namespace and CLI', async () => {

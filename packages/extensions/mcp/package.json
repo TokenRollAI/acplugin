@@ -8,7 +8,7 @@
   "repository": { "type": "git", "url": "git+https://github.com/TokenRollAI/acplugin.git", "directory": "packages/extensions/mcp" },
   "bugs": { "url": "https://github.com/TokenRollAI/acplugin/issues" },
   "sideEffects": false,
-  "engines": { "node": ">=20" },
+  "engines": { "node": "^20.19.0 || ^22.13.0 || >=23.5.0" },
   "exports": { ".": { "types": "./dist/index.d.mts", "import": "./dist/index.mjs" } },
   "files": ["dist", "README.md", "LICENSE"],
   "publishConfig": { "access": "public" },
