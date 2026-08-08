@@ -16,6 +16,7 @@ import {
   type InitPlatformId,
   type PlatformId,
 } from './index.js';
+import { InitError } from './init.js';
 import { executeProject, type ProjectExecution } from './run-project.js';
 
 /** validate、inspect、build 和 dev 命令共享的 CLI 选项。 */
@@ -117,15 +118,17 @@ interface CliFailureReport {
  * @returns 可序列化的统一失败报告。
  */
 function failureReport(command: string, error: unknown, internal: boolean): CliFailureReport {
-  /** 配置错误保留原诊断，其他异常只输出固定安全消息。 */
+  /** 配置和已知 init 输入错误保留安全诊断，其他异常只输出固定消息。 */
   const diagnostics = error instanceof ProjectConfigError
     ? error.diagnostics
-    : [{
-        code: internal ? 'FRAMEWORK_INTERNAL_FAILED' : 'COMMAND_FAILED',
-        severity: 'error' as const,
-        message: internal ? 'The command failed inside the framework.' : `${command} failed.`,
-        phase: internal ? 'internal' : command,
-      }];
+    : error instanceof InitError
+      ? [{ code: 'INIT_INVALID', severity: 'error' as const, message: error.message, phase: command }]
+      : [{
+          code: internal ? 'FRAMEWORK_INTERNAL_FAILED' : 'COMMAND_FAILED',
+          severity: 'error' as const,
+          message: internal ? 'The command failed inside the framework.' : `${command} failed.`,
+          phase: internal ? 'internal' : command,
+        }];
   return { schemaVersion: '1', command, diagnostics, success: false };
 }
 
@@ -676,7 +679,12 @@ export async function main(argv: readonly string[] = process.argv): Promise<void
   }
   try {
     /** 旧参数只用于产生定向 usage error，不注册为可运行 alias。 */
-    if (argv.slice(2).some(argument => argument === '--target' || argument === '-t' || argument.startsWith('--target='))) {
+    const flagArguments = argv.slice(2);
+    /** `--` 之后的值属于位置参数，不再参与 legacy option 探测。 */
+    const terminator = flagArguments.indexOf('--');
+    /** Commander option 终止符之前的真实选项候选。 */
+    const scannedArguments = terminator === -1 ? flagArguments : flagArguments.slice(0, terminator);
+    if (scannedArguments.some(argument => argument === '--target' || argument === '-t' || argument.startsWith('--target='))) {
       program.error('option \'--target\' has been removed; use \'--platform <id...>\' instead', {
         exitCode: 2,
         code: 'acplugin.legacyTarget',

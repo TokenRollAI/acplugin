@@ -69,6 +69,36 @@ describe('config loader', () => {
     expect(second.config.metadata.version).toBe('2.0.0');
   });
 
+  it('records and fresh-loads an external static TypeScript config dependency', async () => {
+    /** 同时包含项目与外部 helper package 的临时 workspace。 */
+    const workspace = await fs.mkdtemp(path.join(os.tmpdir(), 'acplugin-config-closure-'));
+    roots.push(workspace);
+    /** 配置入口所在的独立项目根。 */
+    const cwd = path.join(workspace, 'plugin');
+    /** 位于项目根外且需要按 package root 监听的 helper。 */
+    const helperRoot = path.join(workspace, 'shared-config');
+    /** 配置实际静态导入的 TypeScript helper。 */
+    const helper = path.join(helperRoot, 'value.ts');
+    await fs.mkdir(cwd, { recursive: true });
+    await fs.mkdir(helperRoot, { recursive: true });
+    await fs.writeFile(path.join(helperRoot, 'package.json'), '{"name":"shared-config","type":"module"}\n');
+    await fs.writeFile(helper, `export const description = 'First external helper.';\n`);
+    await fs.writeFile(path.join(cwd, 'acplugin.config.ts'), `import { description } from '../shared-config/value.ts';
+export default { name: 'closure-config', version: '1.0.0', description };
+`);
+
+    /** 第一次执行观察到的 Jiti transform closure。 */
+    const first = await loadProjectConfig({ cwd, command: 'dev', mode: 'development' });
+    await fs.writeFile(helper, `export const description = 'Second external helper.';\n`);
+    /** 新 Jiti 实例必须读取 helper 的修改而不是原生模块 cache。 */
+    const second = await loadProjectConfig({ cwd, command: 'dev', mode: 'development' });
+
+    expect(first.config.metadata.description).toBe('First external helper.');
+    expect(second.config.metadata.description).toBe('Second external helper.');
+    expect(first.watchFiles).toContain(await fs.realpath(helper));
+    expect(first.watchRoots).toContain(await fs.realpath(helperRoot));
+  });
+
   it('does not automatically load project .env files', async () => {
     delete process.env[DOTENV_KEY];
     /** 配置尝试读取仅存在于项目 .env 的值。 */

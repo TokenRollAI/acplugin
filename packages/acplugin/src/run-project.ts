@@ -11,6 +11,19 @@ import {
   type LoadProjectConfigOptions,
 } from './project-config.js';
 
+/**
+ * 按 UTF-16 code unit 比较内部监听路径，避免宿主 locale/ICU 改变顺序。
+ *
+ * @param left 左侧路径。
+ * @param right 右侧路径。
+ * @returns 与 Array.sort 约定一致的 -1、0 或 1。
+ */
+function compareCodeUnits(left: string, right: string): number {
+  if (left === right)
+    return 0;
+  return left < right ? -1 : 1;
+}
+
 /** 公开程序化 Pipeline 的配置定位和运行控制选项。 */
 export interface RunProjectOptions extends LoadProjectConfigOptions {
   /** 可选的已配置 Platform 子集；不能凭 ID 临时实例化 Platform。 */
@@ -118,8 +131,8 @@ export async function executeProject(options: RunProjectOptions): Promise<Projec
     ...loaded.watchFiles,
     ...loaded.watchRoots,
     ...watchedModuleFiles,
-  ])].sort((left, right) => left.localeCompare(right, 'en'));
+  ])].sort(compareCodeUnits);
   /** Extension descriptor 所属且需要递归监听的去重真实包根。 */
-  const dependencyRoots = [...loaded.watchRoots].sort((left, right) => left.localeCompare(right, 'en'));
+  const dependencyRoots = [...loaded.watchRoots].sort(compareCodeUnits);
   return { result, projectRoot: config.root, outDir: config.outDir, watchPaths, dependencyRoots };
 }

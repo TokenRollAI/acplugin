@@ -2,6 +2,7 @@ import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
+import * as acplugin from '@tokenroll/acplugin';
 import { initializeProject } from '@tokenroll/acplugin';
 
 /** 当前测试创建并在 afterEach 中统一删除的临时目录。 */
@@ -26,6 +27,7 @@ describe('init', () => {
       .toContain('platforms: [claudeCode(), codex()]');
     expect(await fs.readFile(path.join(cwd, 'demo-plugin/src/skills/demo-plugin/SKILL.md'), 'utf8')).toContain('description:');
     expect(JSON.parse(await fs.readFile(path.join(cwd, 'demo-plugin/package.json'), 'utf8'))).toMatchObject({
+      engines: { node: '^20.19.0 || ^22.13.0 || >=23.5.0' },
       devDependencies: { typescript: '^7.0.2' },
     });
   });
@@ -70,5 +72,9 @@ describe('init', () => {
 
     await expect(initializeProject({ cwd, directory: 'existing', yes: true })).rejects.toThrow('not empty');
     expect(await fs.readFile(path.join(cwd, 'existing/user.txt'), 'utf8')).toBe('keep');
+  });
+
+  it('keeps the specialized init error outside the public facade', () => {
+    expect('InitError' in acplugin).toBe(false);
   });
 });

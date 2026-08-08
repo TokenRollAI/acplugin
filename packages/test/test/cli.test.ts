@@ -175,6 +175,29 @@ describe.sequential('CLI subprocess contract', () => {
     expect(usage.code).toBe(2);
     expect(usage.stderr).toContain('--target');
     expect(usage.stderr).toContain('--platform');
+
+    /** option 终止符后的同名文本不得触发旧参数专属错误。 */
+    const terminated = await runCli(['build', '--', '--target'], root);
+    expect(terminated.stderr).not.toContain('has been removed');
+  });
+
+  it('surfaces safe init validation reasons without exposing the internal error type', async () => {
+    /** 非空目标用于触发已知且可操作的初始化输入错误。 */
+    const root = await temporaryProject();
+    await fs.mkdir(path.join(root, 'occupied'));
+    await fs.writeFile(path.join(root, 'occupied/keep.txt'), 'keep');
+    /** JSON 模式应保留安全原因而不是通用命令失败文本。 */
+    const result = await runCli(['init', 'occupied', '--yes', '--json'], root);
+    /** CLI 返回的稳定失败报告。 */
+    const report = JSON.parse(result.stdout);
+
+    expect(result.code).toBe(1);
+    expect(result.stderr).toBe('');
+    expect(report).toMatchObject({
+      command: 'init',
+      success: false,
+      diagnostics: [{ code: 'INIT_INVALID', message: 'destination directory is not empty', phase: 'init' }],
+    });
   });
 
   it('emits one JSON document and exit 1 for project configuration errors', async () => {
@@ -312,6 +335,51 @@ Say hello after recovery.
     expect(stopped.code).toBe(130);
     expect((await fs.readdir(root)).filter(name => name.startsWith('.acplugin-work-'))).toEqual([]);
     expect((await fs.readdir(root)).filter(name => name.includes('.acplugin.lock'))).toEqual([]);
+  }, 20_000);
+
+  it('watches an external static TypeScript config dependency and recovers after failure', async () => {
+    /** 同时容纳项目和工程外配置 helper package 的临时 workspace。 */
+    const workspace = await temporaryProject();
+    /** dev 子进程使用的独立项目根。 */
+    const root = path.join(workspace, 'plugin');
+    /** Jiti transform closure 发现并按 package 根监听的外部 helper。 */
+    const helperRoot = path.join(workspace, 'shared-config');
+    /** 修改后应触发配置重新执行的 TypeScript 文件。 */
+    const helper = path.join(helperRoot, 'value.ts');
+    await fs.mkdir(path.join(root, 'src/skills/hello'), { recursive: true });
+    await fs.mkdir(helperRoot, { recursive: true });
+    await fs.writeFile(path.join(helperRoot, 'package.json'), '{"name":"shared-config","type":"module"}\n');
+    await fs.writeFile(helper, `export const description = 'First external config.';\n`);
+    await fs.writeFile(path.join(root, 'acplugin.config.ts'), `import { description } from '../shared-config/value.ts';
+export default { name: 'external-config-plugin', version: '1.0.0', description };
+`);
+    await fs.writeFile(path.join(root, 'src/skills/hello/SKILL.md'), `---
+description: Verify external config watching.
+---
+Watch the external helper.
+`);
+    /** 持续监听工程外配置依赖的真实 dev 子进程。 */
+    const running = startCli(['dev', '--no-strict'], root);
+    /** 构建输出中直接反映配置 description 的 Claude Manifest。 */
+    const manifestPath = path.join(root, 'dist/claude-code/plugin/.claude-plugin/plugin.json');
+
+    await waitForOutput(running, stdout => stdout.includes('dev: success'), 'external config initial build');
+    /** 首次成功提交的 Manifest，配置失败期间必须保持不变。 */
+    const initialManifest = await fs.readFile(manifestPath, 'utf8');
+    expect(JSON.parse(initialManifest)).toMatchObject({ description: 'First external config.' });
+
+    await fs.writeFile(helper, 'export const description = ;\n');
+    await waitForOutput(running, (_stdout, stderr) => stderr.includes('CONFIG_EVALUATION_FAILED'), 'external config failed rebuild');
+    expect(await fs.readFile(manifestPath, 'utf8')).toBe(initialManifest);
+
+    await fs.writeFile(helper, `export const description = 'Second external config.';\n`);
+    await waitForOutput(running, stdout => stdout.match(/dev: success/g)?.length === 2, 'external config recovery build');
+    expect(JSON.parse(await fs.readFile(manifestPath, 'utf8'))).toMatchObject({ description: 'Second external config.' });
+
+    running.child.kill('SIGINT');
+    /** 外部配置依赖恢复后的信号退出状态。 */
+    const stopped = await waitForExit(running);
+    expect(stopped.code).toBe(130);
   }, 20_000);
 
   it('rebuilds after initial watcher readiness before publishing the first success', async () => {

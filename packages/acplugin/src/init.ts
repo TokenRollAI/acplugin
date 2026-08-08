@@ -44,6 +44,12 @@ export interface InitResult {
 /** `init` 可以写入脚手架的六个官方 Platform ID。 */
 export type InitPlatformId = 'claude-code' | 'codex' | 'cursor' | 'antigravity' | 'opencode' | 'pi';
 
+/** 只承载可安全向 CLI 用户展示的已知脚手架输入错误。 */
+export class InitError extends Error {
+  /** 稳定标识内部错误类别，但不进入公开 facade。 */
+  override readonly name = 'InitError';
+}
+
 /** 无交互脚手架默认启用的正式支持 Platform。 */
 const DEFAULT_PLATFORMS: readonly InitPlatformId[] = ['claude-code', 'codex'];
 
@@ -94,9 +100,9 @@ async function assertDestination(directory: string): Promise<void> {
     /** 已存在目标的文件类型和符号链接状态。 */
     const stat = await fs.lstat(directory);
     if (!stat.isDirectory() || stat.isSymbolicLink())
-      throw new Error('destination exists and is not a regular directory');
+      throw new InitError('destination exists and is not a regular directory');
     if ((await fs.readdir(directory)).length > 0)
-      throw new Error('destination directory is not empty');
+      throw new InitError('destination directory is not empty');
   } catch /** error 保存当前操作捕获的异常，供本阶段转换或恢复。 */ (error) {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT')
       return;
@@ -170,7 +176,7 @@ function packageSource(name: string, hooks: boolean, mcp: boolean): string {
     private: true,
     type: 'module',
     packageManager: 'pnpm@10.34.5',
-    engines: { node: '>=20' },
+    engines: { node: '^20.19.0 || ^22.13.0 || >=23.5.0' },
     scripts: {
       dev: 'acplugin dev',
       validate: 'acplugin validate',
@@ -210,7 +216,7 @@ export async function initializeProject(options: InitOptions): Promise<InitResul
   let directoryValue = options.directory;
   if (!directoryValue) {
     if (options.yes || !process.stdin.isTTY)
-      throw new Error('A destination directory is required in non-interactive mode; pass "." explicitly for the current directory.');
+      throw new InitError('A destination directory is required in non-interactive mode; pass "." explicitly for the current directory.');
     directoryValue = await input({ message: 'Project directory', default: 'my-plugin' });
   }
   /** 已解析并即将接受脚手架文件的绝对目录。 */
@@ -224,7 +230,7 @@ export async function initializeProject(options: InitOptions): Promise<InitResul
     ? suggestedName
     : await input({ message: 'Plugin name', default: suggestedName }));
   if (!NAME_PATTERN.test(name))
-    throw new Error('Plugin name must be lowercase kebab-case.');
+    throw new InitError('Plugin name must be lowercase kebab-case.');
   /** 根据机器名称推导的默认展示名称。 */
   const suggestedDisplayName = defaultDisplayName(name);
   /** 参数、默认值或交互输入得到的最终展示名称。 */
@@ -236,7 +242,7 @@ export async function initializeProject(options: InitOptions): Promise<InitResul
     ? `${displayName} plugin.`
     : await input({ message: 'Description', default: `${displayName} plugin.` }));
   if (description.trim() === '')
-    throw new Error('Description must not be empty.');
+    throw new InitError('Description must not be empty.');
 
   /** 参数、默认值或交互复选提示得到的官方 Platform 列表。 */
   let platforms = options.platforms === undefined ? [...DEFAULT_PLATFORMS] : [...options.platforms];
@@ -255,15 +261,15 @@ export async function initializeProject(options: InitOptions): Promise<InitResul
     });
   }
   if (platforms.length === 0)
-    throw new Error('At least one Platform must be selected.');
+    throw new InitError('At least one Platform must be selected.');
   /** seenPlatforms 用于拒绝重复工厂，保持配置与报告身份唯一。 */
   const seenPlatforms = new Set<InitPlatformId>();
   /** platform 表示当前需要验证和稳定去重的脚手架 Platform。 */
   for (const platform of platforms) {
     if (!Object.hasOwn(PLATFORM_FACTORIES, platform))
-      throw new Error(`Unknown init Platform "${platform}".`);
+      throw new InitError(`Unknown init Platform "${platform}".`);
     if (seenPlatforms.has(platform))
-      throw new Error(`Duplicate init Platform "${platform}".`);
+      throw new InitError(`Duplicate init Platform "${platform}".`);
     seenPlatforms.add(platform);
   }
 

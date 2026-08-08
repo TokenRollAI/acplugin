@@ -1,6 +1,6 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
-import { createJiti } from 'jiti';
+import { createJiti, type TransformOptions, type TransformResult } from 'jiti';
 import {
   resolveConfig,
   type BuildCommand,
@@ -51,7 +51,7 @@ export interface LoadProjectConfigOptions {
 export interface LoadedProjectConfig {
   /** 完成默认值、路径和 Extension 校验的不可变配置。 */
   readonly config: ResolvedConfig;
-  /** 配置入口和通过共享加载器实际读取的 Extension descriptor 绝对路径。 */
+  /** 配置入口、Jiti 实际转换的依赖和共享加载器读取的 descriptor 绝对路径。 */
   readonly watchFiles: ReadonlySet<string>;
   /** descriptor 所属且需要递归监听解析依赖的真实 Package 根。 */
   readonly watchRoots: ReadonlySet<string>;
@@ -62,6 +62,31 @@ export interface LoadedProjectConfig {
    * @returns 模块的默认导出。
    */
   loadTypeScriptModule(modulePath: string): Promise<unknown>;
+}
+
+/**
+ * 判断候选路径是否等于指定根或位于根目录内部。
+ *
+ * @param root 已规范化的绝对根目录。
+ * @param candidate 待判断的绝对路径。
+ * @returns 候选位于根边界内时返回 true。
+ */
+function isInside(root: string, candidate: string): boolean {
+  /** 从根目录指向候选的相对路径。 */
+  const relative = path.relative(root, candidate);
+  return relative === '' || (!relative.startsWith(`..${path.sep}`) && relative !== '..' && !path.isAbsolute(relative));
+}
+
+/**
+ * 排除 Jiti 自身临时/cache 产物，防止 dev 监听执行器的机器相关文件。
+ *
+ * @param candidate 待登记的绝对模块路径。
+ * @returns 路径属于 Jiti cache 或 ESM fallback 临时目录时返回 true。
+ */
+function isJitiTemporaryPath(candidate: string): boolean {
+  /** 统一分隔符后匹配 Jiti 的两个实现级临时目录。 */
+  const normalized = candidate.split(path.sep).join('/');
+  return /(?:^|\/)(?:node_modules\/\.cache\/jiti|jiti-esm)(?:\/|$)/u.test(normalized);
 }
 
 /**
@@ -137,8 +162,23 @@ export async function loadProjectConfig(options: LoadProjectConfigOptions): Prom
     }], error);
   }
 
+  /** Jiti 公共 transform seam 使用的默认转换实现。 */
+  const transformer = createJiti(import.meta.url, { interopDefault: true, moduleCache: false, fsCache: false });
+  /** 配置执行期间由 Jiti 实际转换的模块逻辑路径。 */
+  const transformedFiles = new Set<string>();
+  /** 包装默认转换器，既不解析 debug 输出也不建立第二条配置执行路径。 */
+  const transform = (transformOptions: TransformOptions): TransformResult => {
+    if (transformOptions.filename !== undefined && path.isAbsolute(transformOptions.filename))
+      transformedFiles.add(path.normalize(transformOptions.filename));
+    return { code: transformer.transform(transformOptions) };
+  };
   /** 当前配置及其引用 Extension 共用的无缓存 TypeScript 执行器。 */
-  const jiti = createJiti(import.meta.url, { interopDefault: true, moduleCache: false, fsCache: false });
+  const jiti = createJiti(import.meta.url, {
+    interopDefault: true,
+    moduleCache: false,
+    fsCache: false,
+    transform,
+  });
   /** dev 需要监听的配置入口与后续实际加载 descriptor 路径。 */
   const watchFiles = new Set<string>([configPath]);
   /** dev 需要递归监听且不能被 node_modules 通用规则过滤的依赖根。 */
@@ -190,22 +230,46 @@ export async function loadProjectConfig(options: LoadProjectConfigOptions): Prom
   const config = resolved.config;
   /** 用于避免把本就递归监听的工程根重复提升为依赖包根的真实路径。 */
   const projectRealRoot = await fs.realpath(config.root).catch(() => config.root);
+  /**
+   * 登记一个执行器实际读取的逻辑/真实模块，并按外部 package 根保守监听其依赖。
+   *
+   * @param modulePath Jiti 转换或 descriptor 加载观察到的绝对路径。
+   * @param includeProjectPackageRoot descriptor 是否保留既有的同工程 package 根登记语义。
+   */
+  const addWatchedModule = async (modulePath: string, includeProjectPackageRoot = false): Promise<void> => {
+    /** 模块的规范逻辑路径，用于保留 symlink 入口变化。 */
+    const resolvedPath = path.resolve(modulePath);
+    /** 模块的真实路径，用于跟随 pnpm/workspace 符号链接。 */
+    const realPath = await fs.realpath(resolvedPath).catch(() => resolvedPath);
+    if (isJitiTemporaryPath(resolvedPath)
+      || isJitiTemporaryPath(realPath)
+      || isInside(config.outDir, resolvedPath)
+      || isInside(config.outDir, realPath)) {
+      return;
+    }
+    watchFiles.add(resolvedPath);
+    watchFiles.add(realPath);
+    if (isInside(projectRealRoot, realPath) && !includeProjectPackageRoot)
+      return;
+    /** 工程外依赖以最近 package 根递归监听，覆盖同包内未经过 transform 的原生依赖。 */
+    const packageRoot = await nearestPackageRoot(realPath);
+    if (packageRoot !== projectRealRoot && !isInside(config.outDir, packageRoot))
+      watchRoots.add(packageRoot);
+  };
+  /** 配置入口执行完成后，transform 集合已包含其实际 TypeScript/CJS import closure。 */
+  for (const modulePath of transformedFiles)
+    await addWatchedModule(modulePath);
   return {
     config,
     watchFiles,
     watchRoots,
     /** loadTypeScriptModule 提供当前对象协议要求的回调实现。 */ loadTypeScriptModule: async (modulePath) => {
-      /** descriptor 的逻辑绝对路径，用于保留符号链接入口的变化事件。 */
-      const resolvedPath = path.resolve(modulePath);
-      /** descriptor 的真实路径，用于 pnpm 符号链接后的包源码监听。 */
-      const realPath = await fs.realpath(resolvedPath).catch(() => resolvedPath);
-      watchFiles.add(resolvedPath);
-      watchFiles.add(realPath);
-      /** descriptor 所属包根；工程自身无需绕过 node_modules 忽略规则。 */
-      const packageRoot = await nearestPackageRoot(realPath);
-      if (packageRoot !== projectRealRoot)
-        watchRoots.add(packageRoot);
-      return importDefault(jiti, modulePath);
+      await addWatchedModule(modulePath, true);
+      /** descriptor 执行可能继续扩展 transform closure。 */
+      const result = await importDefault(jiti, modulePath);
+      for (const transformedPath of transformedFiles)
+        await addWatchedModule(transformedPath);
+      return result;
     },
   };
 }
