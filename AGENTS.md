@@ -2,10 +2,10 @@
 
 ## 项目定位
 
-acplugin 是统一的 AI Plugin 框架和 CLI。作者通过规范化工程书写 Commands、Skills、Agents，以及可选 Hooks/MCP；框架默认构建 Claude Code 与 Codex，并可显式构建 Cursor、Antigravity、OpenCode 和 Pi 交付产物。
+acplugin 是统一的 AI Plugin 框架和 CLI。作者通过规范化工程书写 Commands、Skills、Agents，以及可选 Hooks/MCP；`init` 默认生成显式安装 Claude Code 与 Codex Platform 的工程，使用者也可安装 Cursor、Antigravity、OpenCode、Pi 或任意第三方 Platform。
 
-- 公开包：`@tokenroll/acplugin`、`@tokenroll/acplugin-extension-hooks`、`@tokenroll/acplugin-extension-mcp`
-- 私有包：Core、六个内置 Platform、内部 Test workspace
+- 公开包：`@tokenroll/acplugin`、六个 `@tokenroll/acplugin-platform-*`、`@tokenroll/acplugin-extension-hooks`、`@tokenroll/acplugin-extension-mcp`
+- 私有包：Core、内部 Test workspace
 - 不提供 Instructions Component
 - 旧 Claude 工程/Plugin 的导入仅属于隔离的 Migration 子系统
 
@@ -24,7 +24,7 @@ acplugin 是统一的 AI Plugin 框架和 CLI。作者通过规范化工程书�
 packages/
 ├── acplugin/               # 公开 CLI/facade，内含隔离 Migration
 ├── core/                   # 私有配置、扫描、生命周期、Artifact、事务
-├── platforms/              # 六个独立私有 Platform 实现包
+├── platforms/              # 六个独立公开 Platform 实现包
 │   ├── claude-code/
 │   ├── codex/
 │   ├── cursor/
@@ -37,7 +37,7 @@ packages/
 └── test/                   # 私有跨包 Vitest 集成测试
 ```
 
-`@tokenroll/acplugin` 构建时必须 bundle Core 和六个私有 Platform。任何公开 tarball 的运行时依赖都不得出现 `@acplugin/*`。Hooks/MCP Extension 通过 `workspace:^` peer 开发边，在 pack 后必须变为正常 `^x.y.z`。
+`@tokenroll/acplugin` 构建时必须 bundle Core，但不得 bundle 或重新导出官方 Platform/Extension。六个官方 Platform 与 Hooks/MCP Extension 都只能从主包公开 SDK 导入契约，并通过 `workspace:^` peer 开发边连接主包；pack 后必须变为正常 `^x.y.z`。任何公开 tarball 的运行时依赖都不得出现 `@acplugin/*`。
 
 ## 统一构建架构
 
@@ -124,12 +124,12 @@ pnpm run release:verify
 
 ## 发行
 
-- 三个公开包统一版本，由 Changesets fixed group 管理。
+- 九个公开包由 Changesets 独立版本化；兼容性由 lifecycle `apiVersion` 和主包 peer range 表达，不使用 fixed group。
 - `Check` Workflow 在 PR 上自动执行 lint 和 typecheck。
-- `Patch` Workflow 只能手工触发；从默认分支选择目标分支，在写版本前确认至少一个有效 Changeset 会升级公开包，再消费 Changesets、生成 changelog、升级固定公开包版本，并创建回到该目标分支的版本 PR。
+- `Patch` Workflow 只能手工触发；从默认分支选择目标分支，在写版本前确认至少一个有效 Changeset 会升级公开包，再消费 Changesets、生成 changelog、升级各自声明的公开包版本，并创建回到该目标分支的版本 PR。
 - 所有版本均由维护者从已验证 tarball 手工发布；仓库不得添加 Tag/npm 自动发布 Workflow。
-- 手工发布顺序：Hooks Extension → MCP Extension → 主包；每一步都要验证 Registry 精确版本。
-- 三个 npm 版本全部存在后，再由维护者手工创建 `tokenroll-vX.Y.Z` Tag 和 GitHub Release。
+- 每个变更的公开包都要验证 Registry 精确版本；依赖新的主包 peer range 时先发布主包，再发布对应 Platform/Extension。
+- 对应 npm 版本存在后，再由维护者手工创建该版本的 Tag 和 GitHub Release。
 - 禁止自动 publish/unpublish、修改 dist-tag、创建 Tag 或 GitHub Release，除非用户明确要求执行对应操作。
 
 ## Git 与改动安全

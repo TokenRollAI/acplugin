@@ -11,7 +11,7 @@ acplugin is a canonical AI Plugin framework and CLI. Authors write Commands, Ski
 ## Guides
 
 - [Using acplugin](guides/usage.md) · [使用 acplugin](guides/usage.zh-CN.md) — scaffold, author, validate, build, and migrate.
-- [Release guide](guides/release.md) · [手动发布指南](guides/release.zh-CN.md) — fixed public cohort verification and fully manual publishing.
+- [Release guide](guides/release.md) · [手动发布指南](guides/release.zh-CN.md) — independent public-package verification and fully manual publishing.
 - [中文代码注释规范](guides/commenting.zh-CN.md) — 中文声明注释、关键逻辑注释与自动守卫规则。
 
 ## Architecture
@@ -20,6 +20,7 @@ acplugin is a canonical AI Plugin framework and CLI. Authors write Commands, Ski
 - [ADR-0001: lifecycle determinism and cache](architecture/decisions/0001-lifecycle-determinism-and-cache.md) · [ADR-0001：生命周期确定性与缓存](architecture/decisions/0001-lifecycle-determinism-and-cache.zh-CN.md)
 - [ADR-0002: Extension contribution order](architecture/decisions/0002-extension-contribution-order.md) · [ADR-0002：Extension 贡献顺序](architecture/decisions/0002-extension-contribution-order.zh-CN.md)
 - [ADR-0003: Node toolchain and runtime support](architecture/decisions/0003-node-toolchain-and-runtime-support.md) · [ADR-0003：Node 工具链与运行时支持](architecture/decisions/0003-node-toolchain-and-runtime-support.zh-CN.md)
+- [ADR-0004: first-class Platform packages](architecture/decisions/0004-first-class-platform-packages.md) · [ADR-0004：Platform 是一等独立生态包](architecture/decisions/0004-first-class-platform-packages.zh-CN.md)
 
 ## Reference
 
