@@ -204,7 +204,7 @@ function lifecycleConfig(
     platforms,
     extensions,
     build: { strict },
-  }, path.join(root, 'acplugin.config.ts'), command, 'production', { defaultPlatforms: platforms });
+  }, path.join(root, 'acplugin.config.ts'), command, 'production');
   expect(resolved.diagnostics).toEqual([]);
   return resolved.config!;
 }

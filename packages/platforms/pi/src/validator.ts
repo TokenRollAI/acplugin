@@ -1,6 +1,6 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
-import type { JsonValue, PlatformValidateContext } from '@acplugin/core';
+import type { JsonValue, PlatformValidateContext } from '@tokenroll/acplugin';
 import { PACKAGE_MANIFEST_PATH } from './manifest.js';
 
 /** acplugin 允许写入 Pi package.json 的固定根字段。 */

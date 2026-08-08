@@ -5,7 +5,7 @@ import {
   type DraftDocument,
   type JsonObject,
   type PlatformPrepareContext,
-} from '@acplugin/core';
+} from '@tokenroll/acplugin';
 import { hasComponents } from './components.js';
 import type { CursorPlatformOptions, CursorPluginManifest } from './types.js';
 

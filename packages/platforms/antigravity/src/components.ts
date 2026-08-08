@@ -6,7 +6,7 @@ import {
   type PlatformGenerateContext,
   type PlatformPrepareContext,
   type PluginProject,
-} from '@acplugin/core';
+} from '@tokenroll/acplugin';
 
 /** Antigravity 1.0 暂不开放未经官方文档确认的 Component 专属字段。 */
 const COMPONENT_FIELDS = new Set<string>();

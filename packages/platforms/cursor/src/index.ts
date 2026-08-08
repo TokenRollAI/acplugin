@@ -1,4 +1,4 @@
-import { definePlatform, type AcpluginPlatform, type JsonObject } from '@acplugin/core';
+import { definePlatform, type AcpluginPlatform, type JsonObject } from '@tokenroll/acplugin';
 import { generateComponentArtifacts, validateCursorComponentFields } from './components.js';
 import { createManifestDocument, serializeDocuments, validatePlatformOptions } from './manifest.js';
 import type { CursorPlatformOptions } from './types.js';
@@ -45,3 +45,5 @@ export function cursor(options: CursorPlatformOptions = {}): AcpluginPlatform {
     validateBundle: validateCursorBundle,
   });
 }
+
+export default cursor;

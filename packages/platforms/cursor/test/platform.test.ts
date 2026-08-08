@@ -64,7 +64,7 @@ function resolvedConfig(root: string, logo = './assets/logo.svg'): ResolvedConfi
       tags: ['release', 'automation'],
       minClientVersions: { cursor: '1.2.3' },
     })],
-  }, path.join(root, 'acplugin.config.ts'), 'build', 'production', { defaultPlatforms: [cursor()] });
+  }, path.join(root, 'acplugin.config.ts'), 'build', 'production');
   expect(result.diagnostics).toEqual([]);
   return result.config!;
 }

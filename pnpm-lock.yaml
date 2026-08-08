@@ -41,6 +41,9 @@ importers:
       '@tokenroll/acplugin-extension-mcp':
         specifier: workspace:^
         version: link:packages/extensions/mcp
+      '@tokenroll/acplugin-platform-claude-code':
+        specifier: workspace:^
+        version: link:packages/platforms/claude-code
       '@types/node':
         specifier: 'catalog:'
         version: 20.19.43
@@ -114,24 +117,6 @@ importers:
       '@acplugin/core':
         specifier: workspace:*
         version: link:../core
-      '@acplugin/platform-antigravity':
-        specifier: workspace:*
-        version: link:../platforms/antigravity
-      '@acplugin/platform-claude-code':
-        specifier: workspace:*
-        version: link:../platforms/claude-code
-      '@acplugin/platform-codex':
-        specifier: workspace:*
-        version: link:../platforms/codex
-      '@acplugin/platform-cursor':
-        specifier: workspace:*
-        version: link:../platforms/cursor
-      '@acplugin/platform-opencode':
-        specifier: workspace:*
-        version: link:../platforms/opencode
-      '@acplugin/platform-pi':
-        specifier: workspace:*
-        version: link:../platforms/pi
       '@types/node':
         specifier: 'catalog:'
         version: 20.19.43
@@ -227,11 +212,13 @@ importers:
         version: 4.1.10(@types/node@20.19.43)(vite@7.3.6(@types/node@20.19.43)(jiti@2.7.0)(yaml@2.9.0))
 
   packages/platforms/antigravity:
-    dependencies:
+    devDependencies:
       '@acplugin/core':
         specifier: workspace:*
         version: link:../../core
-    devDependencies:
+      '@tokenroll/acplugin':
+        specifier: workspace:^
+        version: link:../../acplugin
       '@types/node':
         specifier: 'catalog:'
         version: 20.19.43
@@ -246,11 +233,13 @@ importers:
         version: 4.1.10(@types/node@20.19.43)(vite@7.3.6(@types/node@20.19.43)(jiti@2.7.0)(yaml@2.9.0))
 
   packages/platforms/claude-code:
-    dependencies:
+    devDependencies:
       '@acplugin/core':
         specifier: workspace:*
         version: link:../../core
-    devDependencies:
+      '@tokenroll/acplugin':
+        specifier: workspace:^
+        version: link:../../acplugin
       '@types/node':
         specifier: 'catalog:'
         version: 20.19.43
@@ -266,9 +255,6 @@ importers:
 
   packages/platforms/codex:
     dependencies:
-      '@acplugin/core':
-        specifier: workspace:*
-        version: link:../../core
       image-size:
         specifier: ^2.0.2
         version: 2.0.2
@@ -279,6 +265,12 @@ importers:
         specifier: ^2.9.0
         version: 2.9.0
     devDependencies:
+      '@acplugin/core':
+        specifier: workspace:*
+        version: link:../../core
+      '@tokenroll/acplugin':
+        specifier: workspace:^
+        version: link:../../acplugin
       '@types/node':
         specifier: 'catalog:'
         version: 20.19.43
@@ -293,11 +285,13 @@ importers:
         version: 4.1.10(@types/node@20.19.43)(vite@7.3.6(@types/node@20.19.43)(jiti@2.7.0)(yaml@2.9.0))
 
   packages/platforms/cursor:
-    dependencies:
+    devDependencies:
       '@acplugin/core':
         specifier: workspace:*
         version: link:../../core
-    devDependencies:
+      '@tokenroll/acplugin':
+        specifier: workspace:^
+        version: link:../../acplugin
       '@types/node':
         specifier: 'catalog:'
         version: 20.19.43
@@ -312,11 +306,13 @@ importers:
         version: 4.1.10(@types/node@20.19.43)(vite@7.3.6(@types/node@20.19.43)(jiti@2.7.0)(yaml@2.9.0))
 
   packages/platforms/opencode:
-    dependencies:
+    devDependencies:
       '@acplugin/core':
         specifier: workspace:*
         version: link:../../core
-    devDependencies:
+      '@tokenroll/acplugin':
+        specifier: workspace:^
+        version: link:../../acplugin
       '@types/node':
         specifier: 'catalog:'
         version: 20.19.43
@@ -331,11 +327,13 @@ importers:
         version: 4.1.10(@types/node@20.19.43)(vite@7.3.6(@types/node@20.19.43)(jiti@2.7.0)(yaml@2.9.0))
 
   packages/platforms/pi:
-    dependencies:
+    devDependencies:
       '@acplugin/core':
         specifier: workspace:*
         version: link:../../core
-    devDependencies:
+      '@tokenroll/acplugin':
+        specifier: workspace:^
+        version: link:../../acplugin
       '@types/node':
         specifier: 'catalog:'
         version: 20.19.43
@@ -363,6 +361,24 @@ importers:
       '@tokenroll/acplugin-extension-mcp':
         specifier: workspace:*
         version: link:../extensions/mcp
+      '@tokenroll/acplugin-platform-antigravity':
+        specifier: workspace:*
+        version: link:../platforms/antigravity
+      '@tokenroll/acplugin-platform-claude-code':
+        specifier: workspace:*
+        version: link:../platforms/claude-code
+      '@tokenroll/acplugin-platform-codex':
+        specifier: workspace:*
+        version: link:../platforms/codex
+      '@tokenroll/acplugin-platform-cursor':
+        specifier: workspace:*
+        version: link:../platforms/cursor
+      '@tokenroll/acplugin-platform-opencode':
+        specifier: workspace:*
+        version: link:../platforms/opencode
+      '@tokenroll/acplugin-platform-pi':
+        specifier: workspace:*
+        version: link:../platforms/pi
     devDependencies:
       '@types/node':
         specifier: 'catalog:'

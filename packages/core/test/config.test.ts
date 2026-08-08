@@ -30,8 +30,11 @@ function platform(id: string, strict?: boolean): AcpluginPlatform {
   });
 }
 
-/** Core 配置测试模拟主包注入的默认 Platform 工厂结果。 */
+/** Core 配置测试使用的显式 Platform 工厂结果。 */
 const defaults = [platform('claude-code'), platform('codex')];
+
+/** 允许运行时覆盖必填字段以验证缺失配置诊断的测试输入。 */
+type UserConfigInput = Omit<UserConfig, 'platforms'> & { readonly platforms?: UserConfig['platforms'] };
 
 /**
  * 使用固定工程根和默认 Platform 解析配置。
@@ -39,8 +42,8 @@ const defaults = [platform('claude-code'), platform('codex')];
  * @param value 最终 acplugin.config.ts 对象。
  * @returns Core 的配置或诊断结果。
  */
-function resolve(value: UserConfig): ReturnType<typeof resolveConfig> {
-  return resolveConfig(value, path.join('/project', 'acplugin.config.ts'), 'build', 'production', { defaultPlatforms: defaults });
+function resolve(value: UserConfigInput): ReturnType<typeof resolveConfig> {
+  return resolveConfig(value as UserConfig, path.join('/project', 'acplugin.config.ts'), 'build', 'production');
 }
 
 describe('final configuration schema', () => {
@@ -84,19 +87,27 @@ describe('final configuration schema', () => {
     expect(result.config?.public.copy).toEqual([{ from: 'shared', to: 'shared' }]);
   });
 
-  it('injects defaults only when platforms is omitted and applies build strictness', () => {
-    /** 省略 platforms 且关闭全局 strict 的配置结果。 */
+  it('requires explicit platforms and applies build strictness', () => {
+    /** 显式配置 Platform 且关闭全局 strict 的配置结果。 */
     const result = resolve({
       name: 'default-platforms',
       version: '1.0.0',
       description: 'Default Platforms.',
+      platforms: defaults,
       build: { strict: false },
+    });
+    /** 完全省略 Platform 时必须返回稳定的必填诊断。 */
+    const missing = resolve({
+      name: 'missing-platforms',
+      version: '1.0.0',
+      description: 'Missing Platforms.',
     });
 
     expect(result.config?.platforms.map(item => ({ id: item.platform.id, strict: item.strict }))).toEqual([
       { id: 'claude-code', strict: false },
       { id: 'codex', strict: false },
     ]);
+    expect(missing.diagnostics).toContainEqual(expect.objectContaining({ code: 'CONFIG_PLATFORMS_REQUIRED' }));
   });
 
   it('rejects empty, duplicate, forged, and API-incompatible Platform instances', () => {
@@ -186,6 +197,7 @@ describe('final configuration schema', () => {
       name: 'portable-public',
       version: '1.0.0',
       description: 'Portable Public targets.',
+      platforms: defaults,
       public: { copy: [{ from: 'source\\logo.svg', to: 'assets\\logo.svg' }] },
     });
 

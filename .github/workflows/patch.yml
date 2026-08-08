@@ -62,17 +62,58 @@ jobs:
           }
           NODE
 
-      - name: Consume Changesets and bump the fixed cohort
+      - name: Consume Changesets and bump independent packages
         shell: bash
         run: |
           set -euo pipefail
-          before_version="$(node -p "require('./packages/acplugin/package.json').version")"
+          before_file="$(mktemp)"
+          after_file="$(mktemp)"
+          node - "$before_file" <<'NODE'
+          const fs = require('node:fs')
+          const paths = [
+            'packages/acplugin/package.json',
+            'packages/platforms/claude-code/package.json',
+            'packages/platforms/codex/package.json',
+            'packages/platforms/cursor/package.json',
+            'packages/platforms/antigravity/package.json',
+            'packages/platforms/opencode/package.json',
+            'packages/platforms/pi/package.json',
+            'packages/extensions/hooks/package.json',
+            'packages/extensions/mcp/package.json',
+          ]
+          fs.writeFileSync(process.argv[2], JSON.stringify(Object.fromEntries(paths.map(file => {
+            const manifest = require(`./${file}`)
+            return [manifest.name, manifest.version]
+          }))))
+          NODE
           pnpm version-packages
-          after_version="$(node -p "require('./packages/acplugin/package.json').version")"
-          if [[ "$before_version" == "$after_version" ]]; then
-            echo "::error::The Changesets did not bump the public package cohort."
-            exit 1
-          fi
+          node - "$after_file" <<'NODE'
+          const fs = require('node:fs')
+          const paths = [
+            'packages/acplugin/package.json',
+            'packages/platforms/claude-code/package.json',
+            'packages/platforms/codex/package.json',
+            'packages/platforms/cursor/package.json',
+            'packages/platforms/antigravity/package.json',
+            'packages/platforms/opencode/package.json',
+            'packages/platforms/pi/package.json',
+            'packages/extensions/hooks/package.json',
+            'packages/extensions/mcp/package.json',
+          ]
+          fs.writeFileSync(process.argv[2], JSON.stringify(Object.fromEntries(paths.map(file => {
+            const manifest = require(`./${file}`)
+            return [manifest.name, manifest.version]
+          }))))
+          NODE
+          node - "$before_file" "$after_file" <<'NODE'
+          const fs = require('node:fs')
+          const before = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'))
+          const after = JSON.parse(fs.readFileSync(process.argv[3], 'utf8'))
+          if (!Object.keys(after).some(name => before[name] !== after[name])) {
+            console.error('::error::The Changesets did not bump any public package.')
+            process.exit(1)
+          }
+          NODE
           pnpm install --lockfile-only
 
       - run: pnpm run lint
@@ -89,7 +130,7 @@ jobs:
           commit-message: "chore(release): version packages"
           title: "chore(release): version packages"
           body: |
-            Consumes the Changesets from `${{ inputs.target_branch }}` and updates the fixed public package cohort versions and changelogs.
+            Consumes the Changesets from `${{ inputs.target_branch }}` and updates the independently versioned public packages and changelogs.
 
             This pull request does not publish packages, create tags, or create a GitHub Release.
 

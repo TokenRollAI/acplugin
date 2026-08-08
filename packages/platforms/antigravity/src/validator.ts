@@ -1,6 +1,6 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
-import type { PlatformValidateContext } from '@acplugin/core';
+import type { PlatformValidateContext } from '@tokenroll/acplugin';
 import { PLUGIN_MANIFEST_PATH } from './manifest.js';
 
 /**

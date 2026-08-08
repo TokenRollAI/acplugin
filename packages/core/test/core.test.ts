@@ -36,8 +36,11 @@ function testPlatform(id: string): AcpluginPlatform {
   });
 }
 
-/** Core 测试模拟主包注入的两个默认 Platform。 */
-const defaultPlatforms = [testPlatform('claude-code'), testPlatform('codex')];
+/** Core 综合测试使用的两个显式 Platform。 */
+const testPlatforms = [testPlatform('claude-code'), testPlatform('codex')];
+
+/** 综合测试允许省略 Platform，并由测试辅助函数显式补入固定实例。 */
+type CoreTestConfig = Omit<UserConfig, 'platforms'> & { readonly platforms?: UserConfig['platforms'] };
 
 /**
  * 使用测试默认 Platform 调用最终 Core 配置解析器。
@@ -48,8 +51,8 @@ const defaultPlatforms = [testPlatform('claude-code'), testPlatform('codex')];
  * @param mode 当前运行模式。
  * @returns 最终配置或稳定诊断。
  */
-function resolveConfig(value: UserConfig, configPath: string, command: BuildCommand, mode: BuildMode): ReturnType<typeof resolveCoreConfig> {
-  return resolveCoreConfig(value, configPath, command, mode, { defaultPlatforms });
+function resolveConfig(value: CoreTestConfig, configPath: string, command: BuildCommand, mode: BuildMode): ReturnType<typeof resolveCoreConfig> {
+  return resolveCoreConfig({ platforms: testPlatforms, ...value } as UserConfig, configPath, command, mode);
 }
 
 /**
@@ -69,7 +72,7 @@ afterEach(async () => {
 });
 
 describe('config', () => {
-  it('normalizes the default platforms and directories', async () => {
+  it('normalizes configured platforms and directories', async () => {
     /** 默认配置解析使用的空工程根目录。 */
     const root = await temporaryProject();
     /** 使用最小用户配置得到的解析结果。 */
@@ -139,10 +142,10 @@ describe('config', () => {
 
     expect(result.config).toBeUndefined();
     expect(result.diagnostics).toContainEqual(expect.objectContaining({
-      code: 'CONFIG_LEGACY_TARGETS', hint: 'Use platforms: [claudeCode(), codex()] instead.',
+      code: 'CONFIG_LEGACY_TARGETS', hint: 'Use platforms: [myPlatform()] instead.',
     }));
     expect(result.diagnostics).toContainEqual(expect.objectContaining({
-      code: 'CONFIG_LEGACY_MODULES', hint: 'Use extensions: [hooks(), mcp()] instead.',
+      code: 'CONFIG_LEGACY_MODULES', hint: 'Use extensions: [myExtension()] instead.',
     }));
   });
 });

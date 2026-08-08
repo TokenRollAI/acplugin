@@ -551,7 +551,7 @@ export function createCli(): Command {
   /** 注册全局元数据和错误处理策略的 CLI 根命令。 */
   const program = new Command()
     .name('acplugin')
-    .description('Build canonical AI plugin deliveries for six platforms')
+    .description('Build canonical AI plugin deliveries for configured Platforms')
     .version(ACPLUGIN_VERSION)
     .showHelpAfterError()
     .exitOverride();
@@ -563,7 +563,7 @@ export function createCli(): Command {
     .option('--name <name>', 'Plugin machine name')
     .option('--display-name <name>', 'Plugin display name')
     .option('--description <description>', 'Plugin description')
-    .option('--platform <platforms...>', 'Select one or more official Platforms')
+    .option('--platform <platforms...>', 'Select one or more configured Platforms')
     .option('--hooks', 'Enable the official Hooks Extension')
     .option('--mcp', 'Enable the official MCP Extension')
     .option('--install', 'Run pnpm install after scaffolding')

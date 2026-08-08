@@ -15,6 +15,11 @@ const extensionEntry = path.join(repositoryRoot, 'packages/extensions/mcp/dist/i
 /** 测试子进程直接加载的主包构建产物。 */
 const acpluginEntry = path.join(repositoryRoot, 'packages/acplugin/dist/index.mjs');
 
+/** MCP 生命周期测试显式配置的两个独立 Platform 构建入口。 */
+const claudeCodeEntry = path.join(repositoryRoot, 'packages/platforms/claude-code/dist/index.mjs');
+/** MCP 生命周期测试显式配置的 Codex Platform 构建入口。 */
+const codexEntry = path.join(repositoryRoot, 'packages/platforms/codex/dist/index.mjs');
+
 /** 当前测试创建并在 afterEach 中统一删除的临时工程。 */
 const temporaryRoots: string[] = [];
 
@@ -225,10 +230,13 @@ process.stdin.on('data', (chunk) => {
   }
   await fs.writeFile(path.join(root, 'acplugin.config.ts'), `
 import mcp from '@tokenroll/acplugin-extension-mcp';
+import claudeCode from ${JSON.stringify(claudeCodeEntry)};
+import codex from ${JSON.stringify(codexEntry)};
 export default {
   name: 'mcp-fixture',
   version: '1.0.0',
   description: 'MCP integration fixture.',
+  platforms: [claudeCode(), codex()],
   extensions: [mcp(${options.mcpOptions ?? ''})],
   ${options.configFields ?? 'build: { strict: false },'}
 };

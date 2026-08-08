@@ -6,6 +6,15 @@ import { afterEach, describe, expect, it } from 'vitest';
 
 /** 构建后 CLI 入口的绝对路径，用于真实子进程契约测试。 */
 const cli = path.resolve(import.meta.dirname, '../../acplugin/dist/cli.mjs');
+/** CLI 子进程配置显式加载的两个独立 Platform 构建入口。 */
+const claudeCodeEntry = path.resolve(import.meta.dirname, '../../platforms/claude-code/dist/index.mjs');
+/** CLI 子进程配置加载的 Codex Platform 构建入口。 */
+const codexEntry = path.resolve(import.meta.dirname, '../../platforms/codex/dist/index.mjs');
+/** 所有有效 CLI fixture 共用的独立 Platform 导入源码。 */
+const platformImports = `import claudeCode from ${JSON.stringify(claudeCodeEntry)};
+import codex from ${JSON.stringify(codexEntry)};`;
+/** 所有有效 CLI fixture 共用的显式 Platform 字段。 */
+const platformField = 'platforms: [claudeCode(), codex()],';
 /** 当前测试创建并在 afterEach 中统一删除的临时工程目录。 */
 const roots: string[] = [];
 /** 尚未退出的 CLI 子进程，失败清理时会被强制终止。 */
@@ -141,10 +150,12 @@ async function waitForOutput(
  */
 async function writeValidProject(root: string): Promise<void> {
   await fs.mkdir(path.join(root, 'src/skills/hello'), { recursive: true });
-  await fs.writeFile(path.join(root, 'acplugin.config.ts'), `export default {
+  await fs.writeFile(path.join(root, 'acplugin.config.ts'), `${platformImports}
+export default {
   name: 'cli-plugin',
   version: '1.0.0',
   description: 'CLI fixture.',
+  ${platformField}
 };\n`);
   await fs.writeFile(path.join(root, 'src/skills/hello/SKILL.md'), `---
 description: Say hello.
@@ -350,8 +361,9 @@ Say hello after recovery.
     await fs.mkdir(helperRoot, { recursive: true });
     await fs.writeFile(path.join(helperRoot, 'package.json'), '{"name":"shared-config","type":"module"}\n');
     await fs.writeFile(helper, `export const description = 'First external config.';\n`);
-    await fs.writeFile(path.join(root, 'acplugin.config.ts'), `import { description } from '../shared-config/value.ts';
-export default { name: 'external-config-plugin', version: '1.0.0', description };
+    await fs.writeFile(path.join(root, 'acplugin.config.ts'), `${platformImports}
+import { description } from '../shared-config/value.ts';
+export default { name: 'external-config-plugin', version: '1.0.0', description, ${platformField} };
 `);
     await fs.writeFile(path.join(root, 'src/skills/hello/SKILL.md'), `---
 description: Verify external config watching.
@@ -392,7 +404,7 @@ Watch the external helper.
     const skill = path.join(root, 'src/skills/hello/SKILL.md');
     /** 构造同步 Extension 时与 CLI Bundle 共享品牌 Symbol 的已构建 Facade。 */
     const facade = path.resolve(import.meta.dirname, '../../acplugin/dist/index.mjs');
-    await fs.writeFile(path.join(root, 'acplugin.config.ts'), `
+    await fs.writeFile(path.join(root, 'acplugin.config.ts'), `${platformImports}
 import { promises as fs } from 'node:fs';
 import { defineExtension } from ${JSON.stringify(facade)};
 const barrier = defineExtension({
@@ -409,6 +421,7 @@ const barrier = defineExtension({
   },
 });
 export default {
+  ${platformField}
   name: 'cli-plugin',
   version: '1.0.0',
   description: 'Initial ready fixture.',
@@ -454,7 +467,8 @@ First recovered build.
     await waitForOutput(running, (_stdout, stderr) => stderr.includes('CONFIG_LOAD_FAILED'), 'initial missing configuration failure');
     /** 构造恢复同步 Extension 时与 CLI Bundle 共享品牌 Symbol 的已构建 Facade。 */
     const facade = path.resolve(import.meta.dirname, '../../acplugin/dist/index.mjs');
-    await fs.writeFile(path.join(root, 'acplugin.config.ts'), `import { promises as fs } from 'node:fs';
+    await fs.writeFile(path.join(root, 'acplugin.config.ts'), `${platformImports}
+import { promises as fs } from 'node:fs';
 import { defineExtension } from ${JSON.stringify(facade)};
 const barrier = defineExtension({
   name: 'dynamic-ready-barrier',
@@ -470,6 +484,7 @@ const barrier = defineExtension({
   },
 });
 export default {
+  ${platformField}
   name: 'recovered-plugin',
   version: '1.0.0',
   description: 'Recovered CLI fixture.',
@@ -517,7 +532,8 @@ Third watched build.
     await fs.writeFile(descriptor, `export default 'initial-stopping-extension';\n`);
     /** 构造初始延迟 Extension 时与 CLI Bundle 共享品牌 Symbol 的已构建 Facade。 */
     const facade = path.resolve(import.meta.dirname, '../../acplugin/dist/index.mjs');
-    await fs.writeFile(path.join(root, 'acplugin.config.ts'), `import { defineExtension } from ${JSON.stringify(facade)};
+    await fs.writeFile(path.join(root, 'acplugin.config.ts'), `${platformImports}
+import { defineExtension } from ${JSON.stringify(facade)};
 process.stderr.write('fixture: initial dev build started\\n');
 const extension = defineExtension({
   name: 'initial-stopping-extension',
@@ -530,6 +546,7 @@ const extension = defineExtension({
   },
 });
 export default {
+  ${platformField}
   name: 'cli-plugin',
   version: '1.0.0',
   description: 'Initial signal cleanup fixture.',
@@ -565,7 +582,8 @@ export default {
     await waitForOutput(running, stdout => stdout.includes('dev: success'), 'initial signal fixture build');
     /** 构造延迟 Extension 时与 CLI Bundle 共享品牌 Symbol 的已构建 Facade。 */
     const facade = path.resolve(import.meta.dirname, '../../acplugin/dist/index.mjs');
-    await fs.writeFile(path.join(root, 'acplugin.config.ts'), `import { defineExtension } from ${JSON.stringify(facade)};
+    await fs.writeFile(path.join(root, 'acplugin.config.ts'), `${platformImports}
+import { defineExtension } from ${JSON.stringify(facade)};
 process.stderr.write('fixture: dynamic rebuild started\\n');
 const extension = defineExtension({
   name: 'stopping-extension',
@@ -578,6 +596,7 @@ const extension = defineExtension({
   },
 });
 export default {
+  ${platformField}
   name: 'cli-plugin',
   version: '1.0.0',
   description: 'Signal cleanup fixture.',
@@ -609,7 +628,8 @@ export default {
     await fs.writeFile(descriptor, `import { value } from './helper.ts';\nexport default value;\n`);
     /** 构造 Extension 时必须与 CLI Bundle 共享品牌 Symbol 的已构建 Facade。 */
     const facade = path.resolve(import.meta.dirname, '../../acplugin/dist/index.mjs');
-    await fs.writeFile(path.join(root, 'acplugin.config.ts'), `import { defineExtension } from ${JSON.stringify(facade)};
+    await fs.writeFile(path.join(root, 'acplugin.config.ts'), `${platformImports}
+import { defineExtension } from ${JSON.stringify(facade)};
 const extension = defineExtension({
   name: 'dev-extension',
   apiVersion: '1',
@@ -620,6 +640,7 @@ const extension = defineExtension({
   },
 });
 export default {
+  ${platformField}
   name: 'cli-plugin',
   version: '1.0.0',
   description: 'CLI fixture.',
@@ -649,7 +670,7 @@ export default {
     await fs.writeFile(helper, 'first\n');
     /** 构造测试 Extension 时与 CLI Bundle 共享品牌 Symbol 的已构建 Facade。 */
     const facade = path.resolve(import.meta.dirname, '../../acplugin/dist/index.mjs');
-    await fs.writeFile(path.join(root, 'acplugin.config.ts'), `
+    await fs.writeFile(path.join(root, 'acplugin.config.ts'), `${platformImports}
 import { promises as fs } from 'node:fs';
 import { defineExtension } from ${JSON.stringify(facade)};
 const extension = defineExtension({
@@ -665,6 +686,7 @@ const extension = defineExtension({
   },
 });
 export default {
+  ${platformField}
   name: 'cli-plugin',
   version: '1.0.0',
   description: 'Build graph watch fixture.',
@@ -741,9 +763,10 @@ process.stdin.on('data', (chunk) => {
   }
 });
 `);
-    await fs.writeFile(path.join(root, 'acplugin.config.ts'), `
+    await fs.writeFile(path.join(root, 'acplugin.config.ts'), `${platformImports}
 import mcp from '@tokenroll/acplugin-extension-mcp';
 export default {
+  ${platformField}
   name: 'mcp-watch-plugin',
   version: '1.0.0',
   description: 'MCP bundle watch fixture.',
@@ -785,7 +808,8 @@ First custom source build.
     await fs.writeFile(descriptor, `export default 'local';\n`);
     /** 构造本地 Extension 时与 CLI Bundle 共享品牌 Symbol 的已构建 Facade。 */
     const facade = path.resolve(import.meta.dirname, '../../acplugin/dist/index.mjs');
-    await fs.writeFile(path.join(root, 'acplugin.config.ts'), `import { defineExtension } from ${JSON.stringify(facade)};
+    await fs.writeFile(path.join(root, 'acplugin.config.ts'), `${platformImports}
+import { defineExtension } from ${JSON.stringify(facade)};
 const extension = defineExtension({
   name: 'local-extension',
   apiVersion: '1',
@@ -796,6 +820,7 @@ const extension = defineExtension({
   },
 });
 export default {
+  ${platformField}
   name: 'custom-source-plugin',
   version: '1.0.0',
   description: 'Custom source fixture.',

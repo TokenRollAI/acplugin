@@ -19,9 +19,13 @@ export default defineConfig({
   resolve: {
     alias: {
       '@acplugin/core': workspaceSource('../core/src/index.ts'),
-      '@tokenroll/acplugin/platforms/claude-code': workspaceSource('../acplugin/src/platforms/claude-code.ts'),
-      '@tokenroll/acplugin/platforms/codex': workspaceSource('../acplugin/src/platforms/codex.ts'),
       '@tokenroll/acplugin': workspaceSource('../acplugin/src/index.ts'),
+      '@tokenroll/acplugin-platform-antigravity': workspaceSource('../platforms/antigravity/src/index.ts'),
+      '@tokenroll/acplugin-platform-claude-code': workspaceSource('../platforms/claude-code/src/index.ts'),
+      '@tokenroll/acplugin-platform-codex': workspaceSource('../platforms/codex/src/index.ts'),
+      '@tokenroll/acplugin-platform-cursor': workspaceSource('../platforms/cursor/src/index.ts'),
+      '@tokenroll/acplugin-platform-opencode': workspaceSource('../platforms/opencode/src/index.ts'),
+      '@tokenroll/acplugin-platform-pi': workspaceSource('../platforms/pi/src/index.ts'),
       '@tokenroll/acplugin-extension-mcp': workspaceSource('../extensions/mcp/src/index.ts'),
     },
   },

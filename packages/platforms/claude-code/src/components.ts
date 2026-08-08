@@ -7,7 +7,7 @@ import {
   type PlatformComponentValidationContext,
   type PlatformGenerateContext,
   type PluginProject,
-} from '@acplugin/core';
+} from '@tokenroll/acplugin';
 
 /** Command 允许补充的 Claude Code 专属字段。 */
 const COMMAND_FIELDS = new Set(['allowedTools', 'model']);

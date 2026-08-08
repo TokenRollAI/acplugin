@@ -5,7 +5,7 @@ import {
   type ArtifactInput,
   type PlatformComponentValidationContext,
   type PlatformGenerateContext,
-} from '@acplugin/core';
+} from '@tokenroll/acplugin';
 
 /** OpenCode 1.0 暂不开放未经独立 Schema 验证的 Component 专属字段。 */
 const COMPONENT_FIELDS = new Set<string>();

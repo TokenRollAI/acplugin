@@ -5,14 +5,16 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { BuildResult } from '@tokenroll/acplugin';
-import { codex } from '@tokenroll/acplugin';
-import { PLATFORM_ID } from '@tokenroll/acplugin/platforms/codex';
+import codex, { PLATFORM_ID } from '@tokenroll/acplugin-platform-codex';
 
 /** 跨包契约测试读取源码边界时使用的仓库根目录。 */
 const repositoryRoot = fileURLToPath(new URL('../../..', import.meta.url));
 
 /** 配置和生命周期共用品牌实例的主包真实构建入口。 */
 const acpluginEntry = path.join(repositoryRoot, 'packages/acplugin/dist/index.mjs');
+
+/** 配置文件直接加载的 Codex Platform 真实构建入口。 */
+const codexEntry = path.join(repositoryRoot, 'packages/platforms/codex/dist/index.mjs');
 
 /** 当前测试创建并在 afterEach 中删除的临时工程。 */
 const temporaryRoots: string[] = [];
@@ -92,8 +94,8 @@ afterEach(async () => {
 });
 
 describe('Codex public Platform integration', () => {
-  it('re-exports the private Platform factory with typed interface and Marketplace policy', () => {
-    /** 通过正式公开主包创建的 Codex Platform。 */
+  it('exports an independent Platform factory with typed interface and Marketplace policy', () => {
+    /** 通过独立公开 package 创建的 Codex Platform。 */
     const platform = codex({
       strict: false,
       interface: {
@@ -127,7 +129,7 @@ describe('Codex public Platform integration', () => {
   });
 
   it('keeps Hooks and MCP implementation packages outside the Platform dependency boundary', async () => {
-    /** Codex 私有 Platform 的完整源码文本。 */
+    /** Codex 公开 Platform 的完整源码文本。 */
     const source = await platformSources(path.join(repositoryRoot, 'packages/platforms/codex/src'));
 
     expect(source).not.toContain('@tokenroll/acplugin-extension-hooks');
@@ -152,7 +154,7 @@ description: Show deployment status.
 Show deployment status.
 `);
     await fs.writeFile(path.join(root, 'acplugin.config.ts'), `
-import { codex } from ${JSON.stringify(acpluginEntry)};
+import codex from ${JSON.stringify(codexEntry)};
 export default {
   name: 'codex-arguments',
   version: '1.0.0',

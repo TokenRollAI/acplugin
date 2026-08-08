@@ -69,7 +69,7 @@ function resolvedConfig(root: string): ResolvedConfig {
     author: { name: 'TokenRoll' },
     license: 'MIT',
     platforms: [pi({ package: { image: './assets/cover.png' } })],
-  }, path.join(root, 'acplugin.config.ts'), 'build', 'production', { defaultPlatforms: [pi()] });
+  }, path.join(root, 'acplugin.config.ts'), 'build', 'production');
   expect(result.diagnostics).toEqual([]);
   return result.config!;
 }

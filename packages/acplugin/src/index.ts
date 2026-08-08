@@ -4,29 +4,6 @@ import {
 } from '@acplugin/core';
 import { executeProject, type RunProjectOptions } from './run-project.js';
 
-export { antigravity } from '@acplugin/platform-antigravity';
-export { claudeCode } from '@acplugin/platform-claude-code';
-export { codex } from '@acplugin/platform-codex';
-export { cursor } from '@acplugin/platform-cursor';
-export { openCode } from '@acplugin/platform-opencode';
-export { pi } from '@acplugin/platform-pi';
-export type { AntigravityPlatformOptions } from '@acplugin/platform-antigravity';
-export type {
-  ClaudeCodeMarketplaceOptions,
-  ClaudeCodeMarketplaceOwner,
-  ClaudeCodePlatformOptions,
-} from '@acplugin/platform-claude-code';
-export type {
-  CodexCategory,
-  CodexInterfaceOptions,
-  CodexMarketplaceInstallation,
-  CodexMarketplaceOptions,
-  CodexMarketplacePolicyOptions,
-  CodexPlatformOptions,
-} from '@acplugin/platform-codex';
-export type { CursorPlatformOptions } from '@acplugin/platform-cursor';
-export type { OpenCodePlatformOptions, OpenCodeWorkspaceOptions } from '@acplugin/platform-opencode';
-export type { PiPackageOptions, PiPlatformOptions } from '@acplugin/platform-pi';
 export { ProjectConfigError } from './project-config.js';
 export type { RunProjectOptions } from './run-project.js';
 
@@ -36,8 +13,10 @@ export {
   defineExtension,
   definePlatform,
   LIFECYCLE_API_VERSION,
+  markdownWithFrontmatter,
   serializeBuildResult,
   stableJson,
+  stableYaml,
 } from '@acplugin/core';
 export type {
   AcpluginExtension,
@@ -127,19 +106,6 @@ export type { InitOptions, InitPlatformId, InitResult } from './init.js';
 
 /** 当前 CLI 与公开运行时 API 的版本号。 */
 export const ACPLUGIN_VERSION = '1.0.0';
-
-/** 主包内置且由独立私有包实现的六个 Platform ID。 */
-export const BUILTIN_PLATFORM_IDS = [
-  'claude-code',
-  'codex',
-  'cursor',
-  'antigravity',
-  'opencode',
-  'pi',
-] as const;
-
-/** acplugin 1.0 官方内置 Platform 的封闭联合类型。 */
-export type BuiltinPlatformId = typeof BUILTIN_PLATFORM_IDS[number];
 
 /**
  * 为 `acplugin.config.ts` 提供类型推断友好的恒等辅助函数。

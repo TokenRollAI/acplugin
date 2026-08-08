@@ -11,22 +11,24 @@ import { publint } from 'publint';
 
 /** 当前 monorepo 根目录。 */
 const root = path.resolve(fileURLToPath(new URL('..', import.meta.url)));
-/** 必须以统一版本手动发布并共同验证的公开包。 */
+/** 同一 revision 中独立版本化并共同验证的全部公开包。 */
 const packages = [
   { name: '@tokenroll/acplugin' },
+  { name: '@tokenroll/acplugin-platform-claude-code' },
+  { name: '@tokenroll/acplugin-platform-codex' },
+  { name: '@tokenroll/acplugin-platform-cursor' },
+  { name: '@tokenroll/acplugin-platform-antigravity' },
+  { name: '@tokenroll/acplugin-platform-opencode' },
+  { name: '@tokenroll/acplugin-platform-pi' },
   { name: '@tokenroll/acplugin-extension-hooks' },
   { name: '@tokenroll/acplugin-extension-mcp' },
 ];
+/** 主包之外必须通过 Peer Dependency 连接主包的官方生态包名。 */
+const integrationNames = new Set(packages.slice(1).map(item => item.name));
 /** 发布 tarball 运行时依赖中绝不能出现的私有工作区包名。 */
 const privateNames = new Set([
   '@acplugin/core',
   '@acplugin/test',
-  '@acplugin/platform-antigravity',
-  '@acplugin/platform-claude-code',
-  '@acplugin/platform-codex',
-  '@acplugin/platform-cursor',
-  '@acplugin/platform-opencode',
-  '@acplugin/platform-pi',
 ]);
 /** ESM-only 正式包按 ATTW esm-only Profile 有意不提供的旧/CJS 解析模式。 */
 const esmOnlyIgnoredResolutions = new Set(['node10', 'node16-cjs']);
@@ -243,7 +245,8 @@ async function verifyMainModuleGraph(packageRoot, manifest) {
     ...Object.keys(manifest.peerDependencies ?? {}),
     ...Object.keys(manifest.optionalDependencies ?? {}),
   ]);
-  assert(!declared.has('@tokenroll/acplugin-extension-mcp'), 'Main package manifest must not depend on the optional MCP Extension.');
+  for (const integration of integrationNames)
+    assert(!declared.has(integration), `Main package manifest must not depend on official integration ${integration}.`);
   for (const [file, edges] of graph) {
     for (const specifier of edges.external) {
       if (nodeBuiltinSpecifiers.has(specifier))
@@ -251,8 +254,28 @@ async function verifyMainModuleGraph(packageRoot, manifest) {
       /** 外部子路径按其所属 package 与 manifest runtime edge 对齐。 */
       const dependency = dependencyName(specifier);
       assert(declared.has(dependency), `Packed module ${file} imports undeclared runtime dependency ${dependency}.`);
-      assert(dependency !== '@tokenroll/acplugin-extension-mcp', `Packed module ${file} externalizes the optional MCP Extension.`);
+      assert(!integrationNames.has(dependency), `Packed module ${file} externalizes official integration ${dependency}.`);
     }
+  }
+}
+
+/**
+ * 验证独立 Platform/Extension 运行时只通过公开主包 Peer 使用框架品牌。
+ *
+ * @param packageRoot 生态包 tarball 的解压 package 根。
+ * @param manifest tarball 内真实发布清单。
+ */
+async function verifyIntegrationModuleGraph(packageRoot, manifest) {
+  /** 当前生态包中全部 ESM 运行时模块。 */
+  const files = await esmFiles(path.join(packageRoot, 'dist'), packageRoot);
+  /** 全部运行时模块源码，用于检查公开 peer 边和私有 namespace 泄漏。 */
+  const source = (await Promise.all(files.map(file => fs.readFile(path.join(packageRoot, file), 'utf8')))).join('\n');
+  assert(manifest.peerDependencies?.['@tokenroll/acplugin'] !== undefined, `${manifest.name} must peer-depend on @tokenroll/acplugin.`);
+  assert(source.includes('from "@tokenroll/acplugin"'), `${manifest.name} runtime must import the public @tokenroll/acplugin SDK.`);
+  assert(!source.includes('@acplugin/'), `${manifest.name} runtime leaks a private @acplugin/* import.`);
+  for (const integration of integrationNames) {
+    if (integration !== manifest.name)
+      assert(!source.includes(`from "${integration}"`), `${manifest.name} runtime imports another official integration ${integration}.`);
   }
 }
 
@@ -303,7 +326,7 @@ async function inspectTarball(tarball, expectedName, extractRoot) {
   assert(manifest.name === expectedName, `Packed manifest name mismatch for ${expectedName}.`);
   for (const field of ['dependencies', 'peerDependencies', 'optionalDependencies']) {
     for (const dependency of Object.keys(manifest[field] ?? {}))
-      assert(!privateNames.has(dependency), `${expectedName} exposes private runtime dependency ${dependency}.`);
+      assert(!privateNames.has(dependency) && !dependency.startsWith('@acplugin/'), `${expectedName} exposes private runtime dependency ${dependency}.`);
   }
   /** 对实际 tarball 字节执行的类型发布契约分析。 */
   const typeAnalysis = await checkPackage(createPackageFromTarballData(await fs.readFile(tarball)));
@@ -321,6 +344,8 @@ async function inspectTarball(tarball, expectedName, extractRoot) {
   assert(lint.messages.length === 0, `${expectedName} tarball failed publint: ${lint.messages.map(message => message.code).join(', ')}`);
   if (expectedName === '@tokenroll/acplugin')
     await verifyMainModuleGraph(packageRoot, manifest);
+  else
+    await verifyIntegrationModuleGraph(packageRoot, manifest);
   return manifest;
 }
 
@@ -381,6 +406,12 @@ async function verifyMainOnlyMigration(mainTarball, temporary) {
   assert(report.success === true, 'Main-only packed remote MCP Migration failed.');
   assert(report.items.some(item => item.kind === 'mcp' && item.outcome === 'migrated'), 'Main-only Migration did not preserve remote MCP.');
   await fs.access(path.join(consumer, 'migrated/src/mcp/docs/mcp.ts'));
+  /** 迁移结果必须声明独立 Platform package，而不是依赖主包历史 re-export。 */
+  const generatedManifest = JSON.parse(await fs.readFile(path.join(consumer, 'migrated/package.json'), 'utf8'));
+  assert(generatedManifest.devDependencies?.['@tokenroll/acplugin-platform-claude-code']?.startsWith('^') === true, 'Migration did not declare the independent Claude Code Platform package.');
+  /** 迁移结果的配置源码必须从独立包加载工厂。 */
+  const generatedConfig = await fs.readFile(path.join(consumer, 'migrated/acplugin.config.ts'), 'utf8');
+  assert(generatedConfig.includes('from \'@tokenroll/acplugin-platform-claude-code\''), 'Migration config still relies on a main-package Platform export.');
   /** 主消费者中是否出现了不应由主包传递安装的可选 MCP Extension。 */
   let extensionInstalled = true;
   try {
@@ -395,7 +426,7 @@ async function verifyMainOnlyMigration(mainTarball, temporary) {
 }
 
 /**
- * 在完全独立、忽略工作区解析的项目中安装并执行三个正式公开 tarball。
+ * 在完全独立、忽略工作区解析的项目中安装并执行九个正式公开 tarball。
  *
  * @param tarballs 公开包名到本地 tarball 的映射。
  * @param temporary 当前验证独占临时目录。
@@ -436,14 +467,28 @@ async function verifyConsumer(tarballs, temporary) {
     include: ['acplugin.config.ts', 'src/**/*.ts'],
   }, null, 2)}\n`);
   await fs.writeFile(path.join(consumer, 'acplugin.config.ts'), `import { defineConfig } from '@tokenroll/acplugin';
+import { definePlatform } from '@tokenroll/acplugin';
+import claudeCode from '@tokenroll/acplugin-platform-claude-code';
+import codex from '@tokenroll/acplugin-platform-codex';
 import hooks from '@tokenroll/acplugin-extension-hooks';
 import mcp from '@tokenroll/acplugin-extension-mcp';
+
+const external = definePlatform({
+  id: 'external-fixture',
+  apiVersion: '1',
+  deliveryType: 'plugin',
+  prepare: () => ({ documents: [], artifacts: [] }),
+  generateBundle: () => ({ id: 'plugin', role: 'primary', type: 'plugin', artifacts: [] }),
+  validateBundle() {},
+});
 
 export default defineConfig({
   name: 'packed-consumer',
   version: '1.0.0',
   description: 'Clean tarball consumer.',
+  platforms: [claudeCode(), codex(), external],
   extensions: [hooks(), mcp()],
+  build: { strict: false },
 });
 `);
   await fs.writeFile(path.join(consumer, 'src/skills/hello/SKILL.md'), `---
@@ -467,7 +512,10 @@ export default defineHook({
   await run('node', ['--input-type=module', '--eval', 'import(\'@tokenroll/acplugin\').then(m => { if (typeof m.defineConfig !== \'function\') process.exit(1) })'], consumer);
   /** 安装产物执行 validate 的机器可读结果。 */
   const validate = await run('pnpm', ['exec', 'acplugin', 'validate', '--json'], consumer, { capture: true });
-  assert(JSON.parse(validate.stdout).success === true, 'Packed consumer validation failed.');
+  /** packed 主包同时接受官方 peer package 与第三方形态 Platform 的验证报告。 */
+  const validateReport = JSON.parse(validate.stdout);
+  assert(validateReport.success === true, 'Packed consumer validation failed.');
+  assert(validateReport.platforms.includes('external-fixture'), 'Packed consumer rejected the external Platform shape.');
   /** 安装产物执行默认双 Platform build 的机器可读结果。 */
   const build = await run('pnpm', ['exec', 'acplugin', 'build', '--json'], consumer, { capture: true });
   assert(JSON.parse(build.stdout).success === true, 'Packed consumer build failed.');
@@ -502,7 +550,7 @@ export default defineHook({
 }
 
 /**
- * 打包公开 Cohort、验证内容与版本关系，并执行干净消费者测试。
+ * 打包九个独立公开包、验证 Peer 关系，并执行干净消费者测试。
  */
 async function main() {
   /** CI 可显式保留 tarball；本地无参数调用仍完全使用临时目录。 */
@@ -510,7 +558,7 @@ async function main() {
   /** 无论成功失败默认都会删除的发布验证临时目录。 */
   const temporary = await fs.mkdtemp(path.join(os.tmpdir(), 'acplugin-release-verify-'));
   try {
-    /** 存放三个新 tarball 的显式保留目录或临时目录。 */
+    /** 存放九个新 tarball 的显式保留目录或临时目录。 */
     const tarballDirectory = retained ?? path.join(temporary, 'tarballs');
     /** 各包独立解压和清单检查的根目录。 */
     const extractRoot = path.join(temporary, 'extract');
@@ -525,20 +573,18 @@ async function main() {
       tarballs.set(item.name, tarball);
       manifests.set(item.name, await inspectTarball(tarball, item.name, extractRoot));
     }
-    /** 公开 Cohort 实际打包出的版本集合。 */
-    const versions = new Set([...manifests.values()].map(manifest => manifest.version));
-    assert(versions.size === 1, 'The public release cohort must use one version.');
-    /** 三个公开包共同使用的唯一版本。 */
-    const version = [...versions][0];
-    assert(version === '1.0.0', `The release cohort must remain at 1.0.0 before the first manual publish, found ${version}.`);
-    for (const extensionName of ['@tokenroll/acplugin-extension-hooks', '@tokenroll/acplugin-extension-mcp']) {
-      /** 当前 Extension tarball 中声明的主包 Peer 版本范围。 */
-      const peerRange = manifests.get(extensionName).peerDependencies?.['@tokenroll/acplugin'];
-      assert(peerRange === `^${version}`, `${extensionName} must pack with @tokenroll/acplugin peer range ^${version}.`);
+    /** 主包当前独立版本决定 workspace:^ 在所有生态 tarball 中的改写结果。 */
+    const mainVersion = manifests.get('@tokenroll/acplugin').version;
+    for (const integrationName of integrationNames) {
+      /** 当前 Platform/Extension tarball 中声明的主包 Peer 版本范围。 */
+      const peerRange = manifests.get(integrationName).peerDependencies?.['@tokenroll/acplugin'];
+      assert(peerRange === `^${mainVersion}`, `${integrationName} must pack with @tokenroll/acplugin peer range ^${mainVersion}.`);
     }
     await verifyMainOnlyMigration(tarballs.get('@tokenroll/acplugin'), temporary);
     await verifyConsumer(tarballs, temporary);
-    process.stdout.write(`Verified three @tokenroll/acplugin ${version} tarballs in a clean consumer.\n`);
+    /** 输出独立包版本，避免把同 revision 验证误表述为 fixed cohort。 */
+    const versions = packages.map(item => `${item.name}@${manifests.get(item.name).version}`).join(', ');
+    process.stdout.write(`Verified nine independent public tarballs in a clean consumer: ${versions}.\n`);
     if (retained)
       process.stdout.write(`Verified tarballs retained at ${retained}\n`);
   } finally {

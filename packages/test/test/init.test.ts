@@ -23,12 +23,19 @@ describe('init', () => {
     expect(result.directory).toBe('demo-plugin');
     expect(result.platforms).toEqual(['claude-code', 'codex']);
     expect(result.extensions).toEqual([]);
-    expect(await fs.readFile(path.join(cwd, 'demo-plugin/acplugin.config.ts'), 'utf8'))
-      .toContain('platforms: [claudeCode(), codex()]');
+    /** 默认配置通过两个独立 Platform package 的显式默认导入构建。 */
+    const config = await fs.readFile(path.join(cwd, 'demo-plugin/acplugin.config.ts'), 'utf8');
+    expect(config).toContain(`import claudeCode from '@tokenroll/acplugin-platform-claude-code';`);
+    expect(config).toContain(`import codex from '@tokenroll/acplugin-platform-codex';`);
+    expect(config).toContain('platforms: [claudeCode(), codex()]');
     expect(await fs.readFile(path.join(cwd, 'demo-plugin/src/skills/demo-plugin/SKILL.md'), 'utf8')).toContain('description:');
     expect(JSON.parse(await fs.readFile(path.join(cwd, 'demo-plugin/package.json'), 'utf8'))).toMatchObject({
       engines: { node: '^20.19.0 || ^22.13.0 || >=23.5.0' },
-      devDependencies: { typescript: '^7.0.2' },
+      devDependencies: {
+        '@tokenroll/acplugin-platform-claude-code': '^1.0.0',
+        '@tokenroll/acplugin-platform-codex': '^1.0.0',
+        'typescript': '^7.0.2',
+      },
     });
   });
 
@@ -61,6 +68,7 @@ describe('init', () => {
 
     expect(result.platforms).toEqual(['claude-code', 'codex', 'cursor', 'antigravity', 'opencode', 'pi']);
     expect(config).toContain('claudeCode(), codex(), cursor(), antigravity(), openCode(), pi()');
+    expect(config).toContain(`import pi from '@tokenroll/acplugin-platform-pi';`);
   });
 
   it('refuses a non-empty destination', async () => {

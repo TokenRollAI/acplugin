@@ -2,7 +2,15 @@ import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { codex, cursor, ProjectConfigError, runProject, serializeBuildResult, type PlatformId } from '@tokenroll/acplugin';
+import { ProjectConfigError, runProject, serializeBuildResult, type PlatformId } from '@tokenroll/acplugin';
+import claudeCode from '@tokenroll/acplugin-platform-claude-code';
+import codex from '@tokenroll/acplugin-platform-codex';
+import cursor from '@tokenroll/acplugin-platform-cursor';
+
+/** 临时配置与当前 Vitest 源码图共享官方 Platform 工厂的隔离全局键。 */
+const BUILD_TEST_PLATFORMS = Symbol.for('tokenroll.acplugin.build-test-platforms');
+
+Reflect.set(globalThis, BUILD_TEST_PLATFORMS, Object.freeze({ claudeCode, codex }));
 
 /** 当前测试创建并在 afterEach 中统一删除的临时工程根目录。 */
 const roots: string[] = [];
@@ -60,10 +68,12 @@ async function project(config = ''): Promise<string> {
   roots.push(root);
   await fs.mkdir(path.join(root, 'src/skills/hello'), { recursive: true });
   await fs.writeFile(path.join(root, 'src/skills/hello/SKILL.md'), '---\ndescription: Say hello.\n---\nSay hello to the user.\n');
-  await fs.writeFile(path.join(root, 'acplugin.config.ts'), config || `export default {
+  await fs.writeFile(path.join(root, 'acplugin.config.ts'), config || `const platforms = globalThis[Symbol.for('tokenroll.acplugin.build-test-platforms')];
+export default {
     name: 'hello-plugin',
     version: '1.0.0',
     description: 'Hello plugin.',
+    platforms: [platforms.claudeCode(), platforms.codex()],
   }`);
   return root;
 }

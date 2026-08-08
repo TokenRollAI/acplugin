@@ -15,6 +15,13 @@ const extensionEntry = path.join(repositoryRoot, 'packages/extensions/hooks/dist
 /** 需要自定义 Platform 时由配置文件直接加载的主包构建产物。 */
 const acpluginEntry = path.join(repositoryRoot, 'packages/acplugin/dist/index.mjs');
 
+/** 配置覆盖使用的三个独立 Platform 真实构建入口。 */
+const claudeCodeEntry = path.join(repositoryRoot, 'packages/platforms/claude-code/dist/index.mjs');
+/** Hook 测试自定义配置使用的 Codex Platform 构建入口。 */
+const codexEntry = path.join(repositoryRoot, 'packages/platforms/codex/dist/index.mjs');
+/** Hook 测试自定义配置使用的 Cursor Platform 构建入口。 */
+const cursorEntry = path.join(repositoryRoot, 'packages/platforms/cursor/dist/index.mjs');
+
 /** 当前测试创建并在 afterEach 中统一删除的临时工程。 */
 const temporaryRoots: string[] = [];
 
@@ -181,13 +188,14 @@ async function createProject(options: ProjectFixtureOptions = {}): Promise<strin
   }
   await fs.writeFile(path.join(root, 'acplugin.config.ts'), `
 import hooks from '@tokenroll/acplugin-extension-hooks';
-${options.configImports ?? ''}
+${options.configImports ?? `import claudeCode from ${JSON.stringify(claudeCodeEntry)};
+import codex from ${JSON.stringify(codexEntry)};`}
 export default {
   name: 'hooks-fixture',
   version: '1.0.0',
   description: 'Hooks integration fixture.',
   extensions: [hooks(${options.hooksOptions ?? ''})],
-  ${options.configFields ?? 'build: { strict: false },'}
+  ${options.configFields ?? 'platforms: [claudeCode(), codex()], build: { strict: false },'}
 };
 `);
   return root;
@@ -724,7 +732,7 @@ describe('Hooks Extension', () => {
     /** 只配置 Cursor、且拥有实际 Hook 资源的工程。 */
     const cursorRoot = await createProject({
       hooks: [{ id: 'stop', definition: `{ event: 'Stop', run() {} }` }],
-      configImports: `import { cursor } from ${JSON.stringify(acpluginEntry)};`,
+      configImports: `import cursor from ${JSON.stringify(cursorEntry)};`,
       configFields: 'platforms: [cursor({ strict: false })], build: { strict: false },',
     });
     /** relaxed 模式使用 Cursor 事件映射并保留 transform 结论。 */
@@ -741,7 +749,7 @@ describe('Hooks Extension', () => {
     /** Stop 使用有语义 matcher 的严格构建工程。 */
     const root = await createProject({
       hooks: [{ id: 'stop', definition: `{ event: 'Stop', matcher: 'quality-gate', run() {} }` }],
-      configFields: 'build: { strict: true },',
+      configFields: 'platforms: [claudeCode(), codex()], build: { strict: true },',
     });
     /** strict 模式因当前 Hook 的 Codex matcher 损失而失败。 */
     const strict = await runProject({ cwd: root, command: 'validate', mode: 'production' });
@@ -770,7 +778,7 @@ describe('Hooks Extension', () => {
     /** 只配置 Claude Code，避免其他 Platform 的兼容性结论干扰断言。 */
     const root = await createProject({
       hooks: [{ id: 'stop', definition: `{ event: 'Stop', matcher: 'quality-gate', run() {} }` }],
-      configImports: `import { claudeCode } from ${JSON.stringify(acpluginEntry)};`,
+      configImports: `import claudeCode from ${JSON.stringify(claudeCodeEntry)};`,
       configFields: 'platforms: [claudeCode()], build: { strict: true },',
     });
     /** meaningful matcher 被宿主静默忽略，因此严格模式必须失败。 */
@@ -803,7 +811,7 @@ describe('Hooks Extension', () => {
         id: 'setup',
         definition: `{ event: { platform: 'claude-code', name: 'Setup' }, run() {} }`,
       }],
-      configImports: `import { codex } from ${JSON.stringify(acpluginEntry)};`,
+      configImports: `import codex from ${JSON.stringify(codexEntry)};`,
       configFields: 'platforms: [codex({ strict: false })], build: { strict: false },',
     });
     /** Platform 缺失应在 Bundle 前失败。 */

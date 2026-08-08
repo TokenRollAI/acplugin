@@ -33,7 +33,7 @@ function testPlatform(id: string): AcpluginPlatform {
   });
 }
 
-/** 解析最终配置时模拟主包提供的默认 Platform。 */
+/** 依赖图测试显式使用的 Platform。 */
 const defaultPlatforms = [testPlatform('claude-code'), testPlatform('codex')];
 
 /**
@@ -79,7 +79,8 @@ async function graphDiagnostics(root: string): Promise<readonly import('../src/i
     name: 'graph-fixture',
     version: '1.0.0',
     description: 'Graph fixture.',
-  }, path.join(root, 'acplugin.config.ts'), 'validate', 'production', { defaultPlatforms });
+    platforms: defaultPlatforms,
+  }, path.join(root, 'acplugin.config.ts'), 'validate', 'production');
   /** 当前扫描独占的诊断收集器。 */
   const diagnostics = new DiagnosticCollector();
   await scanProject(resolved.config!, diagnostics);

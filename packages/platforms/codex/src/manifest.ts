@@ -8,7 +8,7 @@ import {
   type JsonObject,
   type PlatformDistributionContext,
   type PlatformPrepareContext,
-} from '@acplugin/core';
+} from '@tokenroll/acplugin';
 import { hasGeneratedSkills } from './components.js';
 import {
   CODEX_CATEGORIES,

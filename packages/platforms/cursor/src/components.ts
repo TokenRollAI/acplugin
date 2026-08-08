@@ -6,7 +6,7 @@ import {
   type PlatformComponentValidationContext,
   type PlatformGenerateContext,
   type PluginProject,
-} from '@acplugin/core';
+} from '@tokenroll/acplugin';
 
 /** Cursor 1.0 暂不开放未经独立 Schema 验证的 Component 专属字段。 */
 const COMPONENT_FIELDS = new Set<string>();

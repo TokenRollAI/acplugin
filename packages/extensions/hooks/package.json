@@ -14,7 +14,7 @@
   "publishConfig": { "access": "public" },
   "scripts": {
     "build": "tsdown",
-    "pretest": "pnpm --filter @acplugin/core run build && pnpm --filter @acplugin/platform-claude-code run build && pnpm --filter @acplugin/platform-codex run build && pnpm --filter @tokenroll/acplugin run build && pnpm run build",
+    "pretest": "pnpm --filter @acplugin/core run build && pnpm --filter @tokenroll/acplugin run build && pnpm --filter @tokenroll/acplugin-platform-claude-code run build && pnpm --filter @tokenroll/acplugin-platform-codex run build && pnpm run build",
     "test": "vitest run --passWithNoTests",
     "typecheck": "tsc -p tsconfig.json"
   },

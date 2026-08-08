@@ -8,7 +8,7 @@
     "node": "^22.18.0 || >=24.11.0"
   },
   "scripts": {
-    "build": "pnpm -r --if-present run build",
+    "build": "pnpm --filter @acplugin/core run build && pnpm --filter \"@tokenroll/acplugin-platform-*\" run build && pnpm --filter \"@tokenroll/acplugin-extension-*\" run build && pnpm --filter @tokenroll/acplugin run build",
     "dev": "pnpm --filter @tokenroll/acplugin run dev",
     "pretest": "pnpm run build",
     "test": "pnpm --config.enable-pre-post-scripts=false -r --if-present run test",
@@ -31,6 +31,7 @@
     "@changesets/cli": "^2.31.1",
     "@eslint/js": "^10.0.1",
     "@stylistic/eslint-plugin": "^5.10.0",
+    "@tokenroll/acplugin-platform-claude-code": "workspace:^",
     "@tokenroll/acplugin-extension-mcp": "workspace:^",
     "@types/node": "catalog:",
     "@typescript/native": "catalog:",

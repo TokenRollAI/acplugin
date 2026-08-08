@@ -2,7 +2,7 @@ import path from 'node:path';
 import semver from 'semver';
 import parseSpdxExpression from 'spdx-expression-parse';
 import { DiagnosticCollector } from './diagnostics.js';
-import { isAcpluginExtension, isAcpluginPlatform, type AcpluginPlatform } from './contracts.js';
+import { isAcpluginExtension, isAcpluginPlatform } from './contracts.js';
 import type {
   BuildCommand,
   BuildMode,
@@ -29,14 +29,9 @@ const ALLOWED_FIELDS = new Set([
 
 /** 需要定向提示最终写法、不能只报告 unknown 的旧配置字段。 */
 const LEGACY_FIELDS = new Map([
-  ['targets', 'Use platforms: [claudeCode(), codex()] instead.'],
-  ['modules', 'Use extensions: [hooks(), mcp()] instead.'],
+  ['targets', 'Use platforms: [myPlatform()] instead.'],
+  ['modules', 'Use extensions: [myExtension()] instead.'],
 ]);
-
-/** Core 注入默认 Platform 时需要的外部工厂结果。 */
-export interface ResolveConfigOptions {
-  readonly defaultPlatforms: readonly AcpluginPlatform[];
-}
 
 /**
  * 判断未知值是否为可枚举的普通对象形态。
@@ -281,24 +276,26 @@ function resolvePublic(root: string, value: unknown, diagnostics: DiagnosticColl
 /**
  * 校验品牌化 Platform 实例并应用全局 strict 默认值。
  *
- * @param value 显式 platforms 值或 undefined。
- * @param defaults 主包注入的默认 Platform 工厂结果。
+ * @param value 必填的显式 platforms 值。
  * @param strict 全局功能兼容性严格度。
  * @param diagnostics 当前配置诊断集合。
  * @returns 保持配置顺序的最终 Platform 列表。
  */
 function resolvePlatforms(
   value: unknown,
-  defaults: readonly AcpluginPlatform[],
   strict: boolean,
   diagnostics: DiagnosticCollector,
 ): ResolvedPlatform[] {
-  if (value !== undefined && !Array.isArray(value)) {
+  if (value === undefined) {
+    diagnostics.error('CONFIG_PLATFORMS_REQUIRED', 'platforms is required and must contain at least one Platform factory result.', { phase: 'config', fieldPath: ['platforms'] });
+    return [];
+  }
+  if (!Array.isArray(value)) {
     diagnostics.error('CONFIG_PLATFORMS_INVALID', 'platforms must be an array of Platform factory results.', { phase: 'config', fieldPath: ['platforms'] });
     return [];
   }
-  /** 省略字段时使用默认工厂，显式数组则完整替换默认集合。 */
-  const input = value === undefined ? defaults : value;
+  /** 用户显式声明且已确认数组形态的 Platform 工厂结果。 */
+  const input = value;
   if (input.length === 0)
     diagnostics.error('CONFIG_PLATFORMS_EMPTY', 'platforms must contain at least one Platform.', { phase: 'config', fieldPath: ['platforms'] });
   /** 用于拒绝重复 Platform ID 的集合。 */
@@ -372,7 +369,6 @@ function resolveExtensions(value: unknown, diagnostics: DiagnosticCollector): im
  * @param configPath 配置文件绝对路径或可解析路径。
  * @param command 当前执行的 CLI 构建命令。
  * @param mode 当前构建运行模式。
- * @param options 主包提供的默认 Platform 工厂结果。
  * @returns 成功时包含完整配置；失败时只返回已脱敏、可排序的诊断。
  */
 export function resolveConfig(
@@ -380,7 +376,6 @@ export function resolveConfig(
   configPath: string,
   command: BuildCommand,
   mode: BuildMode,
-  options: ResolveConfigOptions,
 ): { config?: ResolvedConfig; diagnostics: readonly import('./types.js').Diagnostic[] } {
   /** 单次解析共享同一个 Collector，以汇总全部独立问题。 */
   const diagnostics = new DiagnosticCollector();
@@ -455,7 +450,7 @@ export function resolveConfig(
   /** 已解析的 Public 来源与 copy rule。 */
   const publicConfig = resolvePublic(root, object.public, diagnostics);
   /** 已品牌校验且带最终 strictness 的 Platform。 */
-  const platforms = resolvePlatforms(object.platforms, options.defaultPlatforms, strict, diagnostics);
+  const platforms = resolvePlatforms(object.platforms, strict, diagnostics);
   /** 已品牌校验且名称唯一的 Extension。 */
   const extensions = resolveExtensions(object.extensions, diagnostics);
 

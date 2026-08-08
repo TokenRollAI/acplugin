@@ -10,8 +10,6 @@ import {
   type UserConfig,
   type UserConfigExport,
 } from '@acplugin/core';
-import { claudeCode } from '@acplugin/platform-claude-code';
-import { codex } from '@acplugin/platform-codex';
 
 /** 表示配置文件读取、执行或 Core 配置解析失败，并携带可安全展示的结构化诊断。 */
 export class ProjectConfigError extends Error {
@@ -218,9 +216,7 @@ export async function loadProjectConfig(options: LoadProjectConfigOptions): Prom
   }
 
   /** Core 配置解析结果，包含诊断以及成功时的 ResolvedConfig。 */
-  const resolved = resolveConfig(value, configPath, options.command, options.mode, {
-    defaultPlatforms: [claudeCode(), codex()],
-  });
+  const resolved = resolveConfig(value, configPath, options.command, options.mode);
   if (!resolved.config) {
     /** 为 CLI 与程序化 API 组合的简要错误文本；结构化诊断仍完整保留。 */
     const details = resolved.diagnostics.map(diagnostic => `${diagnostic.code}: ${diagnostic.message}`).join('\n');

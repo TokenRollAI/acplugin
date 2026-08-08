@@ -53,14 +53,14 @@ export class InitError extends Error {
 /** 无交互脚手架默认启用的正式支持 Platform。 */
 const DEFAULT_PLATFORMS: readonly InitPlatformId[] = ['claude-code', 'codex'];
 
-/** 每个官方 Platform 在主包中对应的配置工厂导出名。 */
-const PLATFORM_FACTORIES: Readonly<Record<InitPlatformId, string>> = {
-  'claude-code': 'claudeCode',
-  'codex': 'codex',
-  'cursor': 'cursor',
-  'antigravity': 'antigravity',
-  'opencode': 'openCode',
-  'pi': 'pi',
+/** 每个官方 Platform 的独立 package 与配置工厂导出名。 */
+const PLATFORM_PACKAGES: Readonly<Record<InitPlatformId, { packageName: string; factory: string }>> = {
+  'claude-code': { packageName: '@tokenroll/acplugin-platform-claude-code', factory: 'claudeCode' },
+  'codex': { packageName: '@tokenroll/acplugin-platform-codex', factory: 'codex' },
+  'cursor': { packageName: '@tokenroll/acplugin-platform-cursor', factory: 'cursor' },
+  'antigravity': { packageName: '@tokenroll/acplugin-platform-antigravity', factory: 'antigravity' },
+  'opencode': { packageName: '@tokenroll/acplugin-platform-opencode', factory: 'openCode' },
+  'pi': { packageName: '@tokenroll/acplugin-platform-pi', factory: 'pi' },
 };
 
 /** Plugin 名称接受的小写 kebab-case 格式。 */
@@ -124,8 +124,15 @@ function configSource(metadata: {
   hooks: boolean;
   mcp: boolean;
 }): string {
-  /** 配置入口与选中 Platform 对应的主包工厂导出。 */
-  const imports = [`import { defineConfig, ${metadata.platforms.map(platform => PLATFORM_FACTORIES[platform]).join(', ')} } from '@tokenroll/acplugin';`];
+  /** 配置入口以及每个选中 Platform 的独立 package 默认导入。 */
+  const imports = [
+    `import { defineConfig } from '@tokenroll/acplugin';`,
+    ...metadata.platforms.map((platform) => {
+      /** 当前官方 Platform 的 package 名和本地工厂名。 */
+      const definition = PLATFORM_PACKAGES[platform];
+      return `import ${definition.factory} from '${definition.packageName}';`;
+    }),
+  ];
   /** 写入配置 `extensions` 数组的初始化表达式。 */
   const extensions: string[] = [];
   if (metadata.hooks) {
@@ -143,7 +150,7 @@ export default defineConfig({
   version: '0.1.0',
   description: ${JSON.stringify(metadata.description)},
   displayName: ${JSON.stringify(metadata.displayName)},
-  platforms: [${metadata.platforms.map(platform => `${PLATFORM_FACTORIES[platform]}()`).join(', ')}],${extensions.length
+  platforms: [${metadata.platforms.map(platform => `${PLATFORM_PACKAGES[platform].factory}()`).join(', ')}],${extensions.length
     ? `
   extensions: [${extensions.join(', ')}],`
     : ''}
@@ -155,17 +162,20 @@ export default defineConfig({
  * 生成仅包含工程开发依赖和标准命令的私有 package.json。
  *
  * @param name Plugin 机器名称。
+ * @param platforms 需要加入的独立官方 Platform 依赖。
  * @param hooks 是否加入官方 Hooks Extension 依赖。
  * @param mcp 是否加入官方 MCP Extension 依赖。
  * @returns 以换行结尾的格式化 JSON。
  */
-function packageSource(name: string, hooks: boolean, mcp: boolean): string {
+function packageSource(name: string, platforms: readonly InitPlatformId[], hooks: boolean, mcp: boolean): string {
   /** 根据 Extension 选择动态扩展的开发依赖映射。 */
   const devDependencies: Record<string, string> = {
     '@tokenroll/acplugin': '^1.0.0',
     '@types/node': '^20.19.0',
     'typescript': '^7.0.2',
   };
+  for (const platform of platforms)
+    devDependencies[PLATFORM_PACKAGES[platform].packageName] = '^1.0.0';
   if (hooks)
     devDependencies['@tokenroll/acplugin-extension-hooks'] = '^1.0.0';
   if (mcp)
@@ -266,7 +276,7 @@ export async function initializeProject(options: InitOptions): Promise<InitResul
   const seenPlatforms = new Set<InitPlatformId>();
   /** platform 表示当前需要验证和稳定去重的脚手架 Platform。 */
   for (const platform of platforms) {
-    if (!Object.hasOwn(PLATFORM_FACTORIES, platform))
+    if (!Object.hasOwn(PLATFORM_PACKAGES, platform))
       throw new InitError(`Unknown init Platform "${platform}".`);
     if (seenPlatforms.has(platform))
       throw new InitError(`Duplicate init Platform "${platform}".`);
@@ -308,7 +318,7 @@ export async function initializeProject(options: InitOptions): Promise<InitResul
   // 使用 `wx` 并行写入，既减少脚手架耗时，也避免意外覆盖并发创建的文件。
   await Promise.all([
     fs.writeFile(path.join(directory, 'acplugin.config.ts'), configSource({ name, displayName, description: description.trim(), platforms, hooks: hooksEnabled, mcp: mcpEnabled }), { flag: 'wx' }),
-    fs.writeFile(path.join(directory, 'package.json'), packageSource(name, hooksEnabled, mcpEnabled), { flag: 'wx' }),
+    fs.writeFile(path.join(directory, 'package.json'), packageSource(name, platforms, hooksEnabled, mcpEnabled), { flag: 'wx' }),
     fs.writeFile(path.join(directory, 'tsconfig.json'), `${JSON.stringify({
       compilerOptions: {
         target: 'ES2022',

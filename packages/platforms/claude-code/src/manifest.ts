@@ -9,7 +9,7 @@ import {
   type PlatformDistributionContext,
   type PlatformPrepareContext,
   type PluginMetadata,
-} from '@acplugin/core';
+} from '@tokenroll/acplugin';
 import { hasComponents } from './components.js';
 import type {
   ClaudeCodeMarketplaceManifest,

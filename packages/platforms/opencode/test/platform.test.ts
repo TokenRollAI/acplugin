@@ -42,7 +42,7 @@ function resolvedConfig(root: string): ResolvedConfig {
     version: '1.2.3',
     description: 'Release workflow tools.',
     platforms: [openCode({ workspace: { schema: true } })],
-  }, path.join(root, 'acplugin.config.ts'), 'build', 'production', { defaultPlatforms: [openCode()] });
+  }, path.join(root, 'acplugin.config.ts'), 'build', 'production');
   expect(result.diagnostics).toEqual([]);
   return result.config!;
 }
@@ -91,7 +91,7 @@ describe('OpenCode Platform', () => {
     /** 默认选项下不创建 opencode.json 的构建结果。 */
     const result = resolveConfig({
       name: 'empty-workspace', version: '1.0.0', description: 'Empty workspace.', platforms: [openCode()],
-    }, path.join(root, 'acplugin.config.ts'), 'build', 'production', { defaultPlatforms: [openCode()] });
+    }, path.join(root, 'acplugin.config.ts'), 'build', 'production');
     /** 空配置生命周期执行结果。 */
     const build = await executeLifecycle({
       config: result.config!,

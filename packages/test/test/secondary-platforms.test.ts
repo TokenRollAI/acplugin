@@ -12,6 +12,14 @@ const repositoryRoot = fileURLToPath(new URL('../../..', import.meta.url));
 /** 配置文件直接导入的主包真实构建产物。 */
 const acpluginEntry = path.join(repositoryRoot, 'packages/acplugin/dist/index.mjs');
 
+/** 四个次级官方 Platform 的真实独立构建入口。 */
+const platformEntries = {
+  antigravity: path.join(repositoryRoot, 'packages/platforms/antigravity/dist/index.mjs'),
+  cursor: path.join(repositoryRoot, 'packages/platforms/cursor/dist/index.mjs'),
+  opencode: path.join(repositoryRoot, 'packages/platforms/opencode/dist/index.mjs'),
+  pi: path.join(repositoryRoot, 'packages/platforms/pi/dist/index.mjs'),
+} as const;
+
 /** 临时包代理加载的 Hooks Extension 真实构建产物。 */
 const hooksEntry = path.join(repositoryRoot, 'packages/extensions/hooks/dist/index.mjs');
 
@@ -185,7 +193,10 @@ process.stdin.on('data', (chunk) => {
 `);
   await fs.writeFile(path.join(root, 'public/assets/readme.txt'), 'Public asset.\n');
   await fs.writeFile(path.join(root, 'acplugin.config.ts'), `
-import { antigravity, cursor, openCode, pi } from ${JSON.stringify(acpluginEntry)};
+import antigravity from ${JSON.stringify(platformEntries.antigravity)};
+import cursor from ${JSON.stringify(platformEntries.cursor)};
+import openCode from ${JSON.stringify(platformEntries.opencode)};
+import pi from ${JSON.stringify(platformEntries.pi)};
 import hooks from '@tokenroll/acplugin-extension-hooks';
 import mcp from '@tokenroll/acplugin-extension-mcp';
 export default {

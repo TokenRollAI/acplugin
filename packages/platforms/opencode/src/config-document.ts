@@ -5,7 +5,7 @@ import {
   type DraftDocument,
   type JsonObject,
   type PlatformPrepareContext,
-} from '@acplugin/core';
+} from '@tokenroll/acplugin';
 import type { OpenCodePlatformOptions, OpenCodeWorkspaceOptions } from './types.js';
 
 /** OpenCode workspace 配置的稳定逻辑 Document ID。 */

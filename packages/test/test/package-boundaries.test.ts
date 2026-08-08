@@ -6,7 +6,7 @@ import { describe, expect, it } from 'vitest';
 /** 包边界测试读取构建产物和清单时使用的仓库根目录。 */
 const root = fileURLToPath(new URL('../../..', import.meta.url));
 
-/** 六个稳定 Platform 子路径及其唯一公开工厂名。 */
+/** 六个独立 Platform package 目录及其公开工厂名。 */
 const platformEntries = [
   ['claude-code', 'claudeCode'],
   ['codex', 'codex'],
@@ -16,9 +16,10 @@ const platformEntries = [
   ['pi', 'pi'],
 ] as const;
 
-/** 三个正式公开包的清单路径。 */
+/** 九个正式公开包的清单路径。 */
 const publicManifests = [
   'packages/acplugin/package.json',
+  ...platformEntries.map(([id]) => `packages/platforms/${id}/package.json`),
   'packages/extensions/hooks/package.json',
   'packages/extensions/mcp/package.json',
 ] as const;
@@ -91,25 +92,33 @@ describe('published package boundaries', () => {
     expect(bundler).toMatch(/^\s*import\s.*from\s+["']rolldown["']/m);
   });
 
-  it('keeps each Platform subpath limited to its public factory contract', async () => {
-    /** id 与 factory 表示当前检查的 Platform 子路径及其唯一工厂导出。 */
+  it('keeps each independent Platform package limited to its public factory contract', async () => {
+    /** id 与 factory 表示当前检查的 Platform package 及其具名工厂导出。 */
     for (const [id, factory] of platformEntries) {
-      /** 从真实构建文件加载的 Platform 子路径运行时命名空间。 */
-      const module = await import(pathToFileURL(path.join(root, `packages/acplugin/dist/platforms/${id}.mjs`)).href);
-      expect(Object.keys(module).sort()).toEqual(['PLATFORM_API_VERSION', 'PLATFORM_ID', factory].sort());
-      /** 当前子路径生成的独立声明入口。 */
-      const declaration = await fs.readFile(path.join(root, `packages/acplugin/dist/platforms/${id}.d.mts`), 'utf8');
+      /** 从独立 package 真实构建文件加载的运行时命名空间。 */
+      const module = await import(pathToFileURL(path.join(root, `packages/platforms/${id}/dist/index.mjs`)).href);
+      expect(Object.keys(module).sort()).toEqual(['PLATFORM_API_VERSION', 'PLATFORM_ID', 'default', factory].sort());
+      expect(module.default).toBe(module[factory]);
+      /** 当前独立 package 生成的声明入口。 */
+      const declaration = await fs.readFile(path.join(root, `packages/platforms/${id}/dist/index.d.mts`), 'utf8');
+      expect(declaration).toContain('from "@tokenroll/acplugin"');
+      expect(declaration).not.toContain('@acplugin/');
       expect(declaration).not.toMatch(/\b(?:Compiler|Serializer|Validator|Registry|executeLifecycle|buildProject)\b/);
     }
   });
 
-  it('externalizes the public main package from both Extension declarations and runtimes', async () => {
-    /** extension 表示当前检查的正式 Extension 包目录名。 */
-    for (const extension of ['hooks', 'mcp']) {
-      /** 当前 Extension 的 ESM 与声明入口源码。 */
+  it('externalizes the public main package from all Platform and Extension packages', async () => {
+    /** integration 表示当前检查的正式生态包目录。 */
+    const integrations = [
+      ...platformEntries.map(([id]) => `platforms/${id}`),
+      'extensions/hooks',
+      'extensions/mcp',
+    ];
+    for (const integration of integrations) {
+      /** 当前生态包的 ESM 与声明入口源码。 */
       const files = [
-        path.join(root, `packages/extensions/${extension}/dist/index.mjs`),
-        path.join(root, `packages/extensions/${extension}/dist/index.d.mts`),
+        path.join(root, `packages/${integration}/dist/index.mjs`),
+        path.join(root, `packages/${integration}/dist/index.d.mts`),
       ];
       /** 两个入口共同构成的包边界文本。 */
       const source = await joinedSources(files);
@@ -118,7 +127,7 @@ describe('published package boundaries', () => {
     }
   });
 
-  it('publishes only the fixed three-package cohort and a Node 20 ESM CLI', async () => {
+  it('publishes only the nine independent packages and a Node 20 ESM CLI', async () => {
     /** Workspace 中所有 package.json 路径。 */
     const manifests = await filesWithSuffixes(path.join(root, 'packages'), ['package.json']);
     /** 未声明 private 的实际公开包名称。 */
@@ -132,10 +141,16 @@ describe('published package boundaries', () => {
     }
     expect(publicNames.sort()).toEqual([
       '@tokenroll/acplugin',
+      ...platformEntries.map(([id]) => `@tokenroll/acplugin-platform-${id}`),
       '@tokenroll/acplugin-extension-hooks',
       '@tokenroll/acplugin-extension-mcp',
     ].sort());
-    expect(publicManifests).toHaveLength(3);
+    expect(publicManifests).toHaveLength(9);
+
+    /** 主包不得再声明或生成官方 Platform subpath。 */
+    const mainManifest = JSON.parse(await fs.readFile(path.join(root, 'packages/acplugin/package.json'), 'utf8')) as { exports: Record<string, unknown> };
+    expect(Object.keys(mainManifest.exports)).toEqual(['.']);
+    await expect(fs.access(path.join(root, 'packages/acplugin/dist/platforms'))).rejects.toThrow();
 
     /** 主包生成并由 package.json bin 指向的 CLI 文件。 */
     const cliPath = path.join(root, 'packages/acplugin/dist/cli.mjs');

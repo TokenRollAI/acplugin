@@ -5,7 +5,7 @@ import {
   type DraftDocument,
   type JsonObject,
   type PlatformPrepareContext,
-} from '@acplugin/core';
+} from '@tokenroll/acplugin';
 import { hasGeneratedSkills } from './components.js';
 import type { PiPackageOptions, PiPlatformOptions } from './types.js';
 

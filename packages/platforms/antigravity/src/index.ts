@@ -1,4 +1,4 @@
-import { definePlatform, type AcpluginPlatform } from '@acplugin/core';
+import { definePlatform, type AcpluginPlatform } from '@tokenroll/acplugin';
 import {
   generateComponentArtifacts,
   validateAntigravityComponentFields,
@@ -54,3 +54,5 @@ export function antigravity(options: AntigravityPlatformOptions = {}): AcpluginP
     validateBundle: validateAntigravityBundle,
   });
 }
+
+export default antigravity;

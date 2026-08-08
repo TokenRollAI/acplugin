@@ -1,4 +1,4 @@
-import type { JsonValue, PluginAuthor } from '@acplugin/core';
+import type { JsonValue, PluginAuthor } from '@tokenroll/acplugin';
 import type { CodexCategory, CodexMarketplaceInstallation } from './protocol.js';
 
 export type { CodexCategory, CodexMarketplaceInstallation } from './protocol.js';

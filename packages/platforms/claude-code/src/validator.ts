@@ -1,6 +1,6 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
-import type { JsonValue, PlatformValidateContext } from '@acplugin/core';
+import type { JsonValue, PlatformValidateContext } from '@tokenroll/acplugin';
 import { MARKETPLACE_MANIFEST_PATH, PLUGIN_MANIFEST_PATH } from './manifest.js';
 
 /** Claude Code Plugin 清单允许出现的官方根字段。 */

@@ -1,4 +1,4 @@
-import { definePlatform, type AcpluginPlatform, type JsonObject } from '@acplugin/core';
+import { definePlatform, type AcpluginPlatform, type JsonObject } from '@tokenroll/acplugin';
 import {
   generateComponentArtifacts,
   validateGeneratedSkillIds,
@@ -52,3 +52,5 @@ export function pi(options: PiPlatformOptions = {}): AcpluginPlatform {
     validateBundle: validatePiBundle,
   });
 }
+
+export default pi;

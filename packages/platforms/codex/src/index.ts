@@ -2,7 +2,7 @@ import {
   definePlatform,
   type AcpluginPlatform,
   type JsonObject,
-} from '@acplugin/core';
+} from '@tokenroll/acplugin';
 import {
   generateComponentArtifacts,
   validateCodexComponentFields,
@@ -94,3 +94,5 @@ export function codex(options: CodexPlatformOptions = {}): AcpluginPlatform {
     },
   });
 }
+
+export default codex;

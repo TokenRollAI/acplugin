@@ -231,7 +231,7 @@ export interface UserConfig {
   readonly keywords?: readonly string[];
   readonly srcDir?: string;
   readonly public?: PublicConfig;
-  readonly platforms?: readonly AcpluginPlatform[];
+  readonly platforms: readonly AcpluginPlatform[];
   readonly extensions?: readonly AcpluginExtension[];
   readonly build?: BuildConfig;
 }

@@ -1,4 +1,4 @@
-import { definePlatform, type AcpluginPlatform, type JsonObject } from '@acplugin/core';
+import { definePlatform, type AcpluginPlatform, type JsonObject } from '@tokenroll/acplugin';
 import { generateComponentArtifacts, validateOpenCodeComponentFields } from './components.js';
 import { createWorkspaceDocument, serializeDocuments, validatePlatformOptions } from './config-document.js';
 import type { OpenCodePlatformOptions } from './types.js';
@@ -45,3 +45,5 @@ export function openCode(options: OpenCodePlatformOptions = {}): AcpluginPlatfor
     validateBundle: validateOpenCodeBundle,
   });
 }
+
+export default openCode;

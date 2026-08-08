@@ -2,6 +2,7 @@ import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
+import { definePlatform } from '../src/index.js';
 import { loadProjectConfig, ProjectConfigError } from '../src/project-config.js';
 
 /** 每个配置加载测试创建并在 afterEach 中删除的临时工程。 */
@@ -13,6 +14,32 @@ const DOTENV_KEY = 'ACPLUGIN_CONFIG_LOADER_DOTENV_FIXTURE';
 /** 测试开始前宿主环境可能已经存在的变量值。 */
 const originalDotenvValue = process.env[DOTENV_KEY];
 
+/** 临时配置与测试进程共享品牌化 Platform 时使用的隔离全局键。 */
+const CONFIG_TEST_PLATFORM = Symbol.for('tokenroll.acplugin.config-loader-test-platform');
+
+Reflect.set(globalThis, CONFIG_TEST_PLATFORM, definePlatform({
+  id: 'config-loader-test',
+  apiVersion: '1',
+  deliveryType: 'plugin',
+  /** 配置加载测试不会执行 Platform 生命周期。 */
+  prepare: () => ({ documents: [], artifacts: [] }),
+  /** 配置加载测试不会生成交付单元。 */
+  generateBundle: () => ({ id: 'plugin', role: 'primary', type: 'plugin', artifacts: [] }),
+  /** 配置加载测试不会物化候选目录。 */
+  validateBundle: () => undefined,
+}));
+
+/**
+ * 为配置源码提供一个通过正式公开工厂创建的显式测试 Platform。
+ *
+ * @param source 引用 `testPlatform` 的配置导出源码。
+ * @returns 带公开 SDK 导入和品牌化实例声明的完整模块。
+ */
+function withPlatform(source: string): string {
+  return `const testPlatform = globalThis[Symbol.for('tokenroll.acplugin.config-loader-test-platform')];
+${source}`;
+}
+
 /**
  * 创建含指定 acplugin.config.ts 源码的临时工程。
  *
@@ -23,7 +50,7 @@ async function project(source: string): Promise<string> {
   /** 当前测试独占的临时工程根目录。 */
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'acplugin-config-loader-'));
   roots.push(root);
-  await fs.writeFile(path.join(root, 'acplugin.config.ts'), source);
+  await fs.writeFile(path.join(root, 'acplugin.config.ts'), withPlatform(source));
   return root;
 }
 
@@ -39,9 +66,9 @@ describe('config loader', () => {
   it('loads object, sync factory, and async factory exports', async () => {
     /** 三种受支持配置导出形式的源码。 */
     const sources = [
-      `export default { name: 'object-config', version: '1.0.0', description: 'Object.' }`,
-      `export default ({ command }) => ({ name: 'sync-config', version: '1.0.0', description: command })`,
-      `export default async ({ mode }) => ({ name: 'async-config', version: '1.0.0', description: mode })`,
+      `export default { name: 'object-config', version: '1.0.0', description: 'Object.', platforms: [testPlatform] }`,
+      `export default ({ command }) => ({ name: 'sync-config', version: '1.0.0', description: command, platforms: [testPlatform] })`,
+      `export default async ({ mode }) => ({ name: 'async-config', version: '1.0.0', description: mode, platforms: [testPlatform] })`,
     ];
     /** 三种配置分别加载后的统一名称。 */
     const names: string[] = [];
@@ -58,10 +85,10 @@ describe('config loader', () => {
 
   it('fresh-loads changed config source during dev', async () => {
     /** 初始版本为 1.0.0 的临时工程。 */
-    const cwd = await project(`export default { name: 'fresh-config', version: '1.0.0', description: 'Fresh.' }`);
+    const cwd = await project(`export default { name: 'fresh-config', version: '1.0.0', description: 'Fresh.', platforms: [testPlatform] }`);
     /** 第一次无缓存配置加载。 */
     const first = await loadProjectConfig({ cwd, command: 'dev', mode: 'development' });
-    await fs.writeFile(path.join(cwd, 'acplugin.config.ts'), `export default { name: 'fresh-config', version: '2.0.0', description: 'Fresh.' }`);
+    await fs.writeFile(path.join(cwd, 'acplugin.config.ts'), withPlatform(`export default { name: 'fresh-config', version: '2.0.0', description: 'Fresh.', platforms: [testPlatform] }`));
     /** 文件变化后的第二次无缓存配置加载。 */
     const second = await loadProjectConfig({ cwd, command: 'dev', mode: 'development' });
 
@@ -83,9 +110,9 @@ describe('config loader', () => {
     await fs.mkdir(helperRoot, { recursive: true });
     await fs.writeFile(path.join(helperRoot, 'package.json'), '{"name":"shared-config","type":"module"}\n');
     await fs.writeFile(helper, `export const description = 'First external helper.';\n`);
-    await fs.writeFile(path.join(cwd, 'acplugin.config.ts'), `import { description } from '../shared-config/value.ts';
-export default { name: 'closure-config', version: '1.0.0', description };
-`);
+    await fs.writeFile(path.join(cwd, 'acplugin.config.ts'), withPlatform(`import { description } from '../shared-config/value.ts';
+export default { name: 'closure-config', version: '1.0.0', description, platforms: [testPlatform] };
+`));
 
     /** 第一次执行观察到的 Jiti transform closure。 */
     const first = await loadProjectConfig({ cwd, command: 'dev', mode: 'development' });
@@ -106,6 +133,7 @@ export default { name: 'closure-config', version: '1.0.0', description };
       name: 'dotenv-config',
       version: '1.0.0',
       description: process.env.${DOTENV_KEY} ?? 'not-loaded',
+      platforms: [testPlatform],
     }`);
     await fs.writeFile(path.join(cwd, '.env'), `${DOTENV_KEY}=loaded-secret\n`);
     /** 不启用 dotenv 的最终加载结果。 */
@@ -134,13 +162,13 @@ export default { name: 'closure-config', version: '1.0.0', description };
       return codes.includes('CONFIG_LEGACY_TARGETS')
         && codes.includes('CONFIG_LEGACY_MODULES')
         && codes.includes('CONFIG_PLATFORMS_EMPTY')
-        && error.diagnostics.some(item => item.hint?.includes('platforms: [claudeCode(), codex()]'));
+        && error.diagnostics.some(item => item.hint?.includes('platforms: [myPlatform()]'));
     });
   });
 
   it('records loaded Extension descriptors and their local dependency root for dev', async () => {
     /** descriptor 监听测试使用的有效配置工程。 */
-    const cwd = await project(`export default { name: 'watch-config', version: '1.0.0', description: 'Watch.' }`);
+    const cwd = await project(`export default { name: 'watch-config', version: '1.0.0', description: 'Watch.', platforms: [testPlatform] }`);
     /** 模拟 Extension discover 阶段加载的本地 TypeScript descriptor。 */
     const descriptor = path.join(cwd, 'extensions/example.ts');
     await fs.mkdir(path.dirname(descriptor), { recursive: true });

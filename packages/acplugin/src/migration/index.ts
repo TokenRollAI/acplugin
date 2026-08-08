@@ -6,8 +6,8 @@ import semver from 'semver';
 import parseSpdxExpression from 'spdx-expression-parse';
 import { input } from '@inquirer/prompts';
 import mcp, { defineMcpServer } from '@tokenroll/acplugin-extension-mcp';
+import claudeCode from '@tokenroll/acplugin-platform-claude-code';
 import {
-  claudeCode,
   defineConfig,
   runProject,
   stableJson,
@@ -48,7 +48,7 @@ const MIGRATION_VALIDATION_API = Symbol.for('tokenroll.acplugin.migration-valida
 /** 并发 Migration 共享同一组不可变公开 API 时用于延迟删除全局桥接。 */
 let activeValidationProxies = 0;
 
-/** 临时代理读取的正式主包与 MCP Extension 公开 API。 */
+/** 临时代理读取的正式主包、Claude Code Platform 与 MCP Extension 公开 API。 */
 interface MigrationValidationApi {
   /** 生成配置使用的公开恒等辅助函数。 */
   readonly defineConfig: typeof defineConfig;
@@ -1346,7 +1346,20 @@ async function validateCanonicalProject(
 const api = globalThis[Symbol.for('tokenroll.acplugin.migration-validation-api')];
 if (!api) throw new Error('Migration validation API is unavailable.');
 export const defineConfig = api.defineConfig;
+`);
+    /** 独立 Platform 代理保持生成配置与正式 package 边界一致。 */
+    const platformPackage = path.join(nodeModules, '@tokenroll/acplugin-platform-claude-code');
+    await copyText(path.join(platformPackage, 'package.json'), stableJson({
+      name: '@tokenroll/acplugin-platform-claude-code',
+      version: '1.0.0',
+      type: 'module',
+      exports: './index.mjs',
+    }));
+    await copyText(path.join(platformPackage, 'index.mjs'), `
+const api = globalThis[Symbol.for('tokenroll.acplugin.migration-validation-api')];
+if (!api) throw new Error('Migration validation API is unavailable.');
 export const claudeCode = api.claudeCode;
+export default api.claudeCode;
 `);
     if (usesMcp) {
       /** 临时 Extension 代理同时服务配置工厂和每个 mcp.ts 的定义工厂导入。 */
@@ -1532,10 +1545,11 @@ async function writeCanonicalProject(
     }]));
   }
 
-  /** 是否没有任何能够生成 Codex Skill 或 fallback Skill 的规范 Component。 */
-  const hasCanonicalComponents = scan.skills.length + scan.commands.length + scan.agents.length > 0;
   /** 规范配置入口及按需追加的 Platform/Extension 导入。 */
-  const imports = [`import { defineConfig${hasCanonicalComponents ? '' : ', claudeCode'} } from '@tokenroll/acplugin';`];
+  const imports = [
+    `import { defineConfig } from '@tokenroll/acplugin';`,
+    `import claudeCode from '@tokenroll/acplugin-platform-claude-code';`,
+  ];
   if (usesMcp)
     imports.push(`import mcp from '@tokenroll/acplugin-extension-mcp';`);
   /** 按稳定顺序组成且只包含已知字段的最终配置行。 */
@@ -1559,12 +1573,16 @@ async function writeCanonicalProject(
     configLines.push(`  keywords: ${JSON.stringify(metadata.keywords)},`);
   if (usesMcp)
     configLines.push('  extensions: [mcp()],');
-  if (!hasCanonicalComponents)
-    configLines.push('  platforms: [claudeCode()],');
+  configLines.push('  platforms: [claudeCode()],');
   configLines.push('  build: { strict: false },', '});');
   await copyText(path.join(outputRoot, 'acplugin.config.ts'), `${imports.join('\n')}\n\n${configLines.join('\n')}\n`);
   /** 新工程基础开发依赖及按需追加的官方 MCP Extension。 */
-  const devDependencies: Record<string, string> = { '@tokenroll/acplugin': '^1.0.0', 'typescript': '^7.0.2', '@types/node': '^20.19.0' };
+  const devDependencies: Record<string, string> = {
+    '@tokenroll/acplugin': '^1.0.0',
+    '@tokenroll/acplugin-platform-claude-code': '^1.0.0',
+    'typescript': '^7.0.2',
+    '@types/node': '^20.19.0',
+  };
   if (usesMcp)
     devDependencies['@tokenroll/acplugin-extension-mcp'] = '^1.0.0';
   await copyText(path.join(outputRoot, 'package.json'), stableJson({

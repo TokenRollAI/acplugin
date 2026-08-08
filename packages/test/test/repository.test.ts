@@ -17,33 +17,44 @@ async function read(relativePath: string): Promise<string> {
 }
 
 describe('repository release and documentation guards', () => {
-  it('keeps the public packages in one manually publishable cohort', async () => {
-    /** 手动发布 Cohort 中三个公开包的清单路径。 */
+  it('keeps nine independently versioned packages manually publishable', async () => {
+    /** 九个公开包的清单路径。 */
     const packageFiles = [
       'packages/acplugin/package.json',
+      'packages/platforms/claude-code/package.json',
+      'packages/platforms/codex/package.json',
+      'packages/platforms/cursor/package.json',
+      'packages/platforms/antigravity/package.json',
+      'packages/platforms/opencode/package.json',
+      'packages/platforms/pi/package.json',
       'packages/extensions/hooks/package.json',
       'packages/extensions/mcp/package.json',
     ];
-    /** 三个公开包解析后的发布字段。 */
+    /** 九个公开包解析后的发布字段。 */
     const manifests = await Promise.all(packageFiles.map(async file => JSON.parse(await read(file)) as {
       name: string;
       version: string;
       private?: boolean;
       publishConfig?: { access?: string; provenance?: boolean };
     }));
-    /** Changesets 中声明的固定版本发布组。 */
+    /** Changesets 不再声明固定版本发布组。 */
     const changeset = JSON.parse(await read('.changeset/config.json')) as { fixed: string[][] };
 
-    expect(new Set(manifests.map(manifest => manifest.version)).size).toBe(1);
     expect(manifests.map(manifest => manifest.name)).toEqual([
       '@tokenroll/acplugin',
+      '@tokenroll/acplugin-platform-claude-code',
+      '@tokenroll/acplugin-platform-codex',
+      '@tokenroll/acplugin-platform-cursor',
+      '@tokenroll/acplugin-platform-antigravity',
+      '@tokenroll/acplugin-platform-opencode',
+      '@tokenroll/acplugin-platform-pi',
       '@tokenroll/acplugin-extension-hooks',
       '@tokenroll/acplugin-extension-mcp',
     ]);
     expect(manifests.every(manifest => manifest.private !== true)).toBe(true);
     expect(manifests.every(manifest => manifest.publishConfig?.access === 'public')).toBe(true);
     expect(manifests.every(manifest => manifest.publishConfig?.provenance === undefined)).toBe(true);
-    expect(changeset.fixed).toContainEqual(expect.arrayContaining(manifests.map(manifest => manifest.name)));
+    expect(changeset.fixed).toEqual([]);
   });
 
   it('does not expose an automated publication path', async () => {
@@ -94,21 +105,27 @@ describe('repository release and documentation guards', () => {
   });
 
   it('separates the repository Node toolchain from published runtime support', async () => {
-    /** 根工具链和三个公开包的精确清单路径。 */
+    /** 根工具链和九个公开包的精确清单路径。 */
     const files = [
       'package.json',
       'packages/acplugin/package.json',
+      'packages/platforms/claude-code/package.json',
+      'packages/platforms/codex/package.json',
+      'packages/platforms/cursor/package.json',
+      'packages/platforms/antigravity/package.json',
+      'packages/platforms/opencode/package.json',
+      'packages/platforms/pi/package.json',
       'packages/extensions/hooks/package.json',
       'packages/extensions/mcp/package.json',
     ];
     /** 当前根与公开 manifest 的 engine/dependency 边界。 */
-    const [repository, main, hooks, mcp] = await Promise.all(files.map(async file => JSON.parse(await read(file)) as {
+    const [repository, main, ...integrations] = await Promise.all(files.map(async file => JSON.parse(await read(file)) as {
       engines?: { node?: string };
       dependencies?: Record<string, string>;
     }));
 
     expect(repository.engines?.node).toBe('^22.18.0 || >=24.11.0');
-    for (const manifest of [main, hooks, mcp])
+    for (const manifest of [main, ...integrations])
       expect(manifest.engines?.node).toBe('^20.19.0 || ^22.13.0 || >=23.5.0');
     expect(main.dependencies?.commander).toBe('14.0.1');
   });

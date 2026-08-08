@@ -203,7 +203,7 @@ const resolved = resolveConfig({
   public: false,
   platforms: [platform],
   extensions: [extension],
-}, ${JSON.stringify(path.join(root, 'acplugin.config.ts'))}, 'validate', 'production', { defaultPlatforms: [platform] });
+}, ${JSON.stringify(path.join(root, 'acplugin.config.ts'))}, 'validate', 'production');
 if (!resolved.config)
   throw new Error('Fixture config did not resolve.');
 const result = await executeLifecycle({

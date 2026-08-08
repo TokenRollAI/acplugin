@@ -2,8 +2,7 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { claudeCode } from '@tokenroll/acplugin';
-import { PLATFORM_ID } from '@tokenroll/acplugin/platforms/claude-code';
+import claudeCode, { PLATFORM_ID } from '@tokenroll/acplugin-platform-claude-code';
 
 /** 跨包契约测试读取源码边界时使用的仓库根目录。 */
 const repositoryRoot = fileURLToPath(new URL('../../..', import.meta.url));
@@ -32,8 +31,8 @@ async function platformSources(directory: string): Promise<string> {
 }
 
 describe('Claude Code public Platform integration', () => {
-  it('re-exports the private Platform factory with a frozen Marketplace contract', () => {
-    /** 通过正式公开主包创建的 Claude Code Platform。 */
+  it('exports an independent Platform factory with a frozen Marketplace contract', () => {
+    /** 通过独立公开 package 创建的 Claude Code Platform。 */
     const platform = claudeCode({
       strict: false,
       defaultEnabled: false,
@@ -68,7 +67,7 @@ describe('Claude Code public Platform integration', () => {
   });
 
   it('keeps Hooks and MCP implementation packages outside the Platform dependency boundary', async () => {
-    /** Claude Code 私有 Platform 的完整源码文本。 */
+    /** Claude Code 公开 Platform 的完整源码文本。 */
     const source = await platformSources(path.join(repositoryRoot, 'packages/platforms/claude-code/src'));
 
     expect(source).not.toContain('@tokenroll/acplugin-extension-hooks');

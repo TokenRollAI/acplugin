@@ -130,7 +130,7 @@ function resolvedConfig(
     platforms: [platform],
     extensions,
     build: { outDir: 'dist', strict: true },
-  }, path.join(root, 'acplugin.config.ts'), command, 'production', { defaultPlatforms: [platform] });
+  }, path.join(root, 'acplugin.config.ts'), command, 'production');
   expect(result.diagnostics).toEqual([]);
   return result.config!;
 }

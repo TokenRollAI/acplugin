@@ -9,4 +9,5 @@ export default defineConfig({
   dts: { generator: 'oxc' },
   clean: true,
   sourcemap: false,
+  deps: { neverBundle: ['@tokenroll/acplugin'] },
 });

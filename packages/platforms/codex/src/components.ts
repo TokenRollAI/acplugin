@@ -8,7 +8,7 @@ import {
   type PlatformGenerateContext,
   type PlatformPrepareContext,
   type PluginProject,
-} from '@acplugin/core';
+} from '@tokenroll/acplugin';
 import { CODEX_BRAND_COLOR_PATTERN, CODEX_SKILL_PRODUCTS } from './protocol.js';
 
 /** Codex Skill `agents/openai.yaml` 允许配置的 Component 专属字段。 */

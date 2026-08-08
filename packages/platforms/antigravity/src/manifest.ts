@@ -5,7 +5,7 @@ import {
   type DraftDocument,
   type JsonObject,
   type PlatformPrepareContext,
-} from '@acplugin/core';
+} from '@tokenroll/acplugin';
 
 /** Antigravity Plugin 清单的稳定逻辑 Document ID。 */
 export const PLUGIN_MANIFEST_ID = 'plugin-manifest';

@@ -48,7 +48,7 @@ function resolvedConfig(root: string): ResolvedConfig {
     version: '1.2.3',
     description: 'Release workflow tools.',
     platforms: [antigravity()],
-  }, path.join(root, 'acplugin.config.ts'), 'build', 'production', { defaultPlatforms: [antigravity()] });
+  }, path.join(root, 'acplugin.config.ts'), 'build', 'production');
   expect(result.diagnostics).toEqual([]);
   return result.config!;
 }

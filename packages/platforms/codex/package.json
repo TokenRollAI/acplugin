@@ -1,29 +1,31 @@
 {
-  "name": "@acplugin/platform-codex",
-  "version": "0.0.0",
-  "private": true,
+  "name": "@tokenroll/acplugin-platform-codex",
+  "version": "1.0.0",
+  "description": "Codex Platform adapter for acplugin.",
   "type": "module",
-  "engines": {
-    "node": ">=20"
-  },
-  "exports": {
-    ".": {
-      "types": "./dist/index.d.mts",
-      "import": "./dist/index.mjs"
-    }
-  },
+  "license": "MIT",
+  "homepage": "https://github.com/TokenRollAI/acplugin#codex-platform",
+  "repository": { "type": "git", "url": "git+https://github.com/TokenRollAI/acplugin.git", "directory": "packages/platforms/codex" },
+  "bugs": { "url": "https://github.com/TokenRollAI/acplugin/issues" },
+  "sideEffects": false,
+  "engines": { "node": "^20.19.0 || ^22.13.0 || >=23.5.0" },
+  "exports": { ".": { "types": "./dist/index.d.mts", "import": "./dist/index.mjs" } },
+  "files": ["dist", "README.md", "LICENSE"],
+  "publishConfig": { "access": "public" },
   "scripts": {
     "build": "tsdown",
     "test": "vitest run --passWithNoTests",
     "typecheck": "tsc -p tsconfig.json"
   },
+  "peerDependencies": { "@tokenroll/acplugin": "workspace:^" },
   "dependencies": {
-    "@acplugin/core": "workspace:*",
     "image-size": "^2.0.2",
     "saxes": "^6.0.0",
     "yaml": "^2.9.0"
   },
   "devDependencies": {
+    "@acplugin/core": "workspace:*",
+    "@tokenroll/acplugin": "workspace:^",
     "@types/node": "catalog:",
     "tsdown": "catalog:",
     "@typescript/native": "catalog:",

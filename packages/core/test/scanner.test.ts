@@ -41,7 +41,7 @@ function testPlatform(
   });
 }
 
-/** Core Scanner 测试模拟主包注入的两个默认 Platform。 */
+/** Core Scanner 测试使用的两个显式 Platform。 */
 const defaultPlatforms = [testPlatform('claude-code'), testPlatform('codex')];
 
 /**
@@ -61,7 +61,7 @@ async function temporaryProject(): Promise<string> {
  *
  * @param root 临时工程根目录。
  * @param input 需要覆盖默认元数据的用户配置。
- * @param platforms 主包负责注入的默认 Platform。
+ * @param platforms 测试配置显式声明的 Platform。
  * @returns 无配置错误的最终 ResolvedConfig。
  */
 function projectConfig(
@@ -74,12 +74,11 @@ function projectConfig(
     name: 'scanner-fixture',
     version: '1.0.0',
     description: 'Scanner fixture.',
+    platforms,
     ...input,
   };
   /** Core 配置解析结果。 */
-  const resolved = resolveConfig(value, path.join(root, 'acplugin.config.ts'), 'validate', 'production', {
-    defaultPlatforms: platforms,
-  });
+  const resolved = resolveConfig(value, path.join(root, 'acplugin.config.ts'), 'validate', 'production');
   expect(resolved.diagnostics).toEqual([]);
   return resolved.config!;
 }

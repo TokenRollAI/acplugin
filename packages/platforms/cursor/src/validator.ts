@@ -1,6 +1,6 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
-import type { JsonValue, PlatformValidateContext } from '@acplugin/core';
+import type { JsonValue, PlatformValidateContext } from '@tokenroll/acplugin';
 import { PLUGIN_MANIFEST_PATH, SEMVER_PATTERN } from './manifest.js';
 
 /** Cursor 官方 Schema 当前允许的根字段。 */

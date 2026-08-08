@@ -1,6 +1,6 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
-import type { JsonValue, PlatformValidateContext } from '@acplugin/core';
+import type { JsonValue, PlatformValidateContext } from '@tokenroll/acplugin';
 import { WORKSPACE_CONFIG_PATH } from './config-document.js';
 
 /** OpenCode workspace 配置由 Platform/Extension 允许生成的根字段。 */

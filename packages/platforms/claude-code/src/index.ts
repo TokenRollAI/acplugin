@@ -2,7 +2,7 @@ import {
   definePlatform,
   type AcpluginPlatform,
   type JsonObject,
-} from '@acplugin/core';
+} from '@tokenroll/acplugin';
 import { generateComponentArtifacts, validateClaudeComponentFields } from './components.js';
 import {
   createManifestDocument,
@@ -83,3 +83,5 @@ export function claudeCode(options: ClaudeCodePlatformOptions = {}): AcpluginPla
     },
   });
 }
+
+export default claudeCode;
