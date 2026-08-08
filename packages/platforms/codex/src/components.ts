@@ -313,6 +313,15 @@ export function generateComponentArtifacts(context: PlatformGenerateContext): Ar
       transformation: `Explicit Skill ${id}`,
       reason: 'Codex represents Commands as explicitly invoked Skills.',
     });
+    if (command.body.includes('{{arguments}}')) {
+      context.reportCompatibility({
+        subject: `command:${command.id}`,
+        capability: 'arguments',
+        level: 'transform',
+        transformation: 'The arguments placeholder becomes explicit invocation guidance.',
+        reason: 'Codex Skills receive arguments through the invoking prompt rather than a Command placeholder.',
+      });
+    }
     if (command.argumentHint !== undefined) {
       context.reportCompatibility({
         subject: `command:${command.id}`,

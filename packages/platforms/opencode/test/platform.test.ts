@@ -2,7 +2,16 @@ import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { executeLifecycle, resolveConfig, type ResolvedConfig } from '@acplugin/core';
+import {
+  bytesArtifact,
+  DeliveryUnitRegistry,
+  executeLifecycle,
+  resolveConfig,
+  stableJson,
+  withMaterializedDeliveryUnitCandidate,
+  type DiagnosticInput,
+  type ResolvedConfig,
+} from '@acplugin/core';
 import { openCode } from '../src/index.js';
 
 /** 测试结束后统一删除的临时工程根目录。 */
@@ -93,5 +102,33 @@ describe('OpenCode Platform', () => {
 
     expect(build.success, JSON.stringify(build.diagnostics)).toBe(true);
     await expect(fs.access(path.join(root, 'dist/opencode/workspace/opencode.json'))).rejects.toThrow();
+  });
+
+  it('rejects a non-object MCP section with the platform-specific code', async () => {
+    /** 候选物化使用的独占临时父目录。 */
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'acplugin-opencode-validator-'));
+    temporaryRoots.push(root);
+    /** 真实 Platform Validator 与 Core Registry 共同验证的无效单元。 */
+    const platform = openCode();
+    /** 为无效候选补齐 owner/hash 的 Core Registry。 */
+    const units = new DeliveryUnitRegistry(new Map());
+    /** 包含错误 MCP 配置形态的已注册候选单元。 */
+    const unit = await units.add(platform.id, {
+      id: 'workspace',
+      role: 'primary',
+      type: 'workspace',
+      artifacts: [bytesArtifact('opencode.json', stableJson({ mcp: [] }))],
+    });
+    /** Validator 返回的稳定平台诊断。 */
+    const diagnostics: DiagnosticInput[] = [];
+    await withMaterializedDeliveryUnitCandidate(unit, candidate => platform.validateBundle!({
+      command: 'build',
+      mode: 'production',
+      candidate,
+      /** 收集最终候选校验产生的平台诊断。 */
+      reportDiagnostic: diagnostic => diagnostics.push(diagnostic),
+    }), root);
+
+    expect(diagnostics).toContainEqual(expect.objectContaining({ code: 'OPENCODE_MCP_CONFIG_INVALID' }));
   });
 });

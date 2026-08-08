@@ -43,6 +43,19 @@ const PLATFORM_OWNER = 'platform:codex' as const;
 /** Codex Marketplace 机器名称采用的保守 kebab-case 规则。 */
 const MARKETPLACE_NAME_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
+/**
+ * 按 UTF-16 code unit 比较 Codex DeliveryUnit ID，不依赖宿主 locale/ICU。
+ *
+ * @param left 左侧 ID。
+ * @param right 右侧 ID。
+ * @returns 与 Array.sort 约定一致的 -1、0 或 1。
+ */
+function compareCodeUnits(left: string, right: string): number {
+  if (left === right)
+    return 0;
+  return left < right ? -1 : 1;
+}
+
 /** Codex 官方插件目录当前接受的分类集合。 */
 const CATEGORIES = new Set<CodexCategory>(CODEX_CATEGORIES);
 
@@ -310,7 +323,7 @@ function marketplaceLayouts(primaryUnits: readonly DeliveryUnit[]): readonly Mar
   if (primaryUnits.length === 0)
     throw new Error('Codex Marketplace requires at least one validated primary Plugin.');
   /** 按单元 ID 排序，避免未来编排器的集合遍历顺序影响 Marketplace 字节。 */
-  const units = [...primaryUnits].sort((left, right) => left.id.localeCompare(right.id, 'en'));
+  const units = [...primaryUnits].sort((left, right) => compareCodeUnits(left.id, right.id));
   if (new Set(units.map(unit => unit.id)).size !== units.length)
     throw new Error('Codex Marketplace received duplicate primary DeliveryUnit IDs.');
   if (units.length === 1)

@@ -86,6 +86,82 @@ function referenceExists(artifacts: ReadonlySet<string>, reference: string): boo
   return directory.length > 0 && [...artifacts].some(artifact => artifact.startsWith(directory));
 }
 
+/** Cursor logo 中显式 URL scheme 的稳定识别规则。 */
+const URL_SCHEME_PATTERN = /^[A-Za-z][A-Za-z\d+.-]*:/u;
+
+/**
+ * 校验 Cursor logo 的远端 URL 分支。
+ *
+ * @param value 带显式 scheme 的 logo 候选。
+ * @returns 仅无凭据 HTTPS 网络 URL 返回 true。
+ */
+function isSafeLogoUrl(value: string): boolean {
+  try {
+    /** URL 解析后的协议、主机和凭据共同定义远端资源信任边界。 */
+    const url = new URL(value);
+    return url.protocol === 'https:'
+      && url.hostname.length > 0
+      && url.username === ''
+      && url.password === '';
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * 校验 Cursor logo 的 Plugin 根相对路径分支。
+ *
+ * @param value 不带 URL scheme 的 logo 候选。
+ * @returns 安全路径对应的 Artifact lookup key；非法时返回 undefined。
+ */
+function logoArtifactPath(value: string): string | undefined {
+  if (value === ''
+    || value.includes('\0')
+    || value.includes('\\')
+    || path.posix.isAbsolute(value)
+    || path.win32.isAbsolute(value)
+    || value.split('/').includes('..')) {
+    return undefined;
+  }
+  /** Cursor 接受可选 `./`，Artifact Registry 使用无前缀 POSIX 路径。 */
+  const normalized = path.posix.normalize(value).replace(/^\.\//u, '');
+  return normalized === '.' || normalized.startsWith('../') ? undefined : normalized;
+}
+
+/**
+ * 按互斥 URL/Artifact 分支校验 Cursor logo。
+ *
+ * @param context Platform validateBundle 生命周期上下文。
+ * @param artifacts 当前候选交付单元的 Artifact 路径集合。
+ * @param value Manifest logo 字段候选。
+ */
+function validateLogo(
+  context: PlatformValidateContext,
+  artifacts: ReadonlySet<string>,
+  value: JsonValue,
+): void {
+  if (typeof value !== 'string') {
+    report(context, 'CURSOR_LOGO_PATH_INVALID', 'logo must be an HTTPS URL or a safe Plugin-root Artifact path.', ['logo']);
+    return;
+  }
+  /** 本机绝对路径优先归入相对路径边界，避免盘符被误判成 URL scheme。 */
+  if (path.posix.isAbsolute(value) || path.win32.isAbsolute(value) || value.includes('\\') || value.includes('\0')) {
+    report(context, 'CURSOR_LOGO_PATH_INVALID', 'logo path must be a safe POSIX path relative to the Plugin root.', ['logo']);
+    return;
+  }
+  if (URL_SCHEME_PATTERN.test(value)) {
+    if (!isSafeLogoUrl(value))
+      report(context, 'CURSOR_LOGO_URL_INVALID', 'logo URL must be an absolute HTTPS URL without credentials.', ['logo']);
+    return;
+  }
+  /** 不带 scheme 的输入只能引用当前候选中实际存在的 Artifact。 */
+  const artifactPath = logoArtifactPath(value);
+  if (artifactPath === undefined)
+    report(context, 'CURSOR_LOGO_PATH_INVALID', 'logo path must be a safe POSIX path relative to the Plugin root.', ['logo']);
+  else if (!artifacts.has(artifactPath))
+    report(context, 'CURSOR_LOGO_ARTIFACT_MISSING', 'logo path must reference a generated Plugin Artifact.', ['logo']);
+}
+
 /**
  * 校验 Cursor Manifest 路径字段的安全性和存在性。
  *
@@ -149,6 +225,8 @@ export async function validateCursorBundle(context: PlatformValidateContext): Pr
     else if (Object.keys(author).some(field => field !== 'name' && field !== 'email'))
       report(context, 'CURSOR_MANIFEST_AUTHOR_FIELD_UNKNOWN', 'author accepts only name and email.', ['author']);
   }
+  if (manifest.logo !== undefined)
+    validateLogo(context, artifacts, manifest.logo);
   /** field 表示当前 acplugin 可能生成的 Component Glob。 */
   for (const field of ['commands', 'skills', 'agents'] as const) {
     if (manifest[field] !== undefined)

@@ -33,6 +33,19 @@ const SKILL_INTERFACE_FIELDS = new Set([
   'display_name', 'short_description', 'icon_small', 'icon_large', 'brand_color', 'default_prompt',
 ]);
 
+/**
+ * 按 UTF-16 code unit 比较 Codex Skill ID，不依赖宿主 locale/ICU。
+ *
+ * @param left 左侧 ID。
+ * @param right 右侧 ID。
+ * @returns 与 Array.sort 约定一致的 -1、0 或 1。
+ */
+function compareCodeUnits(left: string, right: string): number {
+  if (left === right)
+    return 0;
+  return left < right ? -1 : 1;
+}
+
 /** Codex Skill 元数据 `policy` 允许出现的字段。 */
 const SKILL_POLICY_FIELDS = new Set(['products', 'allow_implicit_invocation']);
 
@@ -847,7 +860,7 @@ async function validateSkills(
   /** 已验证 Skill frontmatter 名称的全局唯一性集合。 */
   const names = new Set<string>();
   /** skillId 表示当前排序后的 Skill，用于生成确定诊断顺序。 */
-  for (const skillId of [...directories].sort((left, right) => left.localeCompare(right, 'en'))) {
+  for (const skillId of [...directories].sort(compareCodeUnits)) {
     if (!SKILL_ID_PATTERN.test(skillId))
       report(context, 'CODEX_SKILL_DIRECTORY_INVALID', `Skill directory "${skillId}" must use lowercase kebab-case.`, ['skills', skillId]);
     await validateSkill(context, artifacts, pluginRoot, pluginName, skillId, names);

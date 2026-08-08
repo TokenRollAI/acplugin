@@ -40,6 +40,19 @@ const FIELDS_BY_KIND = {
 type UnknownFields = Readonly<Record<string, unknown>>;
 
 /**
+ * 按 UTF-16 code unit 比较 Claude Code 生成值，不依赖宿主 locale/ICU。
+ *
+ * @param left 左侧字符串。
+ * @param right 右侧字符串。
+ * @returns 与 Array.sort 约定一致的 -1、0 或 1。
+ */
+function compareCodeUnits(left: string, right: string): number {
+  if (left === right)
+    return 0;
+  return left < right ? -1 : 1;
+}
+
+/**
  * 判断值是否为非空字符串。
  *
  * @param value 待检查的 Component 平台字段。
@@ -161,7 +174,7 @@ function claudeTools(capabilities: readonly AgentCapability[]): string[] {
   // WebSearch 同时具有检索和联网语义，只有两项能力都声明时才能授予，避免扩大 Agent 权限。
   if (capabilities.includes('search') && capabilities.includes('network'))
     result.add('WebSearch');
-  return [...result].sort((left, right) => left.localeCompare(right, 'en'));
+  return [...result].sort(compareCodeUnits);
 }
 
 /**

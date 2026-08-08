@@ -40,11 +40,6 @@ export async function validateOpenCodeBundle(context: PlatformValidateContext): 
   const artifacts = new Set(context.candidate.unit.artifacts.map(artifact => artifact.path));
   if (artifacts.has('package.json'))
     report(context, 'OPENCODE_PACKAGE_JSON_FORBIDDEN', 'OpenCode workspace delivery must not generate a generic package.json.');
-  for (const artifact of artifacts) {
-    if (artifact === WORKSPACE_CONFIG_PATH || artifact.startsWith('.opencode/') || artifact.startsWith('public/'))
-      continue;
-    // Public 文件可以由作者映射到任意安全相对路径；其安全性已由 Core Artifact Registry 保证。
-  }
   if (!artifacts.has(WORKSPACE_CONFIG_PATH))
     return;
   try {

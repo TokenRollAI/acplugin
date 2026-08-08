@@ -2,7 +2,16 @@ import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { executeLifecycle, resolveConfig, type ResolvedConfig } from '@acplugin/core';
+import {
+  bytesArtifact,
+  DeliveryUnitRegistry,
+  executeLifecycle,
+  resolveConfig,
+  stableJson,
+  withMaterializedDeliveryUnitCandidate,
+  type DiagnosticInput,
+  type ResolvedConfig,
+} from '@acplugin/core';
 import { antigravity } from '../src/index.js';
 
 /** 测试结束后统一删除的临时工程根目录。 */
@@ -72,5 +81,33 @@ describe('Antigravity Platform', () => {
     expect(Object.keys(manifest).every(field => Object.hasOwn(schema.properties, field))).toBe(true);
     expect(await fs.readFile(manifestPath)).toEqual(await fs.readFile(path.join(goldenRoot, 'plugin.json')));
     await fs.access(path.join(root, 'dist/antigravity/plugin/skills/review/SKILL.md'));
+  });
+
+  it('rejects a structurally invalid final manifest with the platform-specific code', async () => {
+    /** 候选物化使用的独占临时父目录。 */
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'acplugin-antigravity-validator-'));
+    temporaryRoots.push(root);
+    /** 真实 Platform Validator 与 Core Registry 共同验证的无效单元。 */
+    const platform = antigravity();
+    /** 为无效候选补齐 owner/hash 的 Core Registry。 */
+    const units = new DeliveryUnitRegistry(new Map());
+    /** 包含结构错误 Manifest 的已注册候选单元。 */
+    const unit = await units.add(platform.id, {
+      id: 'plugin',
+      role: 'primary',
+      type: 'plugin',
+      artifacts: [bytesArtifact('plugin.json', stableJson({ name: '', extra: true }))],
+    });
+    /** Validator 返回的稳定平台诊断。 */
+    const diagnostics: DiagnosticInput[] = [];
+    await withMaterializedDeliveryUnitCandidate(unit, candidate => platform.validateBundle!({
+      command: 'build',
+      mode: 'production',
+      candidate,
+      /** 收集最终候选校验产生的平台诊断。 */
+      reportDiagnostic: diagnostic => diagnostics.push(diagnostic),
+    }), root);
+
+    expect(diagnostics).toContainEqual(expect.objectContaining({ code: 'ANTIGRAVITY_MANIFEST_INVALID' }));
   });
 });

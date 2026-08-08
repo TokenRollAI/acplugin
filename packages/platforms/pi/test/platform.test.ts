@@ -3,7 +3,16 @@ import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { executeLifecycle, resolveConfig, type ResolvedConfig } from '@acplugin/core';
+import {
+  bytesArtifact,
+  DeliveryUnitRegistry,
+  executeLifecycle,
+  resolveConfig,
+  stableJson,
+  withMaterializedDeliveryUnitCandidate,
+  type DiagnosticInput,
+  type ResolvedConfig,
+} from '@acplugin/core';
 import { pi } from '../src/index.js';
 
 /** 测试结束后统一删除的临时工程根目录。 */
@@ -110,4 +119,40 @@ describe('Pi Platform', () => {
     await fs.access(path.join(installedRoot, manifest.pi.prompts[0]!.slice(2), 'release.md'));
     await fs.access(path.join(installedRoot, manifest.pi.image.slice(2)));
   }, 30_000);
+
+  it('rejects workspace metadata in a final package with the platform-specific code', async () => {
+    /** 候选物化使用的独占临时父目录。 */
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'acplugin-pi-validator-'));
+    temporaryRoots.push(root);
+    /** 真实 Platform Validator 与 Core Registry 共同验证的无效单元。 */
+    const platform = pi();
+    /** 为无效候选补齐 owner/hash 的 Core Registry。 */
+    const units = new DeliveryUnitRegistry(new Map());
+    /** 包含禁止 workspace 元数据的已注册候选单元。 */
+    const unit = await units.add(platform.id, {
+      id: 'package',
+      role: 'primary',
+      type: 'package',
+      artifacts: [bytesArtifact('package.json', stableJson({
+        name: 'invalid-pi-package',
+        version: '1.0.0',
+        description: 'Invalid workspace metadata fixture.',
+        type: 'module',
+        keywords: ['pi-package'],
+        private: true,
+        pi: {},
+      }))],
+    });
+    /** Validator 返回的稳定平台诊断。 */
+    const diagnostics: DiagnosticInput[] = [];
+    await withMaterializedDeliveryUnitCandidate(unit, candidate => platform.validateBundle!({
+      command: 'build',
+      mode: 'production',
+      candidate,
+      /** 收集最终候选校验产生的平台诊断。 */
+      reportDiagnostic: diagnostic => diagnostics.push(diagnostic),
+    }), root);
+
+    expect(diagnostics).toContainEqual(expect.objectContaining({ code: 'PI_PACKAGE_WORKSPACE_LEAK' }));
+  });
 });

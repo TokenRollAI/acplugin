@@ -12,7 +12,7 @@ const temporaryRoots: string[] = [];
 /** Cursor 官方 Schema 与 Manifest Golden 的固定目录。 */
 const goldenRoot = path.join(import.meta.dirname, 'golden');
 
-/** 2026-08-06 核验的 Cursor 官方 Schema 内容摘要。 */
+/** 2026-08-08 重新核验的 Cursor 官方 Schema 内容摘要。 */
 const CURSOR_SCHEMA_SHA256 = 'a393b758901803fcf5cfe0d77bda8a83e987d32c3377dfce2d9edf445af884ed';
 
 /** Cursor 官方 Schema 的固定上游来源。 */
@@ -45,7 +45,7 @@ async function createProject(): Promise<string> {
 }
 
 /** 解析仅包含 Cursor Platform 的严格测试配置。 */
-function resolvedConfig(root: string): ResolvedConfig {
+function resolvedConfig(root: string, logo = './assets/logo.svg'): ResolvedConfig {
   /** 使用完整统一元数据和全部 Cursor 平台选项的解析结果。 */
   const result = resolveConfig({
     name: 'release-tools',
@@ -59,7 +59,7 @@ function resolvedConfig(root: string): ResolvedConfig {
     keywords: ['release', 'review'],
     platforms: [cursor({
       publisher: 'TokenRoll',
-      logo: './assets/logo.svg',
+      logo,
       category: 'Developer Tools',
       tags: ['release', 'automation'],
       minClientVersions: { cursor: '1.2.3' },
@@ -113,5 +113,45 @@ describe('Cursor Platform', () => {
 
   it('rejects unowned Platform options at the public factory boundary', () => {
     expect(() => cursor({ experimental: true } as never)).toThrow('Unknown Cursor Platform option');
+  });
+
+  it('accepts an absolute credential-free HTTPS logo URL', async () => {
+    /** 远端 HTTPS logo 不需要候选交付单元包含同名 Artifact。 */
+    const root = await createProject();
+    /** 使用远端 logo 完成候选校验的构建结果。 */
+    const result = await executeLifecycle({
+      config: resolvedConfig(root, 'https://cdn.example.com/plugin/logo.svg'),
+      /** 纯静态 Cursor Fixture 不加载作者 TypeScript descriptor。 */
+      loadTypeScriptModule: async () => undefined,
+      environment: {},
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.diagnostics.some(diagnostic => diagnostic.code.startsWith('CURSOR_LOGO_'))).toBe(false);
+  });
+
+  it.each([
+    ['file URL', 'file:///tmp/logo.svg', 'CURSOR_LOGO_URL_INVALID'],
+    ['data URL', 'data:image/svg+xml;base64,PHN2Zy8+', 'CURSOR_LOGO_URL_INVALID'],
+    ['credential URL', 'https://user:secret@example.com/logo.svg', 'CURSOR_LOGO_URL_INVALID'],
+    ['incomplete URL', 'https://', 'CURSOR_LOGO_URL_INVALID'],
+    ['POSIX absolute path', '/tmp/logo.svg', 'CURSOR_LOGO_PATH_INVALID'],
+    ['Win32 absolute path', 'C:\\temp\\logo.svg', 'CURSOR_LOGO_PATH_INVALID'],
+    ['backslash path', 'assets\\logo.svg', 'CURSOR_LOGO_PATH_INVALID'],
+    ['parent traversal', '../../logo.svg', 'CURSOR_LOGO_PATH_INVALID'],
+    ['missing Artifact', './assets/missing.svg', 'CURSOR_LOGO_ARTIFACT_MISSING'],
+  ])('rejects an unsafe or missing %s', async (_label, logo, code) => {
+    /** 每个不可信 logo 候选使用独立工程验证稳定诊断。 */
+    const root = await createProject();
+    /** 当前不可信 logo 对应的生命周期失败结果。 */
+    const result = await executeLifecycle({
+      config: resolvedConfig(root, logo),
+      /** 纯静态 Cursor Fixture 不加载作者 TypeScript descriptor。 */
+      loadTypeScriptModule: async () => undefined,
+      environment: {},
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.diagnostics).toContainEqual(expect.objectContaining({ code, platform: 'cursor', fieldPath: ['logo'] }));
   });
 });

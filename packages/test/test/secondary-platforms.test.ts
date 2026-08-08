@@ -128,6 +128,9 @@ Prepare release {{arguments}}.
 `);
   await fs.writeFile(path.join(root, 'src/skills/review/SKILL.md'), `---
 description: Review the current change.
+invocation:
+  user: false
+  model: true
 ---
 Review the implementation.
 `);
@@ -137,7 +140,9 @@ description: Review code changes.
 model: capable
 capabilities:
   - filesystem:read
+  - filesystem:write
   - search
+  - shell
 ---
 Review code and report findings.
 `);
@@ -267,6 +272,47 @@ describe('secondary official Platforms', () => {
       },
     });
     expect(piPackage).not.toHaveProperty('private');
+    /** 四个平台针对三类 Component 实际提交的完整能力结论。 */
+    const componentCompatibility = (platform: string): string[] => result.compatibility
+      .filter(entry => entry.platform === platform && /^(?:command|skill|agent):/u.test(entry.subject))
+      .map(entry => `${entry.subject}/${entry.capability}/${entry.level}`)
+      .sort();
+    expect(componentCompatibility('cursor')).toEqual([
+      'agent:reviewer/agent.capabilities/degraded',
+      'agent:reviewer/agent.model/degraded',
+      'agent:reviewer/component/native',
+      'command:release/argumentHint/degraded',
+      'command:release/component/native',
+      'skill:review/component/native',
+      'skill:review/invocation.user/degraded',
+    ].sort());
+    expect(componentCompatibility('antigravity')).toEqual([
+      'agent:reviewer/agent.capabilities/degraded',
+      'agent:reviewer/agent.model/degraded',
+      'agent:reviewer/component/degraded',
+      'command:release/argumentHint/degraded',
+      'command:release/component/transform',
+      'skill:review/component/native',
+      'skill:review/invocation/degraded',
+    ].sort());
+    expect(componentCompatibility('opencode')).toEqual([
+      'agent:reviewer/agent.capabilities/transform',
+      'agent:reviewer/agent.model/degraded',
+      'agent:reviewer/component/native',
+      'command:release/argumentHint/degraded',
+      'command:release/component/native',
+      'skill:review/component/native',
+      'skill:review/invocation/degraded',
+    ].sort());
+    expect(componentCompatibility('pi')).toEqual([
+      'agent:reviewer/agent.capabilities/degraded',
+      'agent:reviewer/agent.model/degraded',
+      'agent:reviewer/component/degraded',
+      'command:release/argumentHint/native',
+      'command:release/component/transform',
+      'skill:review/component/native',
+      'skill:review/invocation/degraded',
+    ].sort());
     expect(result.compatibility).toEqual(expect.arrayContaining([
       expect.objectContaining({ platform: 'cursor', subject: 'mcp:local-tools', level: 'unsupported' }),
       expect.objectContaining({ platform: 'antigravity', subject: 'command:release', level: 'transform' }),
@@ -296,6 +342,11 @@ describe('secondary official Platforms', () => {
     await fs.rm(path.join(root, 'src/agents'), { recursive: true, force: true });
     await fs.rm(path.join(root, 'src/mcp'), { recursive: true, force: true });
     await fs.rm(path.join(root, 'src/hooks/permission'), { recursive: true, force: true });
+    await fs.writeFile(path.join(root, 'src/skills/review/SKILL.md'), `---
+description: Review the current change.
+---
+Review the implementation.
+`);
     /** strict Skills/Commands/SessionStart 构建结果。 */
     const supported = await runProject({
       cwd: root,
