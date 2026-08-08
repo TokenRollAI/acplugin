@@ -1,30 +1,42 @@
 import path from 'node:path';
 import semver from 'semver';
+import parseSpdxExpression from 'spdx-expression-parse';
+import { DiagnosticCollector } from './diagnostics.js';
+import { isAcpluginExtension, isAcpluginPlatform, type AcpluginPlatform } from './contracts.js';
 import type {
   BuildCommand,
   BuildMode,
-  PlatformExtensions,
+  PluginAuthor,
+  PluginMetadata,
   ResolvedConfig,
+  ResolvedPlatform,
   ResolvedPublicConfig,
-  ResolvedTarget,
-  TargetId,
   UserConfig,
 } from './types.js';
-import { TARGET_IDS } from './types.js';
-import { DiagnosticCollector } from './diagnostics.js';
-import { extensionIssues } from './extensions.js';
 
 /** Plugin 名称允许使用的小写 kebab-case 格式。 */
 const NAME_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
-/** Module 名称允许使用的普通包名或 npm scope 包名格式。 */
-const MODULE_NAME_PATTERN = /^(?:@[a-z0-9][a-z0-9._-]*\/)?[a-z0-9][a-z0-9._-]*$/;
+/** Plugin 作者邮件地址使用的保守结构规则。 */
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-/** 顶层配置唯一允许出现的字段，未知字段必须诊断为错误。 */
+/** 顶层最终配置唯一允许出现的字段。 */
 const ALLOWED_FIELDS = new Set([
-  'name', 'version', 'description', 'displayName', 'srcDir', 'public',
-  'targets', 'modules', 'build', 'extensions',
+  'name', 'version', 'description', 'displayName', 'author', 'homepage',
+  'repository', 'license', 'keywords', 'srcDir', 'public', 'platforms',
+  'extensions', 'build',
 ]);
+
+/** 需要定向提示最终写法、不能只报告 unknown 的旧配置字段。 */
+const LEGACY_FIELDS = new Map([
+  ['targets', 'Use platforms: [claudeCode(), codex()] instead.'],
+  ['modules', 'Use extensions: [hooks(), mcp()] instead.'],
+]);
+
+/** Core 注入默认 Platform 时需要的外部工厂结果。 */
+export interface ResolveConfigOptions {
+  readonly defaultPlatforms: readonly AcpluginPlatform[];
+}
 
 /**
  * 判断未知值是否为可枚举的普通对象形态。
@@ -50,25 +62,15 @@ function rejectUnknownFields(
   fieldPath: readonly (string | number)[],
   diagnostics: DiagnosticCollector,
 ): void {
-  // Set 让字段检查保持确定性的同时避免每次查找都遍历数组。
+  /** Set 让字段检查保持确定性的同时避免每次查找都遍历数组。 */
   const accepted = new Set(allowed);
   for (const key of Object.keys(value)) {
-    if (!accepted.has(key)) {
-      diagnostics.error('CONFIG_FIELD_UNKNOWN', `Unknown configuration field "${[...fieldPath, key].join('.')}` + '".', {
-        phase: 'config', fieldPath: [...fieldPath, key],
-      });
-    }
+    if (accepted.has(key) || (fieldPath.length === 0 && LEGACY_FIELDS.has(key)))
+      continue;
+    diagnostics.error('CONFIG_FIELD_UNKNOWN', `Unknown configuration field "${[...fieldPath, key].join('.')}".`, {
+      phase: 'config', fieldPath: [...fieldPath, key],
+    });
   }
-}
-
-/**
- * 从规范名称推导适合界面展示的默认名称。
- *
- * @param name 已通过 kebab-case 校验的 Plugin 名称。
- * @returns 将每个名称片段首字母大写后的展示名称。
- */
-function presentationName(name: string): string {
-  return name.split('-').map(part => part.charAt(0).toUpperCase() + part.slice(1)).join(' ');
 }
 
 /**
@@ -79,83 +81,126 @@ function presentationName(name: string): string {
  * @returns 候选路径等于或包含于根目录时返回 true。
  */
 function isInside(root: string, candidate: string): boolean {
-  // 只使用 lexical relative 结果，后续文件读取阶段还会验证真实文件类型。
+  /** lexical relative 结果；实际文件阶段还会验证符号链接和文件类型。 */
   const relative = path.relative(root, candidate);
   return relative === '' || (!relative.startsWith(`..${path.sep}`) && relative !== '..' && !path.isAbsolute(relative));
 }
 
 /**
- * 将用户路径解析为绝对路径，并诊断越出工程根目录的配置。
+ * 将用户路径解析为工程内绝对路径，并拒绝绝对输入与 root escape。
  *
  * @param root 可信工程根目录。
  * @param value 用户提供的相对路径。
  * @param field 产生该路径的配置字段。
- * @param diagnostics 用于记录路径逃逸的诊断容器。
- * @returns 规范化后的绝对路径；即使非法也返回值以继续收集其他错误。
+ * @param diagnostics 用于记录路径错误的诊断容器。
+ * @returns 规范化后的绝对路径；非法时仍返回结果以继续收集错误。
  */
 function resolveInside(root: string, value: string, field: string, diagnostics: DiagnosticCollector): string {
-  // 保留解析结果可以让一次 validate 报告尽可能多的独立配置问题。
+  if (path.isAbsolute(value)) {
+    diagnostics.error('CONFIG_PATH_ABSOLUTE', `${field} must be relative to the project root.`, {
+      phase: 'config', fieldPath: field.split('.'),
+    });
+  }
+  /** 保留解析结果可让一次 validate 汇总多个独立问题。 */
   const resolved = path.resolve(root, value);
   if (!isInside(root, resolved)) {
     diagnostics.error('CONFIG_PATH_ESCAPE', `${field} must stay inside the project root.`, {
-      phase: 'config', fieldPath: [field],
+      phase: 'config', fieldPath: field.split('.'),
     });
   }
   return resolved;
 }
 
 /**
- * 合并目标平台默认值并拒绝未知、重复或空目标列表。
+ * 判断两个目录是否相等或存在父子包含关系。
  *
- * @param targets 用户配置的目标平台数组，缺省时使用全部内置目标。
- * @param strict 全局兼容性严格度默认值。
- * @param diagnostics 用于收集目标配置错误的诊断容器。
- * @returns 去重且带有最终严格度的目标配置。
+ * @param left 左侧绝对目录。
+ * @param right 右侧绝对目录。
+ * @returns 任一目录包含另一目录时返回 true。
  */
-function resolveTargets(
-  targets: readonly unknown[] | undefined,
-  strict: boolean,
-  diagnostics: DiagnosticCollector,
-): ResolvedTarget[] {
-  // 默认同时编译 Claude Code 和 Codex，保持最小配置即可多平台输出。
-  const input: readonly unknown[] = targets ?? TARGET_IDS;
-  // 已解析标识用于拒绝同一目标的重复配置。
-  const seen = new Set<TargetId>();
-  // 结果只收集结构和标识均合法的目标。
-  const resolved: ResolvedTarget[] = [];
+function directoriesOverlap(left: string, right: string): boolean {
+  return left === right || isInside(left, right) || isInside(right, left);
+}
 
-  if (input.length === 0)
-    diagnostics.error('CONFIG_TARGETS_EMPTY', 'targets must contain at least one target.', { phase: 'config', fieldPath: ['targets'] });
-
-  for (const target of input) {
-    if (typeof target !== 'string' && !isRecord(target)) {
-      diagnostics.error('CONFIG_TARGET_INVALID', 'Every target must be a target ID or target object.', { phase: 'config', fieldPath: ['targets'] });
-      continue;
-    }
-    if (isRecord(target)) {
-      rejectUnknownFields(target, ['id', 'strict'], ['targets'], diagnostics);
-      if (target.strict !== undefined && typeof target.strict !== 'boolean')
-        diagnostics.error('CONFIG_TARGET_STRICT_INVALID', 'Target strict must be boolean.', { phase: 'config', fieldPath: ['targets', 'strict'] });
-    }
-    // 字符串简写和对象形式最终都归一为同一个目标标识。
-    const id = typeof target === 'string' ? target : target.id;
-    if (typeof id !== 'string') {
-      diagnostics.error('CONFIG_TARGET_INVALID', 'Target id must be a string.', { phase: 'config', fieldPath: ['targets', 'id'] });
-      continue;
-    }
-    if (!TARGET_IDS.includes(id as TargetId)) {
-      diagnostics.error('CONFIG_TARGET_UNKNOWN', `Unknown target "${id}".`, { phase: 'config', fieldPath: ['targets'] });
-      continue;
-    }
-    if (seen.has(id as TargetId)) {
-      diagnostics.error('CONFIG_TARGET_DUPLICATE', `Target "${id}" is duplicated.`, { phase: 'config', fieldPath: ['targets'] });
-      continue;
-    }
-    seen.add(id as TargetId);
-    resolved.push({ id: id as TargetId, strict: typeof target === 'string' || typeof target.strict !== 'boolean' ? strict : target.strict });
+/**
+ * 校验字符串是否为绝对 HTTP(S) URL。
+ *
+ * @param value 待校验的 URL 文本。
+ * @returns 可由 URL 解析且协议为 http/https 时返回 true。
+ */
+function isHttpUrl(value: string): boolean {
+  try {
+    /** 使用标准 URL 解析器拒绝相对路径和不完整主机名。 */
+    const parsed = new URL(value);
+    return (parsed.protocol === 'http:' || parsed.protocol === 'https:') && parsed.hostname.length > 0;
+  } catch {
+    return false;
   }
+}
 
-  return resolved;
+/**
+ * 校验并规范化可选作者对象。
+ *
+ * @param value 配置中的 author 候选。
+ * @param diagnostics 当前配置诊断集合。
+ * @returns 字段完整时返回不可变作者元数据，否则返回 undefined。
+ */
+function resolveAuthor(value: unknown, diagnostics: DiagnosticCollector): PluginAuthor | undefined {
+  if (value === undefined)
+    return undefined;
+  if (!isRecord(value)) {
+    diagnostics.error('CONFIG_AUTHOR_INVALID', 'author must be an object.', { phase: 'config', fieldPath: ['author'] });
+    return undefined;
+  }
+  rejectUnknownFields(value, ['name', 'email', 'url'], ['author'], diagnostics);
+  if (typeof value.name !== 'string' || value.name.trim() === '')
+    diagnostics.error('CONFIG_AUTHOR_NAME_INVALID', 'author.name must be a non-empty string.', { phase: 'config', fieldPath: ['author', 'name'] });
+  if (value.email !== undefined && (typeof value.email !== 'string' || !EMAIL_PATTERN.test(value.email)))
+    diagnostics.error('CONFIG_AUTHOR_EMAIL_INVALID', 'author.email must be a valid email address.', { phase: 'config', fieldPath: ['author', 'email'] });
+  if (value.url !== undefined && (typeof value.url !== 'string' || !isHttpUrl(value.url)))
+    diagnostics.error('CONFIG_AUTHOR_URL_INVALID', 'author.url must be an absolute HTTP(S) URL.', { phase: 'config', fieldPath: ['author', 'url'] });
+  if (typeof value.name !== 'string' || value.name.trim() === '')
+    return undefined;
+  return {
+    name: value.name.trim(),
+    ...(typeof value.email === 'string' && EMAIL_PATTERN.test(value.email) ? { email: value.email } : {}),
+    ...(typeof value.url === 'string' && isHttpUrl(value.url) ? { url: value.url } : {}),
+  };
+}
+
+/**
+ * 校验、去空白并去重 Plugin keywords。
+ *
+ * @param value 配置中的 keywords 候选。
+ * @param diagnostics 当前配置诊断集合。
+ * @returns 仅包含合法唯一值的稳定数组。
+ */
+function resolveKeywords(value: unknown, diagnostics: DiagnosticCollector): string[] | undefined {
+  if (value === undefined)
+    return undefined;
+  if (!Array.isArray(value)) {
+    diagnostics.error('CONFIG_KEYWORDS_INVALID', 'keywords must be an array of strings.', { phase: 'config', fieldPath: ['keywords'] });
+    return undefined;
+  }
+  /** 保持用户顺序的规范 keyword 输出。 */
+  const keywords: string[] = [];
+  /** 用于拒绝去空白后重复 keyword 的集合。 */
+  const seen = new Set<string>();
+  for (const [index, keyword] of value.entries()) {
+    if (typeof keyword !== 'string' || keyword.trim() === '') {
+      diagnostics.error('CONFIG_KEYWORD_INVALID', 'Every keyword must be a non-empty string.', { phase: 'config', fieldPath: ['keywords', index] });
+      continue;
+    }
+    /** 去除首尾空白后的最终 keyword。 */
+    const normalized = keyword.trim();
+    if (seen.has(normalized)) {
+      diagnostics.error('CONFIG_KEYWORD_DUPLICATE', `Keyword "${normalized}" is duplicated.`, { phase: 'config', fieldPath: ['keywords', index] });
+      continue;
+    }
+    seen.add(normalized);
+    keywords.push(normalized);
+  }
+  return keywords;
 }
 
 /**
@@ -175,15 +220,14 @@ function resolvePublic(root: string, value: unknown, diagnostics: DiagnosticColl
     diagnostics.error('CONFIG_PUBLIC_INVALID', 'public must be false, a directory string, or an object.', { phase: 'config', fieldPath: ['public'] });
     return { enabled: true, dir: path.join(root, 'public') };
   }
-
-  // undefined 等价于启用默认 public 目录的空配置对象。
+  /** undefined 等价于启用默认 public 目录的空配置对象。 */
   const object = value ?? {};
   rejectUnknownFields(object, ['dir', 'copy'], ['public'], diagnostics);
   if (object.dir !== undefined && typeof object.dir !== 'string')
     diagnostics.error('CONFIG_PUBLIC_DIR_INVALID', 'public.dir must be a string.', { phase: 'config', fieldPath: ['public', 'dir'] });
-  // Public 来源目录必须在工程根目录内，目标路径则由每条 copy 规则决定。
+  /** Public 来源目录必须位于工程根内。 */
   const dir = resolveInside(root, typeof object.dir === 'string' ? object.dir : 'public', 'public.dir', diagnostics);
-  // 仅保留字段类型完整的规则，非法规则由诊断表达而不进入后续扫描。
+  /** 仅保存字段类型完整的 copy rule。 */
   const copy: { from: string; to: string }[] = [];
   if (object.copy !== undefined && !Array.isArray(object.copy))
     diagnostics.error('CONFIG_PUBLIC_COPY_INVALID', 'public.copy must be an array.', { phase: 'config', fieldPath: ['public', 'copy'] });
@@ -194,11 +238,11 @@ function resolvePublic(root: string, value: unknown, diagnostics: DiagnosticColl
         continue;
       }
       rejectUnknownFields(rawRule, ['from', 'to'], ['public', 'copy', index], diagnostics);
-      if (typeof rawRule.from !== 'string' || typeof rawRule.to !== 'string') {
-        diagnostics.error('CONFIG_PUBLIC_RULE_INVALID', 'Public copy rules require string from and to fields.', { phase: 'config', fieldPath: ['public', 'copy', index] });
+      if (typeof rawRule.from !== 'string' || rawRule.from.trim() === '' || typeof rawRule.to !== 'string' || rawRule.to.trim() === '') {
+        diagnostics.error('CONFIG_PUBLIC_RULE_INVALID', 'Public copy rules require non-empty string from and to fields.', { phase: 'config', fieldPath: ['public', 'copy', index] });
         continue;
       }
-      // 先保存稳定的字符串形态，再执行绝对路径和父目录穿越检查。
+      /** 在进入 Scanner 前保留稳定的相对 POSIX/系统路径文本。 */
       const rule = { from: rawRule.from, to: rawRule.to };
       copy.push(rule);
       if (path.isAbsolute(rule.from) || path.isAbsolute(rule.to) || rule.from.split(/[\\/]/).includes('..') || rule.to.split(/[\\/]/).includes('..')) {
@@ -212,12 +256,100 @@ function resolvePublic(root: string, value: unknown, diagnostics: DiagnosticColl
 }
 
 /**
- * 将用户配置严格校验并解析为 Core 可直接消费的配置。
+ * 校验品牌化 Platform 实例并应用全局 strict 默认值。
  *
- * @param value 从可信 `acplugin.config.ts` 加载的用户配置对象。
+ * @param value 显式 platforms 值或 undefined。
+ * @param defaults 主包注入的默认 Platform 工厂结果。
+ * @param strict 全局功能兼容性严格度。
+ * @param diagnostics 当前配置诊断集合。
+ * @returns 保持配置顺序的最终 Platform 列表。
+ */
+function resolvePlatforms(
+  value: unknown,
+  defaults: readonly AcpluginPlatform[],
+  strict: boolean,
+  diagnostics: DiagnosticCollector,
+): ResolvedPlatform[] {
+  if (value !== undefined && !Array.isArray(value)) {
+    diagnostics.error('CONFIG_PLATFORMS_INVALID', 'platforms must be an array of Platform factory results.', { phase: 'config', fieldPath: ['platforms'] });
+    return [];
+  }
+  /** 省略字段时使用默认工厂，显式数组则完整替换默认集合。 */
+  const input = value === undefined ? defaults : value;
+  if (input.length === 0)
+    diagnostics.error('CONFIG_PLATFORMS_EMPTY', 'platforms must contain at least one Platform.', { phase: 'config', fieldPath: ['platforms'] });
+  /** 用于拒绝重复 Platform ID 的集合。 */
+  const seen = new Set<string>();
+  /** 已通过品牌和版本检查的 Platform。 */
+  const resolved: ResolvedPlatform[] = [];
+  for (const [index, candidate] of input.entries()) {
+    if (!isAcpluginPlatform(candidate)) {
+      /** 字段看似 Platform 但版本不同，优先给出版本定向错误。 */
+      const apiVersion = isRecord(candidate) ? candidate.apiVersion : undefined;
+      diagnostics.error(apiVersion !== undefined && apiVersion !== '1' ? 'CONFIG_PLATFORM_API_INCOMPATIBLE' : 'CONFIG_PLATFORM_INVALID',
+        apiVersion !== undefined && apiVersion !== '1'
+          ? `Platform API version "${String(apiVersion)}" is incompatible with Core API version 1.`
+          : 'Every platform must be created by definePlatform() or an official Platform factory.',
+        { phase: 'config', fieldPath: ['platforms', index] });
+      continue;
+    }
+    if (seen.has(candidate.id)) {
+      diagnostics.error('CONFIG_PLATFORM_DUPLICATE', `Platform "${candidate.id}" is configured more than once.`, { phase: 'config', fieldPath: ['platforms', index] });
+      continue;
+    }
+    seen.add(candidate.id);
+    resolved.push({ platform: candidate, strict: candidate.strict ?? strict });
+  }
+  return resolved;
+}
+
+/**
+ * 校验品牌化 Extension 实例、API 版本和唯一名称。
+ *
+ * @param value 配置中的 extensions 候选。
+ * @param diagnostics 当前配置诊断集合。
+ * @returns 保持配置顺序的最终 Extension 列表。
+ */
+function resolveExtensions(value: unknown, diagnostics: DiagnosticCollector): import('./contracts.js').AcpluginExtension[] {
+  if (value === undefined)
+    return [];
+  if (!Array.isArray(value)) {
+    diagnostics.error('CONFIG_EXTENSIONS_INVALID', 'extensions must be an array of Extension factory results.', { phase: 'config', fieldPath: ['extensions'] });
+    return [];
+  }
+  /** 用于拒绝重复 Extension 名称的集合。 */
+  const seen = new Set<string>();
+  /** 已通过品牌、版本和名称校验的 Extension。 */
+  const resolved: import('./contracts.js').AcpluginExtension[] = [];
+  for (const [index, candidate] of value.entries()) {
+    if (!isAcpluginExtension(candidate)) {
+      /** 字段看似 Extension 但版本不同，优先给出版本定向错误。 */
+      const apiVersion = isRecord(candidate) ? candidate.apiVersion : undefined;
+      diagnostics.error(apiVersion !== undefined && apiVersion !== '1' ? 'CONFIG_EXTENSION_API_INCOMPATIBLE' : 'CONFIG_EXTENSION_INVALID',
+        apiVersion !== undefined && apiVersion !== '1'
+          ? `Extension API version "${String(apiVersion)}" is incompatible with Core API version 1.`
+          : 'Every extension must be created by defineExtension() or an official Extension factory.',
+        { phase: 'config', fieldPath: ['extensions', index] });
+      continue;
+    }
+    if (seen.has(candidate.name)) {
+      diagnostics.error('CONFIG_EXTENSION_DUPLICATE', `Extension "${candidate.name}" is configured more than once.`, { phase: 'config', fieldPath: ['extensions', index] });
+      continue;
+    }
+    seen.add(candidate.name);
+    resolved.push(candidate);
+  }
+  return resolved;
+}
+
+/**
+ * 将用户配置严格校验并解析为 Core 可直接消费的最终配置。
+ *
+ * @param value 从可信 acplugin.config.ts 加载的用户配置对象。
  * @param configPath 配置文件绝对路径或可解析路径。
  * @param command 当前执行的 CLI 构建命令。
  * @param mode 当前构建运行模式。
+ * @param options 主包提供的默认 Platform 工厂结果。
  * @returns 成功时包含完整配置；失败时只返回已脱敏、可排序的诊断。
  */
 export function resolveConfig(
@@ -225,33 +357,59 @@ export function resolveConfig(
   configPath: string,
   command: BuildCommand,
   mode: BuildMode,
+  options: ResolveConfigOptions,
 ): { config?: ResolvedConfig; diagnostics: readonly import('./types.js').Diagnostic[] } {
-  // 单次解析共享同一个 Collector，以便用户一次看到全部独立配置问题。
+  /** 单次解析共享同一个 Collector，以汇总全部独立问题。 */
   const diagnostics = new DiagnosticCollector();
-  // 配置文件所在目录定义所有工程相对路径的信任根。
+  /** 配置文件所在目录定义所有工程相对路径的信任根。 */
   const root = path.dirname(path.resolve(configPath));
-  // 先降级为 unknown，确保运行时校验不依赖调用方的静态类型声明。
+  /** 降级为 unknown，确保运行时校验不依赖静态类型。 */
   const object = value as unknown;
-
   if (!isRecord(object)) {
     diagnostics.error('CONFIG_OBJECT_REQUIRED', 'Configuration must be an object.', { phase: 'config' });
     return { diagnostics: diagnostics.diagnostics };
   }
 
   rejectUnknownFields(object, [...ALLOWED_FIELDS], [], diagnostics);
+  for (const [field, hint] of LEGACY_FIELDS) {
+    if (field in object) {
+      diagnostics.error(`CONFIG_LEGACY_${field.toUpperCase()}`, `Legacy configuration field "${field}" is not supported.`, {
+        phase: 'config', fieldPath: [field], hint,
+      });
+    }
+  }
 
   if (typeof object.name !== 'string' || !NAME_PATTERN.test(object.name))
     diagnostics.error('CONFIG_NAME_INVALID', 'name must be lowercase kebab-case.', { phase: 'config', fieldPath: ['name'] });
   if (typeof object.version !== 'string' || !semver.valid(object.version))
-    diagnostics.error('CONFIG_VERSION_INVALID', 'version must be valid SemVer.', { phase: 'config', fieldPath: ['version'] });
+    diagnostics.error('CONFIG_VERSION_INVALID', 'version must be complete valid SemVer.', { phase: 'config', fieldPath: ['version'] });
   if (typeof object.description !== 'string' || object.description.trim() === '')
     diagnostics.error('CONFIG_DESCRIPTION_REQUIRED', 'description is required.', { phase: 'config', fieldPath: ['description'] });
   if (object.displayName !== undefined && (typeof object.displayName !== 'string' || object.displayName.trim() === ''))
     diagnostics.error('CONFIG_DISPLAY_NAME_INVALID', 'displayName must be a non-empty string.', { phase: 'config', fieldPath: ['displayName'] });
-  if (object.srcDir !== undefined && typeof object.srcDir !== 'string')
-    diagnostics.error('CONFIG_SRC_DIR_INVALID', 'srcDir must be a string.', { phase: 'config', fieldPath: ['srcDir'] });
+  if (object.srcDir !== undefined && (typeof object.srcDir !== 'string' || object.srcDir.trim() === ''))
+    diagnostics.error('CONFIG_SRC_DIR_INVALID', 'srcDir must be a non-empty string.', { phase: 'config', fieldPath: ['srcDir'] });
+  for (const field of ['homepage', 'repository'] as const) {
+    if (object[field] !== undefined && (typeof object[field] !== 'string' || !isHttpUrl(object[field])))
+      diagnostics.error(`CONFIG_${field.toUpperCase()}_INVALID`, `${field} must be an absolute HTTP(S) URL.`, { phase: 'config', fieldPath: [field] });
+  }
+  if (object.license !== undefined) {
+    if (typeof object.license !== 'string' || object.license.trim() === '') {
+      diagnostics.error('CONFIG_LICENSE_INVALID', 'license must be a valid SPDX expression.', { phase: 'config', fieldPath: ['license'] });
+    } else {
+      try {
+        parseSpdxExpression(object.license);
+      } catch {
+        diagnostics.error('CONFIG_LICENSE_INVALID', 'license must be a valid SPDX expression.', { phase: 'config', fieldPath: ['license'] });
+      }
+    }
+  }
 
-  // 非法 build 值不会进入后续字段读取，但仍继续收集其他顶层错误。
+  /** 已校验或部分规范化的可选作者。 */
+  const author = resolveAuthor(object.author, diagnostics);
+  /** 已去空白并检查重复项的可选关键词。 */
+  const keywords = resolveKeywords(object.keywords, diagnostics);
+  /** 非法 build 值不会进入后续字段读取。 */
   let build: Record<string, unknown> = {};
   if (object.build !== undefined) {
     if (!isRecord(object.build))
@@ -260,97 +418,61 @@ export function resolveConfig(
       build = object.build;
   }
   rejectUnknownFields(build, ['outDir', 'strict'], ['build'], diagnostics);
-  if (build.outDir !== undefined && typeof build.outDir !== 'string')
-    diagnostics.error('CONFIG_OUT_DIR_INVALID', 'build.outDir must be a string.', { phase: 'config', fieldPath: ['build', 'outDir'] });
+  if (build.outDir !== undefined && (typeof build.outDir !== 'string' || build.outDir.trim() === ''))
+    diagnostics.error('CONFIG_OUT_DIR_INVALID', 'build.outDir must be a non-empty string.', { phase: 'config', fieldPath: ['build', 'outDir'] });
   if (build.strict !== undefined && typeof build.strict !== 'boolean')
     diagnostics.error('CONFIG_STRICT_INVALID', 'build.strict must be boolean.', { phase: 'config', fieldPath: ['build', 'strict'] });
 
-  if (object.targets !== undefined && !Array.isArray(object.targets))
-    diagnostics.error('CONFIG_TARGETS_INVALID', 'targets must be an array.', { phase: 'config', fieldPath: ['targets'] });
-  if (object.modules !== undefined && !Array.isArray(object.modules))
-    diagnostics.error('CONFIG_MODULES_INVALID', 'modules must be an array.', { phase: 'config', fieldPath: ['modules'] });
-
-  // 扩展数据必须保持确定性 JSON，且不能覆盖 Core 的规范语义字段。
-  let extensions: PlatformExtensions = {};
-  if (object.extensions !== undefined) {
-    if (!isRecord(object.extensions)) {
-      diagnostics.error('CONFIG_EXTENSIONS_INVALID', 'extensions must be an object.', { phase: 'config', fieldPath: ['extensions'] });
-    } else {
-      rejectUnknownFields(object.extensions, [...TARGET_IDS], ['extensions'], diagnostics);
-      for (const [target, extension] of Object.entries(object.extensions)) {
-        if (!TARGET_IDS.includes(target as TargetId))
-          continue;
-        if (!isRecord(extension)) {
-          diagnostics.error('CONFIG_EXTENSION_INVALID', `extensions.${target} must be an object.`, { phase: 'config', fieldPath: ['extensions', target] });
-          continue;
-        }
-        for (const issue of extensionIssues(extension, ['extensions', target]))
-          diagnostics.error('CONFIG_EXTENSION_SEMANTICS', issue.message, { phase: 'config', fieldPath: issue.path });
-      }
-      extensions = object.extensions as PlatformExtensions;
-    }
-  }
-
-  // 严格模式默认开启，避免平台降级在未明确授权时静默发生。
+  /** 严格模式默认开启，Platform 工厂可以单独覆盖。 */
   const strict = typeof build.strict === 'boolean' ? build.strict : true;
-  // 所有运行路径在进入 Scanner 前统一解析为工程内绝对路径。
+  /** Scanner 使用的工程内绝对源码目录。 */
   const srcDir = resolveInside(root, typeof object.srcDir === 'string' ? object.srcDir : 'src', 'srcDir', diagnostics);
-  // 输出目录独立解析，随后还会检查它与来源目录之间的包含关系。
+  /** 事务层使用的工程内绝对输出目录。 */
   const outDir = resolveInside(root, typeof build.outDir === 'string' ? build.outDir : 'dist', 'build.outDir', diagnostics);
-  // Public 和 Target 子配置分别负责自己的默认值与结构诊断。
+  /** 已解析的 Public 来源与 copy rule。 */
   const publicConfig = resolvePublic(root, object.public, diagnostics);
-  const targets = resolveTargets(Array.isArray(object.targets) ? object.targets : object.targets === undefined ? undefined : [], strict, diagnostics);
+  /** 已品牌校验且带最终 strictness 的 Platform。 */
+  const platforms = resolvePlatforms(object.platforms, options.defaultPlatforms, strict, diagnostics);
+  /** 已品牌校验且名称唯一的 Extension。 */
+  const extensions = resolveExtensions(object.extensions, diagnostics);
 
   if (outDir === root)
     diagnostics.error('CONFIG_OUTDIR_ROOT', 'build.outDir cannot be the project root.', { phase: 'config', fieldPath: ['build', 'outDir'] });
-  if (srcDir === outDir || (isInside(srcDir, outDir) && srcDir !== outDir) || (isInside(outDir, srcDir) && srcDir !== outDir))
+  if (directoriesOverlap(srcDir, outDir))
     diagnostics.error('CONFIG_DIRECTORY_OVERLAP', 'srcDir and build.outDir cannot contain each other.', { phase: 'config' });
-  if (publicConfig.enabled && (publicConfig.dir === outDir || isInside(publicConfig.dir, outDir) || isInside(outDir, publicConfig.dir)))
+  if (publicConfig.enabled && directoriesOverlap(publicConfig.dir, outDir))
     diagnostics.error('CONFIG_DIRECTORY_OVERLAP', 'Public directory and build.outDir cannot contain each other.', { phase: 'config' });
-
-  // Module 保持用户声明顺序；真正的依赖拓扑排序由 Builder 统一执行。
-  const modules = (Array.isArray(object.modules) ? object.modules : []) as unknown[];
-  // 名称集合用于在配置边界提前拒绝同一 Module 的重复实例。
-  const moduleNames = new Set<string>();
-  for (const [index, module] of modules.entries()) {
-    if (!isRecord(module) || typeof module.name !== 'string' || !MODULE_NAME_PATTERN.test(module.name)) {
-      diagnostics.error('CONFIG_MODULE_INVALID', 'Every module name must be a lowercase package-style identifier.', { phase: 'config', fieldPath: ['modules', index] });
-      continue;
-    }
-    rejectUnknownFields(module, [
-      'name', 'dependsOn', 'configResolved', 'discover', 'validate', 'build', 'generate', 'buildEnd',
-    ], ['modules', index], diagnostics);
-    if (module.dependsOn !== undefined && (!Array.isArray(module.dependsOn) || module.dependsOn.some(dependency => typeof dependency !== 'string' || dependency === '')))
-      diagnostics.error('CONFIG_MODULE_DEPENDENCIES_INVALID', 'Module dependsOn must be an array of non-empty names.', { phase: 'config', fieldPath: ['modules', index, 'dependsOn'] });
-    for (const hook of ['configResolved', 'discover', 'validate', 'build', 'generate', 'buildEnd']) {
-      if (module[hook] !== undefined && typeof module[hook] !== 'function')
-        diagnostics.error('CONFIG_MODULE_HOOK_INVALID', `Module ${hook} must be a function.`, { phase: 'config', fieldPath: ['modules', index, hook] });
-    }
-    if (moduleNames.has(module.name))
-      diagnostics.error('CONFIG_MODULE_DUPLICATE', `Module "${module.name}" is configured more than once.`, { phase: 'config', fieldPath: ['modules', index] });
-    moduleNames.add(module.name);
-  }
+  if (publicConfig.enabled && directoriesOverlap(publicConfig.dir, srcDir))
+    diagnostics.error('CONFIG_DIRECTORY_OVERLAP', 'Public directory and srcDir cannot contain each other.', { phase: 'config' });
 
   if (diagnostics.hasErrors)
     return { diagnostics: diagnostics.diagnostics };
 
-  // 只有不存在错误诊断时才构造类型完备的 ResolvedConfig。
+  /** 成功解析后供 Scanner 和 Platform 共享的统一元数据。 */
+  const metadata: PluginMetadata = {
+    name: object.name as string,
+    version: object.version as string,
+    description: (object.description as string).trim(),
+    ...(typeof object.displayName === 'string' ? { displayName: object.displayName.trim() } : {}),
+    ...(author === undefined ? {} : { author }),
+    ...(typeof object.homepage === 'string' ? { homepage: object.homepage } : {}),
+    ...(typeof object.repository === 'string' ? { repository: object.repository } : {}),
+    ...(typeof object.license === 'string' ? { license: object.license } : {}),
+    ...(keywords === undefined ? {} : { keywords }),
+  };
+  /** 只有不存在错误诊断时才构造类型完备的 ResolvedConfig。 */
   const config: ResolvedConfig = {
     root,
     configPath: path.resolve(configPath),
     command,
     mode,
-    name: object.name as string,
-    version: object.version as string,
-    description: (object.description as string).trim(),
-    displayName: typeof object.displayName === 'string' ? object.displayName.trim() : presentationName(object.name as string),
+    metadata,
     srcDir,
     public: publicConfig,
-    targets,
-    modules: modules as import('./types.js').AcpluginModule[],
+    platforms,
+    extensions,
     outDir,
     strict,
-    extensions,
   };
   return { config, diagnostics: diagnostics.diagnostics };
 }

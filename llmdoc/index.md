@@ -1,6 +1,6 @@
 # acplugin documentation
 
-acplugin is a canonical AI Plugin framework and CLI. Authors write Commands, Skills, Agents, and optional Module sources once, then build complete installable Claude Code and Codex plugins.
+acplugin is a canonical AI Plugin framework and CLI. Authors write Commands, Skills, Agents, and optional Extension sources once, then build Platform-owned deliveries for Claude Code, Codex, Cursor, Antigravity, OpenCode, and Pi.
 
 关键稳定文档同时维护英文基准与中文对照；行为变化需要同步更新两种语言。
 
@@ -16,7 +16,7 @@ acplugin is a canonical AI Plugin framework and CLI. Authors write Commands, Ski
 
 ## Architecture
 
-- [System architecture](architecture/system.md) · [系统架构](architecture/system.zh-CN.md) — Core-owned lifecycle, Compilers, Modules, Artifact graph, and managed output transaction.
+- [System architecture](architecture/system.md) · [系统架构](architecture/system.zh-CN.md) — Core-owned lifecycle, Platforms, Extensions, Adapter boundaries, Artifact graph, and managed output transaction.
 
 ## Reference
 

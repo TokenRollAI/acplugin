@@ -1,5 +1,13 @@
-/** acplugin 1.0 内置且默认参与构建的目标平台标识。 */
-export const TARGET_IDS = ['claude-code', 'codex'] as const;
+import type {
+  AcpluginExtension,
+  AcpluginPlatform,
+  DeliveryUnitRole,
+  DeliveryUnitType,
+  DocumentFormat,
+  JsonObject,
+  PlatformDeliveryType,
+  PlatformId,
+} from './contracts.js';
 
 /** Core 构建管线能够响应的命令集合。 */
 export const BUILD_COMMANDS = ['dev', 'validate', 'inspect', 'build'] as const;
@@ -12,9 +20,6 @@ export const COMPATIBILITY_LEVELS = ['native', 'transform', 'degraded', 'unsuppo
 
 /** acplugin 核心层直接建模的规范 Component 类型。 */
 export const COMPONENT_KINDS = ['command', 'skill', 'agent'] as const;
-
-/** 内置目标平台标识的联合类型。 */
-export type TargetId = typeof TARGET_IDS[number];
 
 /** Core 构建命令名称的联合类型。 */
 export type BuildCommand = typeof BUILD_COMMANDS[number];
@@ -36,35 +41,48 @@ export type ArtifactMode = 0o644 | 0o755;
 
 /** 指向用户工程中某个来源位置的可序列化描述。 */
 export interface SourceLocation {
-  path: string;
-  line?: number;
-  column?: number;
+  readonly path: string;
+  readonly line?: number;
+  readonly column?: number;
 }
 
 /** 构建各阶段共享的结构化诊断信息。 */
 export interface Diagnostic {
-  code: string;
-  severity: DiagnosticSeverity;
-  message: string;
-  phase: string;
-  target?: TargetId;
-  module?: string;
-  component?: { kind: ComponentKind; id: string };
-  location?: SourceLocation;
-  fieldPath?: readonly (string | number)[];
-  related?: readonly SourceLocation[];
-  hint?: string;
+  readonly code: string;
+  readonly severity: DiagnosticSeverity;
+  readonly message: string;
+  readonly phase: string;
+  readonly platform?: PlatformId;
+  readonly extension?: string;
+  readonly component?: { readonly kind: ComponentKind; readonly id: string };
+  readonly owner?: string;
+  readonly location?: SourceLocation;
+  readonly fieldPath?: readonly (string | number)[];
+  readonly related?: readonly SourceLocation[];
+  readonly hint?: string;
 }
 
 /** 记录某项能力在指定平台上的转换结果和原因。 */
 export interface CompatibilityEntry {
-  target: TargetId;
-  subject: string;
-  capability: string;
-  level: CompatibilityLevel;
-  transformation?: string;
-  reason: string;
-  causes?: readonly string[];
+  readonly platform: PlatformId;
+  readonly subject: string;
+  readonly capability: string;
+  readonly level: CompatibilityLevel;
+  readonly transformation?: string;
+  readonly reason: string;
+  readonly causes?: readonly string[];
+}
+
+/** 可选 Plugin 元数据在单个平台上的最终处理结果。 */
+export type MetadataDisposition = 'emitted' | 'omitted';
+
+/** 记录单个元数据字段的输出位置或省略原因。 */
+export interface MetadataDispositionEntry {
+  readonly platform: PlatformId;
+  readonly field: string;
+  readonly disposition: MetadataDisposition;
+  readonly output?: string;
+  readonly reason: string;
 }
 
 /** Component 对其他 Skill 或 Agent 的规范依赖引用。 */
@@ -73,42 +91,39 @@ export interface ComponentRequires {
   agents: readonly string[];
 }
 
-/** 用户为各目标平台提供的确定性 JSON 扩展字段。 */
-export interface PlatformExtensions {
-  'claude-code'?: Readonly<Record<string, unknown>>;
-  'codex'?: Readonly<Record<string, unknown>>;
-}
+/** Component 按已配置 Platform ID 保存的确定性专属字段。 */
+export type ComponentPlatformFields = Readonly<Record<string, Readonly<JsonObject>>>;
 
 /** 从 `src/commands` 扫描得到的规范 Command。 */
 export interface CommandComponent {
-  kind: 'command';
-  id: string;
-  description: string;
-  argumentHint?: string;
-  body: string;
-  sourcePath: string;
-  requires: ComponentRequires;
-  extensions: PlatformExtensions;
+  readonly kind: 'command';
+  readonly id: string;
+  readonly description: string;
+  readonly argumentHint?: string;
+  readonly body: string;
+  readonly sourcePath: string;
+  readonly requires: ComponentRequires;
+  readonly platforms: ComponentPlatformFields;
 }
 
 /** Skill 目录中需要随主体一起发布的辅助文件。 */
 export interface SkillAuxiliaryFile {
-  path: string;
-  sourcePath: string;
-  mode: ArtifactMode;
+  readonly path: string;
+  readonly sourcePath: string;
+  readonly mode: ArtifactMode;
 }
 
 /** 从 `src/skills` 扫描得到的规范 Skill。 */
 export interface SkillComponent {
-  kind: 'skill';
-  id: string;
-  description: string;
-  invocation: { user: boolean; model: boolean };
-  body: string;
-  sourcePath: string;
-  requires: ComponentRequires;
-  extensions: PlatformExtensions;
-  auxiliaryFiles: readonly SkillAuxiliaryFile[];
+  readonly kind: 'skill';
+  readonly id: string;
+  readonly description: string;
+  readonly invocation: { readonly user: boolean; readonly model: boolean };
+  readonly body: string;
+  readonly sourcePath: string;
+  readonly requires: ComponentRequires;
+  readonly platforms: ComponentPlatformFields;
+  readonly auxiliaryFiles: readonly SkillAuxiliaryFile[];
 }
 
 /** 与具体平台模型名称解耦的 Agent 能力级别。 */
@@ -125,15 +140,15 @@ export type AgentCapability
 
 /** 从 `src/agents` 扫描得到的规范 Agent。 */
 export interface AgentComponent {
-  kind: 'agent';
-  id: string;
-  description: string;
-  model: AgentModel;
-  capabilities: readonly AgentCapability[];
-  body: string;
-  sourcePath: string;
-  requires: ComponentRequires;
-  extensions: PlatformExtensions;
+  readonly kind: 'agent';
+  readonly id: string;
+  readonly description: string;
+  readonly model: AgentModel;
+  readonly capabilities: readonly AgentCapability[];
+  readonly body: string;
+  readonly sourcePath: string;
+  readonly requires: ComponentRequires;
+  readonly platforms: ComponentPlatformFields;
 }
 
 /** Core 构建管线能够处理的任意规范 Component。 */
@@ -141,22 +156,39 @@ export type Component = CommandComponent | SkillComponent | AgentComponent;
 
 /** 从 Public 目录收集且尚未转换为 Artifact 的文件描述。 */
 export interface PublicFile {
-  sourcePath: string;
-  targetPath: string;
-  mode: ArtifactMode;
+  readonly sourcePath: string;
+  readonly targetPath: string;
+  readonly mode: ArtifactMode;
 }
 
-/** Scanner 完成解析与图校验后交给 Compiler 的统一工程模型。 */
+/** Plugin 作者的统一名称、邮件与主页信息。 */
+export interface PluginAuthor {
+  readonly name: string;
+  readonly email?: string;
+  readonly url?: string;
+}
+
+/** Plugin 配置中与平台无关、可供所有生命周期只读访问的元数据。 */
+export interface PluginMetadata {
+  readonly name: string;
+  readonly version: string;
+  readonly description: string;
+  readonly displayName?: string;
+  readonly author?: PluginAuthor;
+  readonly homepage?: string;
+  readonly repository?: string;
+  readonly license?: string;
+  readonly keywords?: readonly string[];
+}
+
+/** Scanner 完成解析与图校验后交给固定生命周期的只读工程模型。 */
 export interface PluginProject {
-  root: string;
-  name: string;
-  version: string;
-  description: string;
-  displayName?: string;
-  commands: readonly CommandComponent[];
-  skills: readonly SkillComponent[];
-  agents: readonly AgentComponent[];
-  publicFiles: readonly PublicFile[];
+  readonly root: string;
+  readonly metadata: PluginMetadata;
+  readonly commands: readonly CommandComponent[];
+  readonly skills: readonly SkillComponent[];
+  readonly agents: readonly AgentComponent[];
+  readonly publicFiles: readonly PublicFile[];
 }
 
 /** 将 Public 目录中的来源路径映射到产物路径的复制规则。 */
@@ -170,9 +202,6 @@ export type PublicConfig = false | string | {
   dir?: string;
   copy?: readonly PublicCopyRule[];
 };
-
-/** 用户可使用的目标平台简写或严格模式配置。 */
-export type TargetConfig = TargetId | { id: TargetId; strict?: boolean };
 
 /** 控制构建输出目录和全局兼容性严格度的配置。 */
 export interface BuildConfig {
@@ -191,22 +220,26 @@ export type UserConfigExport = UserConfig | ((environment: ConfigEnvironment) =>
 
 /** 用户在 `acplugin.config.ts` 中声明的顶层配置契约。 */
 export interface UserConfig {
-  name: string;
-  version: string;
-  description: string;
-  displayName?: string;
-  srcDir?: string;
-  public?: PublicConfig;
-  targets?: readonly TargetConfig[];
-  modules?: readonly AcpluginModule[];
-  build?: BuildConfig;
-  extensions?: PlatformExtensions;
+  readonly name: string;
+  readonly version: string;
+  readonly description: string;
+  readonly displayName?: string;
+  readonly author?: PluginAuthor;
+  readonly homepage?: string;
+  readonly repository?: string;
+  readonly license?: string;
+  readonly keywords?: readonly string[];
+  readonly srcDir?: string;
+  readonly public?: PublicConfig;
+  readonly platforms?: readonly AcpluginPlatform[];
+  readonly extensions?: readonly AcpluginExtension[];
+  readonly build?: BuildConfig;
 }
 
-/** 完成默认值合并和校验后的单个目标平台配置。 */
-export interface ResolvedTarget {
-  id: TargetId;
-  strict: boolean;
+/** 配置解析后带最终严格度的品牌化 Platform 实例。 */
+export interface ResolvedPlatform {
+  readonly platform: AcpluginPlatform;
+  readonly strict: boolean;
 }
 
 /** 完成目录解析和默认值合并后的 Public 配置。 */
@@ -218,154 +251,50 @@ export interface ResolvedPublicConfig {
 
 /** Core 内部使用的完整、绝对路径化配置。 */
 export interface ResolvedConfig {
-  root: string;
-  configPath: string;
-  command: BuildCommand;
-  mode: BuildMode;
-  name: string;
-  version: string;
-  description: string;
-  displayName?: string;
-  srcDir: string;
-  public: ResolvedPublicConfig;
-  targets: readonly ResolvedTarget[];
-  modules: readonly AcpluginModule[];
-  outDir: string;
-  strict: boolean;
-  extensions: PlatformExtensions;
+  readonly root: string;
+  readonly configPath: string;
+  readonly command: BuildCommand;
+  readonly mode: BuildMode;
+  readonly metadata: PluginMetadata;
+  readonly srcDir: string;
+  readonly public: ResolvedPublicConfig;
+  readonly platforms: readonly ResolvedPlatform[];
+  readonly extensions: readonly AcpluginExtension[];
+  readonly outDir: string;
+  readonly strict: boolean;
 }
 
 /** 已驻留内存、可安全快照的 Artifact 字节来源。 */
 export interface ArtifactBytesSource {
-  type: 'bytes';
-  value: Uint8Array;
+  readonly type: 'bytes';
+  readonly value: Uint8Array;
 }
 
 /** 构建提交阶段才读取的本地普通文件来源。 */
 export interface ArtifactFileSource {
-  type: 'file';
-  path: string;
+  readonly type: 'file';
+  readonly path: string;
 }
 
-/** Compiler 或 Module 向 Artifact Graph 提交的待验证产物。 */
+/** Platform 或 Extension Adapter 向 Core 提交的待验证产物。 */
 export interface ArtifactInput {
-  path: string;
-  source: ArtifactBytesSource | ArtifactFileSource;
-  mode?: ArtifactMode;
+  readonly path: string;
+  readonly source: ArtifactBytesSource | ArtifactFileSource;
+  readonly mode?: ArtifactMode;
 }
 
-/** Artifact Graph 校验并冻结后的不可变产物记录。 */
+/** Artifact Registry 校验并冻结后的不可变产物记录。 */
 export interface Artifact extends ArtifactInput {
-  owner: string;
-  mode: ArtifactMode;
-  size: number;
-  sha256: string;
+  readonly owner: string;
+  readonly mode: ArtifactMode;
+  readonly size: number;
+  readonly sha256: string;
 }
 
-/** 某个所有者对目标平台 Manifest 字段的贡献。 */
-export interface ManifestContribution {
-  owner: string;
-  fields: Readonly<Record<string, unknown>>;
-}
-
-/** Module 在单个目标平台生成阶段返回的增量贡献。 */
-export interface TargetContribution {
-  artifacts?: readonly ArtifactInput[];
-  manifestFields?: Readonly<Record<string, unknown>>;
-  compatibility?: readonly CompatibilityEntry[];
-}
-
-/** 加载可信 TypeScript 配置或 Module 描述文件的抽象接口。 */
+/** 加载可信 TypeScript 配置或 Extension 描述文件的抽象接口。 */
 export type TypeScriptModuleLoader = (path: string) => Promise<unknown>;
 
-/** 所有 Module 生命周期阶段共享的只读上下文。 */
-export interface ModuleBaseContext {
-  config: ResolvedConfig;
-  diagnostics: DiagnosticCollectorLike;
-  loadTypeScriptModule: TypeScriptModuleLoader;
-  workDir: string;
-  dependencyState: ReadonlyMap<string, unknown>;
-  dependencyBuiltState: ReadonlyMap<string, unknown>;
-}
-
-/** Module discover 阶段使用的基础上下文别名。 */
-export type ModuleDiscoverContext = ModuleBaseContext;
-
-/** Module validate 阶段额外携带已扫描工程的上下文。 */
-export interface ModuleValidateContext extends ModuleBaseContext {
-  project: PluginProject;
-}
-
-/** Module build 阶段使用的校验上下文别名。 */
-export type ModuleBuildContext = ModuleValidateContext;
-
-/** Module generate 阶段额外携带当前目标平台的上下文。 */
-export interface ModuleGenerateContext extends ModuleBuildContext {
-  target: TargetId;
-}
-
-/** Module buildEnd 阶段用于观察成功或失败结果的上下文。 */
-export interface ModuleBuildEndContext extends ModuleBaseContext {
-  error?: unknown;
-}
-
-/**
- * 通过固定生命周期 Hook 扩展 Core 构建能力的 Module 契约。
- *
- * @typeParam State discover 阶段产生并传递给后续阶段的状态。
- * @typeParam BuiltState build 阶段产生并传递给 generate 的状态。
- */
-export interface AcpluginModule<State = unknown, BuiltState = unknown> {
-  name: string;
-  dependsOn?: readonly string[];
-
-  /** 在配置解析完成后执行一次，不应写入构建产物。 */
-  configResolved?(config: ResolvedConfig): void | Promise<void>;
-
-  /** 发现 Module 自己拥有的资源，并返回稳定状态。 */
-  discover?(context: ModuleDiscoverContext): State | Promise<State>;
-
-  /** 校验发现状态与规范 Plugin 工程之间的约束。 */
-  validate?(context: ModuleValidateContext, state: State): void | Promise<void>;
-
-  /** 构建与目标无关的中间状态，例如本地代码 Bundle。 */
-  build?(context: ModuleBuildContext, state: State): BuiltState | Promise<BuiltState>;
-
-  /** 为当前目标平台生成 Artifact、Manifest 和兼容性贡献。 */
-  generate?(
-    context: ModuleGenerateContext,
-    state: State,
-    builtState: BuiltState,
-  ): TargetContribution | void | Promise<TargetContribution | void>;
-
-  /** 在构建结束时执行清理；失败信息通过上下文传入。 */
-  buildEnd?(context: ModuleBuildEndContext): void | Promise<void>;
-}
-
-/** Compiler 编译单个平台时需要的完整输入。 */
-export interface CompilerContext {
-  config: ResolvedConfig;
-  project: PluginProject;
-  target: ResolvedTarget;
-  contributions: readonly { module: string; contribution: TargetContribution }[];
-  diagnostics: DiagnosticCollectorLike;
-}
-
-/** Compiler 返回给 Core 的目标产物和兼容性记录。 */
-export interface CompilerOutput {
-  artifacts: readonly ArtifactInput[];
-  compatibility: readonly CompatibilityEntry[];
-}
-
-/** 将规范 PluginProject 编译为指定平台安装包的内置接口。 */
-export interface Compiler {
-  id: TargetId;
-
-  /** 编译单个目标平台，且不得直接写入最终输出目录。 */
-  compile(context: CompilerContext): CompilerOutput | Promise<CompilerOutput>;
-}
-
-/** Module 和 Compiler 用于提交结构化诊断的最小接口。 */
+/** Core Collector 和生命周期内部对象用于提交结构化诊断的最小接口。 */
 export interface DiagnosticCollectorLike {
 
   /** 添加一条完整诊断，Collector 会在落盘前统一脱敏。 */
@@ -380,40 +309,67 @@ export interface DiagnosticCollectorLike {
   readonly hasErrors: boolean;
 }
 
-/** Build Report 中可公开展示的单个 Artifact 摘要。 */
-export interface ArtifactReportEntry {
-  target: TargetId;
-  path: string;
-  owner: string;
-  mode: ArtifactMode;
-  size: number;
-  sha256: string;
+/** BuildResult 中可公开展示且不包含内容字节的单个 Artifact 摘要。 */
+export interface ArtifactReport {
+  readonly path: string;
+  readonly owner: string;
+  readonly mode: ArtifactMode;
+  readonly size: number;
+  readonly sha256: string;
 }
 
-/** CLI、JSON 输出和 Watch 状态共享的稳定构建报告。 */
-export interface BuildReport {
-  schemaVersion: '1';
-  command: BuildCommand;
-  mode: BuildMode;
-  project: { name: string; version: string };
-  targets: readonly TargetId[];
-  diagnostics: readonly Diagnostic[];
-  compatibility: readonly CompatibilityEntry[];
-  artifacts: readonly ArtifactReportEntry[];
-  success: boolean;
-  committed: boolean;
+/** 一个主交付或 Distribution 的稳定、无绝对路径报告。 */
+export interface DeliveryUnitReport {
+  readonly platform: PlatformId;
+  readonly id: string;
+  readonly role: DeliveryUnitRole;
+  readonly type: DeliveryUnitType;
+  readonly artifacts: readonly ArtifactReport[];
 }
 
-/** 调用 Core 构建管线所需的依赖和提交策略。 */
-export interface BuildRequest {
-  config: ResolvedConfig;
-  compilers: ReadonlyMap<TargetId, Compiler>;
-  loadTypeScriptModule: TypeScriptModuleLoader;
-  commit: boolean;
+/** inspect 报告中不暴露来源绝对路径的规范 Component 摘要。 */
+export interface ComponentReport {
+  readonly kind: ComponentKind;
+  readonly id: string;
 }
 
-/** Core 构建调用返回的工程快照和稳定报告。 */
+/** inspect 报告中包含严格度与交付形态的 Platform 摘要。 */
+export interface PlatformReport {
+  readonly id: PlatformId;
+  readonly apiVersion: '1';
+  readonly deliveryType: PlatformDeliveryType;
+  readonly strict: boolean;
+}
+
+/** inspect 报告中包含资源发现状态的 Extension 摘要。 */
+export interface ExtensionReport {
+  readonly name: string;
+  readonly apiVersion: '1';
+  readonly hasResources: boolean;
+}
+
+/** inspect 报告中不包含结构化值或内容字节的 Platform Document 摘要。 */
+export interface DocumentReport {
+  readonly platform: PlatformId;
+  readonly id: string;
+  readonly path: string;
+  readonly format: DocumentFormat;
+  readonly owner: `platform:${string}`;
+}
+
+/** CLI、JSON 输出、Watch 状态与公开运行时共享的 Schema v1 构建结果。 */
 export interface BuildResult {
-  project?: PluginProject;
-  report: BuildReport;
+  readonly schemaVersion: '1';
+  readonly command: BuildCommand;
+  readonly success: boolean;
+  readonly committed: boolean;
+  readonly platforms: readonly PlatformId[];
+  readonly platformDetails: readonly PlatformReport[];
+  readonly components: readonly ComponentReport[];
+  readonly extensions: readonly ExtensionReport[];
+  readonly documents: readonly DocumentReport[];
+  readonly deliveryUnits: readonly DeliveryUnitReport[];
+  readonly diagnostics: readonly Diagnostic[];
+  readonly compatibility: readonly CompatibilityEntry[];
+  readonly metadata: readonly MetadataDispositionEntry[];
 }

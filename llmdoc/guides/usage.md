@@ -2,7 +2,7 @@
 
 > [中文对照](usage.zh-CN.md)
 
-acplugin projects author one canonical plugin and compile installable Claude Code and Codex packages. Node.js 20 or newer and pnpm are required.
+acplugin projects author one canonical plugin and compile Platform-owned deliveries for Claude Code, Codex, Cursor, Antigravity, OpenCode, and Pi. Node.js 20 or newer and pnpm are required.
 
 ## Create a project
 
@@ -13,7 +13,15 @@ pnpm install
 pnpm build
 ```
 
-`init` can add the official Hooks and MCP Modules with `--hooks` and `--mcp`. The default configuration builds both targets and uses `src/`, `public/`, and `dist/`.
+`init` can add the official Hooks and MCP Extensions with `--hooks` and `--mcp`. The default configuration builds Claude Code and Codex and uses `src/`, `public/`, and `dist/`. Select any supported set explicitly:
+
+```bash
+pnpm dlx @tokenroll/acplugin init my-plugin --yes \
+  --platform claude-code codex cursor antigravity opencode pi \
+  --hooks --mcp
+```
+
+An enabled Extension adds its dependency, import, config entry, and empty source directory; `init` never invents a Hook handler or MCP server.
 
 ## Author Components
 
@@ -31,7 +39,7 @@ export default defineConfig({
 });
 ```
 
-There is no Instructions Component. Hooks and MCP directories are accepted only when their official Module is enabled.
+There is no Instructions Component. Hooks and MCP directories are accepted only when their official Extension is enabled.
 
 The TypeScript config and enabled Hook/MCP descriptors are trusted executable project code. Review them like build scripts. Legacy Migration sources are scanned as untrusted data and are not executed as descriptors.
 
@@ -44,12 +52,28 @@ pnpm exec acplugin build
 pnpm exec acplugin dev
 ```
 
-- `validate` generates and materializes every selected target in temporary storage without changing `dist`.
+- `validate` generates and materializes every selected Platform in temporary storage without changing `dist`.
 - `inspect` adds Artifact details without changing `dist`.
-- `build` atomically replaces the complete managed output only after every target succeeds.
-- `dev` watches inputs, coalesces changes, and retains the last successful output after a failed rebuild.
+- `build` atomically replaces the complete managed output only after every Platform succeeds.
+- `dev` watches config, canonical resources, Public, descriptors, and registered bundle imports; it coalesces changes, closes watcher-readiness gaps with a catch-up build, and retains the last successful output after a failed rebuild.
 
-Common options are `--config`, repeatable `--target`, `--mode`, `--no-strict`, and `--json`. Strict mode is on by default. For example, a Codex build containing an Agent fails because Codex can only receive an explicit degraded Skill fallback; use `--no-strict` when that result is intentional.
+Common options are `--config`, `--platform <id...>`, `--mode`, `--no-strict`, and `--json`. Strict mode is on by default. For example, a Codex build containing an Agent fails because Codex can only receive an explicit degraded Skill fallback; use `--no-strict` when that result is intentional.
+
+To configure non-default Platforms in an existing project, use the exported factories:
+
+```ts
+import { antigravity, claudeCode, codex, cursor, defineConfig, openCode, pi } from '@tokenroll/acplugin';
+
+export default defineConfig({
+  name: 'my-plugin',
+  version: '1.0.0',
+  description: 'Reusable AI workflows.',
+  platforms: [claudeCode(), codex(), cursor(), antigravity(), openCode(), pi()],
+  build: { strict: false },
+});
+```
+
+OpenCode output is a workspace overlay and Pi output is an npm package. They are not mislabeled as static Plugins. See the [Platform support matrix](../reference/conversion-matrix.md) before enabling strict multi-Platform builds.
 
 ## Public files
 
@@ -75,4 +99,4 @@ pnpm exec acplugin migrate ./legacy-project ./new-plugin \
   --description "Migrated plugin"
 ```
 
-Migration also accepts supported GitHub forms, single Claude plugins, and marketplaces. Use `--dry-run` to avoid destination writes and `--strict` to fail on any degraded or unmapped resource. Non-portable resources are preserved under `.acplugin-migration/unmapped/` with a report; Migration never writes in place.
+Migration also accepts supported GitHub forms, single Claude plugins, and marketplaces. `--plugin <name>` emits one project at the destination root; `--all` emits a pnpm workspace. Use `--dry-run` to avoid destination writes and `--strict` to fail on any degraded or unmapped resource. Generated projects run through public config loading and real Extension/Platform validation. Non-portable resources are preserved under `.acplugin-migration/unmapped/` with a report; Migration never writes in place.

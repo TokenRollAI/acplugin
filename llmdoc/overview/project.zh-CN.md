@@ -4,23 +4,23 @@
 
 ## 项目定位
 
-acplugin 是一套规范化 AI Plugin 框架和 CLI。作者只需维护一份由框架定义的源码结构，即可为 Claude Code 和 Codex 编译出完整、可安装的 Plugin。
+acplugin 是一套规范化 AI Plugin 框架和 CLI。作者只需维护一份由框架定义的源码结构，即可为 Claude Code、Codex、Cursor、Antigravity、OpenCode 和 Pi 编译由各 Platform 拥有的交付产物。
 
 公开发布的固定包组包括：
 
 - `@tokenroll/acplugin`
-- `@tokenroll/acplugin-module-hooks`
-- `@tokenroll/acplugin-module-mcp`
+- `@tokenroll/acplugin-extension-hooks`
+- `@tokenroll/acplugin-extension-mcp`
 
-Core、两个内置 Compiler 和集成测试工作区都是私有包。主公开包会内联 Core 和 Compiler，因此消费者不会依赖任何 `@acplugin/*` 包。
+Core、内置 Platform 实现和集成测试工作区都是私有包。主公开包会内联 Core 和 Platform，因此消费者不会依赖任何 `@acplugin/*` 包。
 
 ## 创作边界
 
-Core Component 包括 Commands、Skills 和 Agents。`acplugin.config.ts` 在顶层定义 `name`、`version`、`description`、目标平台、Public 复制行为、Modules 和严格度。
+Core Component 包括 Commands、Skills 和 Agents。`acplugin.config.ts` 在顶层定义 `name`、`version`、`description`、Platforms、Public 复制行为、Extensions 和严格度。
 
-Instructions 被有意排除在可安装 Plugin 边界之外。Hooks 和 MCP 是可选 Module：启用 Module 只会扩展同一套 Core 生命周期，不会替换 Compiler。
+Instructions 被有意排除在可安装 Plugin 边界之外。Hooks 和 MCP 是可选 Extension：启用后通过其自有 Platform Adapter 加入同一套 Core 生命周期，不会替换 Platform。
 
-默认目标是 Claude Code 和 Codex。Claude Code 原生支持全部 Core Component。Codex 会把 Command 转换成需要显式调用的 Skill，并把 Agent 降级成仅保留模型指导的回退 Skill，因为可安装 Codex Plugin 无法注册项目级或用户级自定义 Agent。
+默认 Platform 是 Claude Code 和 Codex。Cursor 与 Antigravity 是可选静态 Plugin，OpenCode 是可选 Workspace Overlay，Pi 是可选 npm Package。每个平台都会明确报告原生转换和语义损失，不会伪装成最低公共格式。
 
 ## 运行时与工具链
 
@@ -31,7 +31,7 @@ Instructions 被有意排除在可安装 Plugin 边界之外。Hooks 和 MCP 是
 - Rolldown 负责本地 Hook/MCP 可执行文件 Bundle
 - Vitest 负责仓库内部测试
 
-根目录 ESLint 工具链暂时保留 `typescript-eslint` 所需的 TypeScript 6 API；所有实际工作区包都从 pnpm catalog 解析共享的 TypeScript 7 编译器。
+各 Workspace 通过 catalog 中的 `@typescript/native` 别名安装 TypeScript 7 编译器，因此所有 Package 的 `tsc` Script 都实际使用 7.x。由于 TypeScript 7 不再暴露旧 JavaScript Compiler API，根目录只为 typescript-eslint 和注释 AST 检查器把官方 `@typescript/typescript6` 兼容 API 安装为 `typescript`。Vitest、tsdown、Rolldown 和 Node 类型同样通过 catalog 共享；平台专属运行时与 Lint 依赖仍由实际使用它们的 Package 独立声明。
 
 CLI 入口是 `packages/acplugin/src/cli.ts`；公开门面和配置加载器位于 `packages/acplugin/src/index.ts`。
 

@@ -10,7 +10,8 @@
   "scripts": {
     "build": "pnpm -r --if-present run build",
     "dev": "pnpm --filter @tokenroll/acplugin run dev",
-    "test": "pnpm -r --if-present run test",
+    "pretest": "pnpm run build",
+    "test": "pnpm --config.enable-pre-post-scripts=false -r --if-present run test",
     "test:watch": "pnpm --filter @acplugin/test run test:watch",
     "changeset": "changeset",
     "version-packages": "changeset version",
@@ -30,13 +31,15 @@
     "@changesets/cli": "^2.31.1",
     "@eslint/js": "^10.0.1",
     "@stylistic/eslint-plugin": "^5.10.0",
+    "@tokenroll/acplugin-extension-mcp": "workspace:^",
+    "@typescript/native": "catalog:",
     "@types/node": "catalog:",
     "eslint": "^10.8.0",
     "husky": "^9.1.7",
     "lint-staged": "^17.2.0",
     "publint": "^0.3.23",
     "tsdown": "catalog:",
-    "typescript": "^6.0.3",
+    "typescript": "npm:@typescript/typescript6@^6.0.2",
     "typescript-eslint": "^8.66.0",
     "vitest": "catalog:"
   }

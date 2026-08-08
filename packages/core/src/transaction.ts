@@ -2,7 +2,8 @@ import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { hashFile } from './artifacts.js';
-import type { Artifact, TargetId } from './types.js';
+import type { Awaitable, DeliveryUnit, MaterializedCandidate } from './contracts.js';
+import type { Artifact } from './types.js';
 
 /** 受管输出事务可观测的稳定阶段名称。 */
 export type ManagedOutputPhase
@@ -14,8 +15,10 @@ export type ManagedOutputPhase
     | 'backup-created'
     | 'output-swapped';
 
-/** 控制受管输出提交阶段通知和交换后收尾行为。 */
-export interface CommitManagedOutputOptions {
+/** 控制 DeliveryUnit 集合提交阶段通知和交换后收尾行为。 */
+export interface CommitDeliveryUnitsOptions {
+  /** 可选工程根；提供时 outDir 必须严格位于其内部且不能等于工程根。 */
+  projectRoot?: string;
   /**
    * 在事务进入关键阶段时调用，主要用于日志、测试故障注入和外部观测。
    *
@@ -44,7 +47,7 @@ async function exists(candidate: string): Promise<boolean> {
 }
 
 /**
- * 将单个已经过 ArtifactGraph 验证的产物写入阶段目录。
+ * 将单个已经过 ArtifactRegistry 验证的产物写入阶段目录。
  *
  * @param root 当前目标平台的阶段目录。
  * @param artifact 包含可信来源、摘要和权限的产物。
@@ -61,22 +64,50 @@ async function materializeFile(root: string, artifact: Artifact): Promise<void> 
 }
 
 /**
- * 将各目标 Artifact 以稳定顺序物化到指定根目录。
+ * 重新读取一个目录内的 Artifact，复核类型、摘要、大小和权限。
  *
- * @param root 物化根目录，每个 Target ID 会成为其一级子目录。
- * @param targets 各目标已完成 Graph 校验的 Artifact 列表。
+ * @param root Artifact 已物化到的单元根目录。
+ * @param artifacts Registry 提供的完整性基准。
+ * @param label 错误消息使用的稳定单元标签。
  */
-export async function materializeTargets(
+async function validateMaterializedArtifacts(
   root: string,
-  targets: ReadonlyMap<TargetId, readonly Artifact[]>,
+  artifacts: readonly Artifact[],
+  label: string,
+): Promise<void> {
+  for (const artifact of artifacts) {
+    /** 当前 Artifact 实际写入的文件路径。 */
+    const destination = path.join(root, ...artifact.path.split('/'));
+    /** 用于拒绝符号链接和非普通文件的实际元数据。 */
+    const stat = await fs.lstat(destination);
+    if (stat.isSymbolicLink() || !stat.isFile())
+      throw new Error(`Materialized Artifact is not a regular file: ${label}/${artifact.path}`);
+    /** 从磁盘重新计算的字节数与摘要。 */
+    const actual = await hashFile(destination);
+    if (actual.size !== artifact.size || actual.sha256 !== artifact.sha256)
+      throw new Error(`Materialized Artifact integrity mismatch: ${label}/${artifact.path}`);
+    if ((stat.mode & 0o777) !== artifact.mode)
+      throw new Error(`Materialized Artifact mode mismatch: ${label}/${artifact.path}`);
+  }
+}
+
+/**
+ * 将各 DeliveryUnit 根的 Artifact 以稳定顺序物化到指定目录。
+ *
+ * @param root 全部 DeliveryUnit 共同使用的物化根目录。
+ * @param unitRoots 单元相对根到已完成 Registry 校验的 Artifact 列表。
+ */
+async function materializeUnitRoots(
+  root: string,
+  unitRoots: ReadonlyMap<string, readonly Artifact[]>,
 ): Promise<void> {
   await fs.mkdir(root, { recursive: true });
-  for (const target of [...targets.keys()].sort()) {
-    /** 当前目标在物化根目录下的隔离子目录。 */
-    const targetRoot = path.join(root, target);
-    await fs.mkdir(targetRoot, { recursive: true });
-    for (const artifact of targets.get(target) ?? [])
-      await materializeFile(targetRoot, artifact);
+  for (const unitRoot of [...unitRoots.keys()].sort()) {
+    /** 当前 DeliveryUnit 在物化根目录下的隔离子目录。 */
+    const directory = path.join(root, unitRoot);
+    await fs.mkdir(directory, { recursive: true });
+    for (const artifact of unitRoots.get(unitRoot) ?? [])
+      await materializeFile(directory, artifact);
   }
 }
 
@@ -84,66 +115,168 @@ export async function materializeTargets(
  * 重新读取已物化文件，验证文件类型、内容摘要、大小和权限。
  *
  * @param root 先前执行物化操作的根目录。
- * @param targets 作为完整性基准的 Artifact 列表。
+ * @param unitRoots 单元相对根到完整性基准 Artifact 的映射。
  * @throws 物化内容与 Artifact 契约不一致时抛出异常。
  */
-async function validateMaterializedTargets(
+async function validateMaterializedUnitRoots(
   root: string,
-  targets: ReadonlyMap<TargetId, readonly Artifact[]>,
+  unitRoots: ReadonlyMap<string, readonly Artifact[]>,
 ): Promise<void> {
-  for (const target of [...targets.keys()].sort()) {
-    /** 当前目标已物化文件的根目录。 */
-    const targetRoot = path.join(root, target);
-    for (const artifact of targets.get(target) ?? []) {
-      /** 当前 Artifact 实际写入的文件路径。 */
-      const destination = path.join(targetRoot, ...artifact.path.split('/'));
-      /** 用于拒绝符号链接和非普通文件的实际元数据。 */
-      const stat = await fs.lstat(destination);
-      if (stat.isSymbolicLink() || !stat.isFile())
-        throw new Error(`Materialized Artifact is not a regular file: ${target}/${artifact.path}`);
-      /** 从磁盘重新计算的字节数与摘要。 */
-      const actual = await hashFile(destination);
-      if (actual.size !== artifact.size || actual.sha256 !== artifact.sha256)
-        throw new Error(`Materialized Artifact integrity mismatch: ${target}/${artifact.path}`);
-      if ((stat.mode & 0o777) !== artifact.mode)
-        throw new Error(`Materialized Artifact mode mismatch: ${target}/${artifact.path}`);
-    }
+  for (const unitRoot of [...unitRoots.keys()].sort()) {
+    /** 当前 DeliveryUnit 已物化文件的根目录。 */
+    const directory = path.join(root, unitRoot);
+    await validateMaterializedArtifacts(directory, unitRoots.get(unitRoot) ?? [], unitRoot);
   }
 }
 
 /**
  * 在系统临时目录中完整演练物化和完整性校验，但不修改真实输出目录。
  *
- * @param targets 各目标已完成 Graph 校验的 Artifact 列表。
+ * @param unitRoots 单元相对根到已完成 Registry 校验的 Artifact 列表。
  */
-export async function validateMaterialization(
-  targets: ReadonlyMap<TargetId, readonly Artifact[]>,
+async function validateUnitRootMaterialization(
+  unitRoots: ReadonlyMap<string, readonly Artifact[]>,
 ): Promise<void> {
   /** 本次验证独占且无论成功失败都会删除的临时目录。 */
   const temporary = await fs.mkdtemp(path.join(os.tmpdir(), 'acplugin-validate-'));
   try {
-    await materializeTargets(temporary, targets);
-    await validateMaterializedTargets(temporary, targets);
+    await materializeUnitRoots(temporary, unitRoots);
+    await validateMaterializedUnitRoots(temporary, unitRoots);
   } finally {
     await fs.rm(temporary, { recursive: true, force: true });
   }
 }
 
+/** 独立候选目录及其幂等清理函数。 */
+export interface MaterializedCandidateHandle {
+  readonly candidate: MaterializedCandidate;
+  readonly cleanup: () => Promise<void>;
+}
+
 /**
- * 通过加锁、阶段目录、备份和目录交换原子提交全部目标输出。
+ * 在独占临时目录中物化一个 DeliveryUnit 候选并复核完整性。
+ *
+ * @param unit 已通过全局 Registry 的交付单元。
+ * @param temporaryParent 可选的 Platform 独占临时目录。
+ * @returns 可交给 Platform Validator 的只读候选与清理函数。
+ */
+export async function materializeDeliveryUnitCandidate(
+  unit: DeliveryUnit,
+  temporaryParent: string = os.tmpdir(),
+): Promise<MaterializedCandidateHandle> {
+  await fs.mkdir(temporaryParent, { recursive: true });
+  /** 当前候选独占且不包含最终 outDir 信息的临时根。 */
+  const root = await fs.mkdtemp(path.join(temporaryParent, 'acplugin-candidate-'));
+  try {
+    for (const artifact of unit.artifacts)
+      await materializeFile(root, artifact);
+    await validateMaterializedArtifacts(root, unit.artifacts, `${unit.platform}/${unit.id}`);
+  } catch /** error 保存当前操作捕获的异常，供本阶段转换或恢复。 */ (error) {
+    await fs.rm(root, { recursive: true, force: true });
+    throw error;
+  }
+  /** 只读类型和冻结外壳阻止 Validator 替换候选身份。 */
+  const candidate = Object.freeze({ root, unit });
+  return Object.freeze({
+    candidate,
+    /** Platform Validator 返回后删除整个独占候选目录。 */
+    cleanup: () => fs.rm(root, { recursive: true, force: true }),
+  });
+}
+
+/**
+ * 在独立候选上执行 Platform Validator，并在其返回后再次复核文件完整性。
+ *
+ * @param unit 已通过 Registry 的交付单元。
+ * @param validate 只读观察候选内容的平台校验函数。
+ * @param temporaryParent 可选的 Platform 独占临时目录。
+ */
+export async function withMaterializedDeliveryUnitCandidate(
+  unit: DeliveryUnit,
+  validate: (candidate: MaterializedCandidate) => Awaitable<void>,
+  temporaryParent?: string,
+): Promise<void> {
+  /** 当前 Validator 独占的候选句柄。 */
+  const handle = await materializeDeliveryUnitCandidate(unit, temporaryParent);
+  try {
+    await validate(handle.candidate);
+    // Validator 契约是只读的；返回后复核可在运行时发现意外或恶意修改。
+    await validateMaterializedArtifacts(handle.candidate.root, unit.artifacts, `${unit.platform}/${unit.id}`);
+  } finally {
+    await handle.cleanup();
+  }
+}
+
+/**
+ * 把 DeliveryUnit 集合转换为受管输出树路径映射。
+ *
+ * @param units 全局 Registry 的稳定单元快照。
+ * @returns `<platform>/<unit-id>` 到 Artifact 列表的唯一映射。
+ */
+function deliveryUnitRoots(units: readonly DeliveryUnit[]): ReadonlyMap<string, readonly Artifact[]> {
+  /** 单元物理根到 Artifact 列表的稳定映射。 */
+  const roots = new Map<string, readonly Artifact[]>();
+  for (const unit of units) {
+    if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(unit.platform) || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(unit.id))
+      throw new Error('DeliveryUnit Platform and id must use lowercase kebab-case.');
+    /** 最终 outDir 内的两级受管相对路径。 */
+    const key = `${unit.platform}/${unit.id}`;
+    if (roots.has(key))
+      throw new Error(`Duplicate DeliveryUnit "${key}".`);
+    roots.set(key, unit.artifacts);
+  }
+  return roots;
+}
+
+/**
+ * 将全部 DeliveryUnit 物化为最终两级目录布局。
+ *
+ * @param root 候选或 stage 根目录。
+ * @param units 全局 Registry 的单元快照。
+ */
+export async function materializeDeliveryUnits(root: string, units: readonly DeliveryUnit[]): Promise<void> {
+  await materializeUnitRoots(root, deliveryUnitRoots(units));
+}
+
+/**
+ * 在临时目录演练全部 DeliveryUnit 的物化和完整性复核。
+ *
+ * @param units 全局 Registry 的单元快照。
+ */
+export async function validateDeliveryUnitMaterialization(units: readonly DeliveryUnit[]): Promise<void> {
+  await validateUnitRootMaterialization(deliveryUnitRoots(units));
+}
+
+/**
+ * 原子提交全部 DeliveryUnit；任意失败都不会形成部分 Platform 输出。
+ *
+ * @param outDir 框架完全管理的输出目录。
+ * @param units 全局 Registry 的完整单元快照。
+ * @param options 锁、边界和故障注入选项。
+ */
+export async function commitDeliveryUnits(
+  outDir: string,
+  units: readonly DeliveryUnit[],
+  options: CommitDeliveryUnitsOptions = {},
+): Promise<void> {
+  await commitUnitRoots(outDir, deliveryUnitRoots(units), options);
+}
+
+/**
+ * 通过加锁、阶段目录、备份和目录交换原子提交全部 DeliveryUnit 根。
  *
  * 同级事务记录与备份允许下一次调用修复进程中断留下的状态；交换后 Hook 失败时，
  * 当前调用会删除新输出并恢复旧目录，保证调用方只观察到完整的新旧版本之一。
  *
  * @param outDir 由 acplugin 完全管理的输出目录。
- * @param targets 各目标已完成 Graph 校验的 Artifact 列表。
+ * @param unitRoots 单元相对根到已完成 Registry 校验的 Artifact 列表。
  * @param options 阶段通知与交换后事务 Hook。
  * @throws 输出路径不安全、存在活跃锁、物化失败或回滚失败时抛出异常。
  */
-export async function commitManagedOutput(
+async function commitUnitRoots(
   outDir: string,
-  targets: ReadonlyMap<TargetId, readonly Artifact[]>,
-  options: CommitManagedOutputOptions = {},
+  unitRoots: ReadonlyMap<string, readonly Artifact[]>,
+  options: CommitDeliveryUnitsOptions = {},
 ): Promise<void> {
   /** 规范化后的受管输出绝对路径。 */
   const resolved = path.resolve(outDir);
@@ -153,6 +286,14 @@ export async function commitManagedOutput(
   const base = path.basename(resolved);
   if (resolved === path.parse(resolved).root || base === '' || base === '.' || base === '..')
     throw new Error(`Unsafe managed output path: ${outDir}`);
+  if (options.projectRoot !== undefined) {
+    /** 调用方提供并解析后的可信工程根。 */
+    const projectRoot = path.resolve(options.projectRoot);
+    /** outDir 相对于工程根的位置，用于拒绝工程根本身和目录逃逸。 */
+    const outputRelative = path.relative(projectRoot, resolved);
+    if (outputRelative === '' || path.isAbsolute(outputRelative) || outputRelative === '..' || outputRelative.startsWith(`..${path.sep}`))
+      throw new Error(`Managed output must stay strictly inside the project root: ${outDir}`);
+  }
 
   await fs.mkdir(parent, { recursive: true });
   /** 防止多个进程并发提交同一输出目录的独占锁文件。 */
@@ -179,7 +320,7 @@ export async function commitManagedOutput(
       const handle = await fs.open(lockPath, 'wx');
       await handle.writeFile(`${JSON.stringify({ schemaVersion: 1, pid: process.pid })}\n`);
       return handle;
-    } catch (error) {
+    } catch /** error 保存当前操作捕获的异常，供本阶段转换或恢复。 */ (error) {
       if ((error as NodeJS.ErrnoException).code !== 'EEXIST')
         throw error;
       try {
@@ -190,7 +331,7 @@ export async function commitManagedOutput(
         try {
           process.kill(record.pid, 0);
           throw new Error(`Managed output is locked by process ${record.pid}: ${outDir}`, { cause: error });
-        } catch (processError) {
+        } catch /** processError 保存当前操作捕获的异常，供本阶段转换或恢复。 */ (processError) {
           if ((processError as NodeJS.ErrnoException).code !== 'ESRCH')
             throw processError;
         }
@@ -199,7 +340,7 @@ export async function commitManagedOutput(
         const handle = await fs.open(lockPath, 'wx');
         await handle.writeFile(`${JSON.stringify({ schemaVersion: 1, pid: process.pid })}\n`);
         return handle;
-      } catch (lockError) {
+      } catch /** lockError 保存当前操作捕获的异常，供本阶段转换或恢复。 */ (lockError) {
         throw new Error(`Managed output is locked: ${outDir}. ${String(lockError)}`, { cause: lockError });
       }
     }
@@ -218,13 +359,19 @@ export async function commitManagedOutput(
     }
     if (await exists(transactionPath))
       await fs.rm(transactionPath, { force: true });
+    /** 清理由任何上次中断阶段遗留、且具有当前 outDir 专属前缀的 stage。 */
+    const staleStagePrefix = `.${base}.acplugin-stage-`;
+    for (const entry of await fs.readdir(parent, { withFileTypes: true })) {
+      if (entry.name.startsWith(staleStagePrefix))
+        await fs.rm(path.join(parent, entry.name), { recursive: true, force: true });
+    }
     await options.onPhase?.('recovery-complete');
 
     // 阶段目录必须与输出同级，后续 rename 才能保持同一文件系统内的原子交换语义。
     stage = await fs.mkdtemp(path.join(parent, `.${base}.acplugin-stage-`));
-    await materializeTargets(stage, targets);
+    await materializeUnitRoots(stage, unitRoots);
     await options.onPhase?.('stage-materialized');
-    await validateMaterializedTargets(stage, targets);
+    await validateMaterializedUnitRoots(stage, unitRoots);
     await options.onPhase?.('stage-validated');
     await fs.writeFile(transactionPath, JSON.stringify({ schemaVersion: 1, outDir: base }) + '\n', { flag: 'wx' });
     await options.onPhase?.('transaction-written');
@@ -245,14 +392,14 @@ export async function commitManagedOutput(
       } catch {
         // 完整输出已经提交；遗留事务记录可由下次调用删除，不应把清理失败升级为构建失败。
       }
-    } catch (error) {
+    } catch /** error 保存当前操作捕获的异常，供本阶段转换或恢复。 */ (error) {
       // 交换或 afterSwap 失败时，先移除不完整的新输出，再把旧备份恢复到正式路径。
       try {
         if (outputSwapped && await exists(resolved))
           await fs.rm(resolved, { recursive: true, force: true });
         if (backupCreated && await exists(backupPath))
           await fs.rename(backupPath, resolved);
-      } catch (rollbackError) {
+      } catch /** rollbackError 保存当前操作捕获的异常，供本阶段转换或恢复。 */ (rollbackError) {
         throw new AggregateError([error, rollbackError], `Managed output rollback failed: ${outDir}`, { cause: rollbackError });
       }
       throw error;
@@ -264,7 +411,7 @@ export async function commitManagedOutput(
         // 正式输出已经完整；下次调用会处理遗留备份，不应推翻成功的目录交换。
       }
     }
-  } catch (error) {
+  } catch /** error 保存当前操作捕获的异常，供本阶段转换或恢复。 */ (error) {
     if (!(error instanceof AggregateError)) {
       try {
         await fs.rm(transactionPath, { force: true });

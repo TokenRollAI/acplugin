@@ -3,7 +3,7 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { checkbox, input } from '@inquirer/prompts';
 
-/** 控制 `acplugin init` 的交互方式、工程元数据和可选官方 Module。 */
+/** 控制 `acplugin init` 的交互方式、工程元数据和可选官方 Extension。 */
 export interface InitOptions {
   /** 解析目标目录的工作目录，默认为当前进程目录。 */
   cwd?: string;
@@ -17,9 +17,11 @@ export interface InitOptions {
   displayName?: string;
   /** 可选的 Plugin 描述覆盖。 */
   description?: string;
-  /** 是否在生成配置中启用官方 Hooks Module。 */
+  /** 需要显式写入配置的官方 Platform；默认 Claude Code 与 Codex。 */
+  platforms?: readonly InitPlatformId[];
+  /** 是否在生成配置中启用官方 Hooks Extension。 */
   hooks?: boolean;
-  /** 是否在生成配置中启用官方 MCP Module。 */
+  /** 是否在生成配置中启用官方 MCP Extension。 */
   mcp?: boolean;
   /** 是否在脚手架完成后运行 pnpm install。 */
   install?: boolean;
@@ -31,11 +33,29 @@ export interface InitResult {
   directory: string;
   /** 脚手架创建的工程文件路径。 */
   files: readonly string[];
-  /** 新工程启用的官方 Module 包名。 */
-  modules: readonly string[];
+  /** 新工程启用的官方 Platform ID。 */
+  platforms: readonly InitPlatformId[];
+  /** 新工程启用的官方 Extension 包名。 */
+  extensions: readonly string[];
   /** 请求安装依赖时，pnpm 是否成功退出。 */
   installed: boolean;
 }
+
+/** `init` 可以写入脚手架的六个官方 Platform ID。 */
+export type InitPlatformId = 'claude-code' | 'codex' | 'cursor' | 'antigravity' | 'opencode' | 'pi';
+
+/** 无交互脚手架默认启用的正式支持 Platform。 */
+const DEFAULT_PLATFORMS: readonly InitPlatformId[] = ['claude-code', 'codex'];
+
+/** 每个官方 Platform 在主包中对应的配置工厂导出名。 */
+const PLATFORM_FACTORIES: Readonly<Record<InitPlatformId, string>> = {
+  'claude-code': 'claudeCode',
+  'codex': 'codex',
+  'cursor': 'cursor',
+  'antigravity': 'antigravity',
+  'opencode': 'openCode',
+  'pi': 'pi',
+};
 
 /** Plugin 名称接受的小写 kebab-case 格式。 */
 const NAME_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
@@ -71,12 +91,13 @@ function defaultDisplayName(name: string): string {
  */
 async function assertDestination(directory: string): Promise<void> {
   try {
+    /** 已存在目标的文件类型和符号链接状态。 */
     const stat = await fs.lstat(directory);
     if (!stat.isDirectory() || stat.isSymbolicLink())
       throw new Error('destination exists and is not a regular directory');
     if ((await fs.readdir(directory)).length > 0)
       throw new Error('destination directory is not empty');
-  } catch (error) {
+  } catch /** error 保存当前操作捕获的异常，供本阶段转换或恢复。 */ (error) {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT')
       return;
     throw error;
@@ -84,29 +105,30 @@ async function assertDestination(directory: string): Promise<void> {
 }
 
 /**
- * 生成使用顶层元数据和可选官方 Module 的 `acplugin.config.ts`。
+ * 生成使用顶层元数据和可选官方 Extension 的 `acplugin.config.ts`。
  *
- * @param metadata 新工程的 Plugin 元数据与 Module 选择。
+ * @param metadata 新工程的 Plugin 元数据与 Extension 选择。
  * @returns 可直接写入磁盘的 TypeScript 配置源码。
  */
 function configSource(metadata: {
   name: string;
   displayName: string;
   description: string;
+  platforms: readonly InitPlatformId[];
   hooks: boolean;
   mcp: boolean;
 }): string {
-  /** 配置入口必需以及由 Module 选择追加的导入语句。 */
-  const imports = [`import { defineConfig } from '@tokenroll/acplugin';`];
-  /** 写入配置 `modules` 数组的初始化表达式。 */
-  const modules: string[] = [];
+  /** 配置入口与选中 Platform 对应的主包工厂导出。 */
+  const imports = [`import { defineConfig, ${metadata.platforms.map(platform => PLATFORM_FACTORIES[platform]).join(', ')} } from '@tokenroll/acplugin';`];
+  /** 写入配置 `extensions` 数组的初始化表达式。 */
+  const extensions: string[] = [];
   if (metadata.hooks) {
-    imports.push(`import hooks from '@tokenroll/acplugin-module-hooks';`);
-    modules.push('hooks()');
+    imports.push(`import hooks from '@tokenroll/acplugin-extension-hooks';`);
+    extensions.push('hooks()');
   }
   if (metadata.mcp) {
-    imports.push(`import mcp from '@tokenroll/acplugin-module-mcp';`);
-    modules.push('mcp()');
+    imports.push(`import mcp from '@tokenroll/acplugin-extension-mcp';`);
+    extensions.push('mcp()');
   }
   return `${imports.join('\n')}
 
@@ -114,9 +136,10 @@ export default defineConfig({
   name: ${JSON.stringify(metadata.name)},
   version: '0.1.0',
   description: ${JSON.stringify(metadata.description)},
-  displayName: ${JSON.stringify(metadata.displayName)},${modules.length
+  displayName: ${JSON.stringify(metadata.displayName)},
+  platforms: [${metadata.platforms.map(platform => `${PLATFORM_FACTORIES[platform]}()`).join(', ')}],${extensions.length
     ? `
-  modules: [${modules.join(', ')}],`
+  extensions: [${extensions.join(', ')}],`
     : ''}
 });
 `;
@@ -126,21 +149,21 @@ export default defineConfig({
  * 生成仅包含工程开发依赖和标准命令的私有 package.json。
  *
  * @param name Plugin 机器名称。
- * @param hooks 是否加入官方 Hooks Module 依赖。
- * @param mcp 是否加入官方 MCP Module 依赖。
+ * @param hooks 是否加入官方 Hooks Extension 依赖。
+ * @param mcp 是否加入官方 MCP Extension 依赖。
  * @returns 以换行结尾的格式化 JSON。
  */
 function packageSource(name: string, hooks: boolean, mcp: boolean): string {
-  /** 根据 Module 选择动态扩展的开发依赖映射。 */
+  /** 根据 Extension 选择动态扩展的开发依赖映射。 */
   const devDependencies: Record<string, string> = {
     '@tokenroll/acplugin': '^1.0.0',
     '@types/node': '^20.19.0',
     'typescript': '^7.0.2',
   };
   if (hooks)
-    devDependencies['@tokenroll/acplugin-module-hooks'] = '^1.0.0';
+    devDependencies['@tokenroll/acplugin-extension-hooks'] = '^1.0.0';
   if (mcp)
-    devDependencies['@tokenroll/acplugin-module-mcp'] = '^1.0.0';
+    devDependencies['@tokenroll/acplugin-extension-mcp'] = '^1.0.0';
   return `${JSON.stringify({
     name,
     version: '0.1.0',
@@ -177,8 +200,8 @@ async function installDependencies(directory: string): Promise<boolean> {
 /**
  * 交互式或无交互地创建一个最小、可构建的规范 Plugin 工程。
  *
- * @param options 目标目录、元数据、Module 和依赖安装选项。
- * @returns 创建文件、启用 Module 与安装状态。
+ * @param options 目标目录、元数据、Extension 和依赖安装选项。
+ * @returns 创建文件、启用 Extension 与安装状态。
  */
 export async function initializeProject(options: InitOptions): Promise<InitResult> {
   /** 解析相对目标目录使用的绝对工作目录。 */
@@ -215,14 +238,43 @@ export async function initializeProject(options: InitOptions): Promise<InitResul
   if (description.trim() === '')
     throw new Error('Description must not be empty.');
 
-  /** 新工程是否启用 Hooks Module。 */
+  /** 参数、默认值或交互复选提示得到的官方 Platform 列表。 */
+  let platforms = options.platforms === undefined ? [...DEFAULT_PLATFORMS] : [...options.platforms];
+  if (!options.yes && process.stdin.isTTY && options.platforms === undefined) {
+    platforms = await checkbox<InitPlatformId>({
+      message: 'Platforms',
+      choices: [
+        { name: 'Claude Code', value: 'claude-code', checked: true },
+        { name: 'Codex', value: 'codex', checked: true },
+        { name: 'Cursor', value: 'cursor' },
+        { name: 'Antigravity', value: 'antigravity' },
+        { name: 'OpenCode', value: 'opencode' },
+        { name: 'Pi', value: 'pi' },
+      ],
+      required: true,
+    });
+  }
+  if (platforms.length === 0)
+    throw new Error('At least one Platform must be selected.');
+  /** seenPlatforms 用于拒绝重复工厂，保持配置与报告身份唯一。 */
+  const seenPlatforms = new Set<InitPlatformId>();
+  /** platform 表示当前需要验证和稳定去重的脚手架 Platform。 */
+  for (const platform of platforms) {
+    if (!Object.hasOwn(PLATFORM_FACTORIES, platform))
+      throw new Error(`Unknown init Platform "${platform}".`);
+    if (seenPlatforms.has(platform))
+      throw new Error(`Duplicate init Platform "${platform}".`);
+    seenPlatforms.add(platform);
+  }
+
+  /** 新工程是否启用 Hooks Extension。 */
   let hooksEnabled = options.hooks ?? false;
-  /** 新工程是否启用 MCP Module。 */
+  /** 新工程是否启用 MCP Extension。 */
   let mcpEnabled = options.mcp ?? false;
   if (!options.yes && process.stdin.isTTY && options.hooks === undefined && options.mcp === undefined) {
-    /** 用户在统一 Module 复选提示中选择的功能。 */
+    /** 用户在统一 Extension 复选提示中选择的功能。 */
     const selected = await checkbox({
-      message: 'Optional Modules',
+      message: 'Optional Extensions',
       choices: [
         { name: 'Hooks', value: 'hooks' },
         { name: 'MCP', value: 'mcp' },
@@ -235,6 +287,10 @@ export async function initializeProject(options: InitOptions): Promise<InitResul
   /** 默认 Skill 的目录，也是 mkdir 一次创建整个工程树的锚点。 */
   const skillDirectory = path.join(directory, 'src', 'skills', name);
   await fs.mkdir(skillDirectory, { recursive: true });
+  if (hooksEnabled)
+    await fs.mkdir(path.join(directory, 'src', 'hooks'), { recursive: true });
+  if (mcpEnabled)
+    await fs.mkdir(path.join(directory, 'src', 'mcp'), { recursive: true });
   /** 初始化结果中稳定呈现的全部脚手架文件路径。 */
   const files = [
     'acplugin.config.ts',
@@ -245,7 +301,7 @@ export async function initializeProject(options: InitOptions): Promise<InitResul
   ];
   // 使用 `wx` 并行写入，既减少脚手架耗时，也避免意外覆盖并发创建的文件。
   await Promise.all([
-    fs.writeFile(path.join(directory, 'acplugin.config.ts'), configSource({ name, displayName, description: description.trim(), hooks: hooksEnabled, mcp: mcpEnabled }), { flag: 'wx' }),
+    fs.writeFile(path.join(directory, 'acplugin.config.ts'), configSource({ name, displayName, description: description.trim(), platforms, hooks: hooksEnabled, mcp: mcpEnabled }), { flag: 'wx' }),
     fs.writeFile(path.join(directory, 'package.json'), packageSource(name, hooksEnabled, mcpEnabled), { flag: 'wx' }),
     fs.writeFile(path.join(directory, 'tsconfig.json'), `${JSON.stringify({
       compilerOptions: {
@@ -272,9 +328,10 @@ Replace this text with the focused workflow ${displayName} should perform.
   return {
     directory: path.relative(cwd, directory) || '.',
     files,
-    modules: [
-      ...(hooksEnabled ? ['@tokenroll/acplugin-module-hooks'] : []),
-      ...(mcpEnabled ? ['@tokenroll/acplugin-module-mcp'] : []),
+    platforms,
+    extensions: [
+      ...(hooksEnabled ? ['@tokenroll/acplugin-extension-hooks'] : []),
+      ...(mcpEnabled ? ['@tokenroll/acplugin-extension-mcp'] : []),
     ],
     installed,
   };

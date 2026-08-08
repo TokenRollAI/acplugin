@@ -40,6 +40,23 @@ function leadingComment(source, node) {
 }
 
 /**
+ * 读取声明绑定之前可见的中文说明，并兼容 `catch` 关键字后的绑定注释。
+ *
+ * @param source 当前文件对应的 TypeScript 语法树。
+ * @param node 需要检查说明的声明节点。
+ * @returns 声明前或 catch 异常绑定前的注释文本。
+ */
+function declarationComment(source, node) {
+  /** 普通声明直接使用与节点相邻的前置注释。 */
+  const leading = leadingComment(source, node);
+  if (!ts.isCatchClause(node) || node.variableDeclaration === undefined)
+    return leading;
+  /** catch 关键字与异常变量之间允许放置的绑定专属注释。 */
+  const bindingPrefix = source.getFullText().slice(node.getStart(source), node.variableDeclaration.getStart(source));
+  return `${leading}\n${bindingPrefix}`;
+}
+
+/**
  * 返回便于诊断的声明名称，匿名声明使用语法类型代替。
  *
  * @param node 待描述的声明节点。
@@ -56,13 +73,24 @@ function declarationName(node) {
 }
 
 /**
- * 判断变量语句是否位于模块顶层。
+ * 判断节点是否为需要中文解释的普通变量语句。
  *
  * @param node 待检查的变量语句。
- * @returns 位于 SourceFile 直接子级时返回 true。
+ * @returns 任何函数体或模块中的 VariableStatement 都返回 true。
  */
-function isModuleVariable(node) {
-  return ts.isVariableStatement(node) && ts.isSourceFile(node.parent);
+function isVariableStatement(node) {
+  return ts.isVariableStatement(node);
+}
+
+/**
+ * 判断对象属性是否使用箭头函数或函数表达式定义可调用方法。
+ *
+ * @param node 待检查的对象属性节点。
+ * @returns 属性值是 ArrowFunction 或 FunctionExpression 时返回 true。
+ */
+function isObjectFunctionProperty(node) {
+  return ts.isPropertyAssignment(node)
+    && (ts.isArrowFunction(node.initializer) || ts.isFunctionExpression(node.initializer));
 }
 
 /**
@@ -86,8 +114,10 @@ function missingComments(file) {
    */
   function visit(node) {
     /** 标记节点是否属于需要中文前置注释的声明范围。 */
-    const required = DECLARATION_KINDS.has(node.kind) || isModuleVariable(node);
-    if (required && !CHINESE_PATTERN.test(leadingComment(source, node))) {
+    const required = DECLARATION_KINDS.has(node.kind)
+      || isVariableStatement(node)
+      || isObjectFunctionProperty(node);
+    if (required && !CHINESE_PATTERN.test(declarationComment(source, node))) {
       /** TypeScript 使用零基行列，需要转换为面向用户的一基行号。 */
       const line = source.getLineAndCharacterOfPosition(node.getStart(source)).line + 1;
       missing.push(`${file}:${line} ${declarationName(node)}`);

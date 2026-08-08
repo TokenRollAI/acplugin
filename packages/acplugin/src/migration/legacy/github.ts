@@ -188,7 +188,7 @@ export async function downloadGitHubRepo(source: GitHubSource): Promise<string> 
 
     // Git 不可用时下载 GitHub 生成的归档。
     return await downloadTarball(verified, tmpDir);
-  } catch (error) {
+  } catch /** error 保存当前操作捕获的异常，供本阶段转换或恢复。 */ (error) {
     cleanupTempDir(tmpDir);
     throw error;
   }

@@ -1,36 +1,65 @@
-# 目标支持矩阵
+# Platform 支持矩阵
 
 > [English version](conversion-matrix.md)
 
-本矩阵描述规范 acplugin 1.0 构建。保留在 `packages/acplugin/src/migration/legacy/` 下的容错 Converter 只是 Migration 实现细节，不代表额外构建目标。
+本矩阵描述规范 acplugin 1.0 构建。`packages/acplugin/src/migration/legacy/` 下的容错转换代码只属于 Migration，不是另一条构建路径。
 
-| 能力 | Claude Code | Codex |
-| --- | --- | --- |
-| Skills | 原生 | 原生 |
-| Commands | 原生 | 显式 `command-<id>` 回退 Skill |
-| Agents | 原生 | 显式 `agent-<id>`、仅保留模型指导的回退 Skill |
-| Public 文件 | 复制到目标根目录 | 复制到目标根目录 |
-| Hooks Module | 原生支持事件 | 原生可移植事件 |
-| 远程 HTTP MCP | 原生声明 | 原生声明 |
-| 本地 stdio MCP | Node 20 ESM Bundle | Node 20 ESM Bundle |
+## 交付形态与 Component
 
-Codex 通过语义转换支持 Command。Agent 会降级，因为可安装 Codex Plugin 无法注册项目级或用户级自定义 Agent。因此，在默认严格设置下，包含 Agent 的 Codex 目标会失败；`--no-strict` 表示明确接受生成的回退和结构化兼容性警告。
+| 能力 | Claude Code | Codex | Cursor | Antigravity | OpenCode | Pi |
+| --- | --- | --- | --- | --- | --- | --- |
+| 交付单元 | 可安装 Plugin | 可安装 Plugin | 可安装 Plugin | 可安装 Plugin | Workspace Overlay | npm Package |
+| Skill | 原生 | 原生 | 原生 | 原生 | 原生 | 原生 |
+| Command | 原生 Command | 转换为显式 `command-<id>` Skill | 原生 Command | 转换为显式 `command-<id>` Skill | 原生 Workspace Command | 转换为 Prompt Template |
+| Agent | 原生 Agent | 降级为 `agent-<id>` 指导 Skill | 原生 Subagent；部分模型/能力字段降级 | 降级为 `agent-<id>` 指导 Skill | 原生 Subagent；能力转换为 tools/permissions | 降级为 `agent-<id>` 指导 Skill |
+| Public 文件 | 复制到 Plugin 根 | 复制到 Plugin 根 | 复制到 Plugin 根 | 复制到 Plugin 根 | 复制到 Workspace 根 | 复制到 Package 根 |
+| 独立 Marketplace 分发 | 可选 | 可选 | 不生成 | 不生成 | 不适用 | 不适用 |
 
-Hooks 和 MCP 不是 Core Component。只有配置 `@tokenroll/acplugin-module-hooks` 或 `@tokenroll/acplugin-module-mcp` 后，它们才会加入同一构建生命周期。如果 `src/hooks` 或 `src/mcp` 中存在源码但未启用对应 Module，则构建会报错。
+`原生` 表示 Platform 有等价的可安装资源；`转换` 表示生成另一种原生资源并保留工作流意图；`降级` 表示关键运行时保证无法完整保留。严格模式会拒绝 degraded/unsupported；只有在审阅结构化兼容性报告后，才应使用 `--no-strict`。
+
+OpenCode 明确是 Workspace Overlay，不会收到伪造的通用 `package.json`。Pi 是真实 npm Package，其 Manifest 不得泄漏 workspace/private 字段。Antigravity 只输出公开契约已经确认的 Manifest 字段。
+
+## Hooks Extension
+
+| 可移植事件 | Claude Code | Codex | Cursor | Antigravity | OpenCode | Pi |
+| --- | --- | --- | --- | --- | --- | --- |
+| `SessionStart` | 原生 | 原生 | 转换 | 原生 | 原生 | 原生 |
+| `SessionEnd` | 原生 | 原生 | 转换 | 原生 | 降级 | 原生 |
+| `UserPromptSubmit` | 原生 | 原生 | 转换 | 不支持 | 原生 | 原生 |
+| `PreToolUse` | 原生 | 原生 | 转换 | 原生 | 原生 | 原生 |
+| `PermissionRequest` | 原生 | 原生 | 不支持 | 不支持 | 不支持 | 不支持 |
+| `PostToolUse` | 原生 | 原生 | 转换 | 原生 | 原生 | 原生 |
+| `PreCompact` | 原生 | 原生 | 转换 | 原生 | 不支持 | 原生 |
+| `PostCompact` | 原生 | 原生 | 不支持 | 不支持 | 原生 | 原生 |
+| `SubagentStart` | 原生 | 原生 | 转换 | 不支持 | 不支持 | 不支持 |
+| `SubagentStop` | 原生 | 原生 | 转换 | 不支持 | 不支持 | 不支持 |
+| `Stop` | 原生 | 原生 | 转换 | 不支持 | 降级 | 降级 |
+
+Platform-only 事件保持显式平台限定，不会扩充可移植事件联合。即使事件受支持，当宿主忽略 meaningful matcher 或没有稳定状态消息字段时，仍会产生字段级降级。空 Hooks 不会生成运行时或 Manifest 产物。
+
+## MCP Extension
+
+| 传输 | Claude Code | Codex | Cursor | Antigravity | OpenCode | Pi |
+| --- | --- | --- | --- | --- | --- | --- |
+| 远程 Streamable HTTP | 原生 | 原生 | 原生 | 原生 | 原生 | 不支持 |
+| Bundle 后的本地 stdio | 原生 | 原生 | 不支持 | 不支持 | 原生本地进程 | 不支持 |
+
+远程 MCP 是声明式内容：作者提供 Endpoint 和秘密引用。本地 stdio MCP 是可执行内容：作者提供完整 `server.ts`，Extension 只 Bundle 一次 Node 20 ESM，并只复用到具有已验证安装根契约的 Platform。任何 Adapter 都不会在构建时读取环境变量秘密值。
 
 ## 源码与输出所有权
 
 | 关注点 | 事实来源 |
 | --- | --- |
-| Config、Components、Modules、Artifacts | `packages/core/src/types.ts` |
+| Config、Components、生命周期契约、Artifacts | `packages/core/src/types.ts`、`contracts.ts` |
 | 发现与依赖图 | `packages/core/src/scanner.ts` |
-| 生命周期与目标分发 | `packages/core/src/builder.ts` |
+| 生命周期与 Platform 分发 | `packages/core/src/lifecycle.ts` |
 | 事务化输出 | `packages/core/src/transaction.ts` |
-| Claude 输出 Schema | `packages/compiler-claude-code/src/index.ts` |
-| Codex 输出 Schema 与回退 | `packages/compiler-codex/src/index.ts` |
-| Hooks 发现与运行时 Bundle | `packages/module-hooks/src/index.ts` |
-| MCP 声明与运行时 Bundle | `packages/module-mcp/src/index.ts` |
+| Platform 输出契约 | `packages/platforms/<id>/src/` |
+| Hooks 发现、Bundle 与 Platform Adapter | `packages/extensions/hooks/src/` |
+| MCP 发现、Bundle 与 Platform Adapter | `packages/extensions/mcp/src/` |
 | 公开门面与配置加载 | `packages/acplugin/src/index.ts` |
-| CLI 与 Migration 边界 | `packages/acplugin/src/cli.ts` |
+| CLI 与隔离 Migration 边界 | `packages/acplugin/src/cli.ts`、`migration/` |
 
-Compiler 拥有目标路径和 Manifest。Module 可以贡献 Artifact、由其唯一拥有的顶层 Manifest 字段和兼容性条目，但不能替换 Compiler，也不能直接写入 `dist`。
+Platform 拥有输出路径、Document、Manifest、Schema、Validator 和交付单元类型。Extension Adapter 可以增加自有 Artifact、修改声明为 add-only 的 Document 扩展点并报告兼容性，但不能替换 Platform，也不能直接写入 `dist`。
+
+官方契约最后核验于 2026-08-06，来源包括 [Claude Code Hooks](https://code.claude.com/docs/en/hooks)、[Codex Hooks](https://learn.chatgpt.com/docs/hooks)、[Cursor Plugin Schema](https://github.com/cursor/plugins/blob/main/schemas/plugin.schema.json)、[Antigravity Plugins](https://antigravity.google/docs/plugins?app=cli)、[OpenCode Plugins](https://opencode.ai/docs/plugins/)、[OpenCode MCP](https://opencode.ai/docs/mcp-servers/) 和 [Pi Packages](https://pi.dev/docs/latest/packages)。

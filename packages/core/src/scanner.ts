@@ -2,7 +2,7 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { parseDocument } from 'yaml';
 import { DiagnosticCollector } from './diagnostics.js';
-import { extensionIssues } from './extensions.js';
+import type { AcpluginPlatform, DiagnosticInput, JsonObject, JsonValue } from './contracts.js';
 import type {
   AgentCapability,
   AgentComponent,
@@ -11,8 +11,8 @@ import type {
   CommandComponent,
   Component,
   ComponentKind,
+  ComponentPlatformFields,
   ComponentRequires,
-  PlatformExtensions,
   PluginProject,
   PublicFile,
   ResolvedConfig,
@@ -89,6 +89,7 @@ async function assertRegularFile(
   phase = 'discover',
 ): Promise<import('node:fs').Stats | undefined> {
   try {
+    /** 候选来源自身的文件类型与符号链接状态。 */
     const stat = await fs.lstat(file);
     if (stat.isSymbolicLink()) {
       diagnostics.error('SOURCE_SYMLINK_UNSUPPORTED', 'Symbolic links are not supported.', {
@@ -129,12 +130,14 @@ async function parseMarkdown(
   if (!await assertRegularFile(file, root, diagnostics))
     return undefined;
 
-  /** 从磁盘读取的完整 Markdown 源码。 */
+  /** 从磁盘读取并以 fatal 模式解码的完整 Markdown 源码。 */
   let source: string;
   try {
-    source = await fs.readFile(file, 'utf8');
+    /** fatal 解码会拒绝 Node 默认 utf8 字符串读取会静默替换的非法字节。 */
+    const bytes = await fs.readFile(file);
+    source = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
   } catch {
-    diagnostics.error('MARKDOWN_READ_FAILED', 'Cannot read Markdown.', {
+    diagnostics.error('MARKDOWN_UTF8_INVALID', 'Markdown must be readable UTF-8 text.', {
       phase: 'discover', location: { path: relative(root, file) },
     });
     return undefined;
@@ -220,6 +223,15 @@ function validateFields(
   /** 供每个字段执行常数时间查询的白名单。 */
   const allowedSet = new Set(allowed);
   for (const key of Object.keys(data)) {
+    if (key === 'extensions') {
+      diagnostics.error('COMPONENT_LEGACY_EXTENSIONS', 'Component field "extensions" is no longer supported.', {
+        phase: 'discover',
+        location: { path: sourcePath },
+        fieldPath: [key],
+        hint: 'Use platforms: { \'claude-code\': {} } for Platform-specific fields.',
+      });
+      continue;
+    }
     if (!allowedSet.has(key)) {
       diagnostics.error('FRONTMATTER_FIELD_UNKNOWN', `Unknown Frontmatter field "${key}".`, {
         phase: 'discover', location: { path: sourcePath }, fieldPath: [key],
@@ -265,6 +277,7 @@ function stringField(
  * @param fieldPath 诊断中使用的嵌套字段路径。
  * @param sourcePath 诊断使用的源码路径。
  * @param diagnostics 当前扫描共享的诊断收集器。
+ * @param duplicateCode 当前字段发现重复值时使用的稳定诊断码。
  * @returns 有效输入本身；缺失或类型无效时返回空数组。
  */
 function stringArray(
@@ -272,6 +285,7 @@ function stringArray(
   fieldPath: readonly string[],
   sourcePath: string,
   diagnostics: DiagnosticCollector,
+  duplicateCode = 'FRONTMATTER_ARRAY_DUPLICATE',
 ): string[] {
   if (value === undefined)
     return [];
@@ -284,7 +298,7 @@ function stringArray(
   /** 已通过元素类型与非空检查的字符串列表。 */
   const result = value as string[];
   if (new Set(result).size !== result.length) {
-    diagnostics.error('COMPONENT_REQUIRES_DUPLICATE', `${fieldPath.join('.')} contains duplicate IDs.`, {
+    diagnostics.error(duplicateCode, `${fieldPath.join('.')} contains duplicate values.`, {
       phase: 'discover', location: { path: sourcePath }, fieldPath,
     });
   }
@@ -317,51 +331,214 @@ function parseRequires(data: unknown, sourcePath: string, diagnostics: Diagnosti
       });
     }
   }
-  return {
-    skills: stringArray(object.skills, ['requires', 'skills'], sourcePath, diagnostics),
-    agents: stringArray(object.agents, ['requires', 'agents'], sourcePath, diagnostics),
-  };
+  /** Skill 和 Agent 依赖需要在图构建前完成 ID 语法校验。 */
+  const skills = stringArray(object.skills, ['requires', 'skills'], sourcePath, diagnostics, 'COMPONENT_REQUIRES_DUPLICATE');
+  /** Agent 依赖与 Skill 依赖使用相同的开放 Component ID 规则。 */
+  const agents = stringArray(object.agents, ['requires', 'agents'], sourcePath, diagnostics, 'COMPONENT_REQUIRES_DUPLICATE');
+  for (const [kind, ids] of [['skills', skills], ['agents', agents]] as const) {
+    for (const [index, id] of ids.entries()) {
+      if (!ID_PATTERN.test(id)) {
+        diagnostics.error('COMPONENT_REQUIRES_ID_INVALID', `requires.${kind} contains invalid Component ID "${id}".`, {
+          phase: 'discover', location: { path: sourcePath }, fieldPath: ['requires', kind, index],
+        });
+      }
+    }
+  }
+  return { skills, agents };
 }
 
 /**
- * 解析平台扩展映射，并阻止扩展覆盖 Core 的标准 Plugin 语义。
+ * 拒绝 Command 正文中的非规范模板占位符。
  *
- * @param data extensions 字段的未知值。
+ * @param body 已移除 Frontmatter 的 Command 正文。
  * @param sourcePath 诊断使用的源码路径。
  * @param diagnostics 当前扫描共享的诊断收集器。
- * @returns 已通过结构验证的平台扩展映射。
  */
-function parseExtensions(data: unknown, sourcePath: string, diagnostics: DiagnosticCollector): PlatformExtensions {
-  if (data === undefined)
-    return {};
-  if (data === null || typeof data !== 'object' || Array.isArray(data)) {
-    diagnostics.error('EXTENSIONS_INVALID', 'extensions must be a mapping.', {
-      phase: 'discover', location: { path: sourcePath }, fieldPath: ['extensions'],
+function validateCommandPlaceholders(body: string, sourcePath: string, diagnostics: DiagnosticCollector): void {
+  /** acplugin 只解释双花括号占位符，且仅保留 arguments 这一规范名称。 */
+  const placeholders = body.match(/\{\{[^{}]*\}\}/g) ?? [];
+  for (const placeholder of placeholders) {
+    if (placeholder !== '{{arguments}}') {
+      diagnostics.error('COMMAND_PLACEHOLDER_INVALID', `Unsupported Command placeholder "${placeholder}".`, {
+        phase: 'discover', location: { path: sourcePath },
+        hint: 'Use the canonical {{arguments}} placeholder.',
+      });
+    }
+  }
+}
+
+/**
+ * 递归复制并冻结未知值，同时验证它能无损表示为 JSON。
+ *
+ * @param value 当前待验证值。
+ * @param fieldPath 当前值在 Frontmatter 中的字段路径。
+ * @param sourcePath 诊断使用的源码路径。
+ * @param diagnostics 当前扫描共享的诊断收集器。
+ * @param ancestors 当前递归链，用于拒绝 YAML alias 构造的循环对象。
+ * @returns 合法且不可变的 JSON 值；非法时返回 undefined。
+ */
+function normalizeJsonValue(
+  value: unknown,
+  fieldPath: readonly string[],
+  sourcePath: string,
+  diagnostics: DiagnosticCollector,
+  ancestors: WeakSet<object> = new WeakSet<object>(),
+): JsonValue | undefined {
+  if (value === null || typeof value === 'string' || typeof value === 'boolean')
+    return value;
+  if (typeof value === 'number') {
+    if (Number.isFinite(value))
+      return value;
+    diagnostics.error('COMPONENT_PLATFORM_JSON_INVALID', 'Platform fields only support finite JSON numbers.', {
+      phase: 'discover', location: { path: sourcePath }, fieldPath,
     });
-    return {};
+    return undefined;
   }
-  /** 已验证为顶层映射的扩展对象。 */
-  const object = data as Record<string, unknown>;
-  for (const [key, value] of Object.entries(object)) {
-    if (key !== 'claude-code' && key !== 'codex') {
-      diagnostics.error('EXTENSION_TARGET_UNKNOWN', `Unknown extension target "${key}".`, {
-        phase: 'discover', location: { path: sourcePath }, fieldPath: ['extensions', key],
+  if (typeof value !== 'object') {
+    diagnostics.error('COMPONENT_PLATFORM_JSON_INVALID', 'Platform fields must contain JSON-serializable values.', {
+      phase: 'discover', location: { path: sourcePath }, fieldPath,
+    });
+    return undefined;
+  }
+  if (ancestors.has(value)) {
+    diagnostics.error('COMPONENT_PLATFORM_JSON_CYCLE', 'Platform fields cannot contain circular YAML aliases.', {
+      phase: 'discover', location: { path: sourcePath }, fieldPath,
+    });
+    return undefined;
+  }
+  ancestors.add(value);
+  if (Array.isArray(value)) {
+    /** 保留作者声明顺序的 JSON 数组副本。 */
+    const result: JsonValue[] = [];
+    for (const [index, item] of value.entries()) {
+      /** 任一非法元素都会让所属 Platform 字段整体失效。 */
+      const normalized = normalizeJsonValue(item, [...fieldPath, String(index)], sourcePath, diagnostics, ancestors);
+      if (normalized === undefined) {
+        ancestors.delete(value);
+        return undefined;
+      }
+      result.push(normalized);
+    }
+    ancestors.delete(value);
+    return Object.freeze(result);
+  }
+  /** YAML 转换结果应为普通对象，拒绝行为对象进入稳定 Component 数据。 */
+  const prototype = Object.getPrototypeOf(value);
+  if (prototype !== Object.prototype && prototype !== null) {
+    ancestors.delete(value);
+    diagnostics.error('COMPONENT_PLATFORM_JSON_INVALID', 'Platform fields must use plain JSON mappings.', {
+      phase: 'discover', location: { path: sourcePath }, fieldPath,
+    });
+    return undefined;
+  }
+  /** 按键名排序使相同语义的 YAML 字段顺序得到同一工程快照。 */
+  const result: Record<string, JsonValue> = {};
+  for (const key of Object.keys(value).sort((left, right) => left.localeCompare(right, 'en'))) {
+    /** 当前普通对象字段的未知原始值。 */
+    const normalized = normalizeJsonValue((value as Record<string, unknown>)[key], [...fieldPath, key], sourcePath, diagnostics, ancestors);
+    if (normalized === undefined) {
+      ancestors.delete(value);
+      return undefined;
+    }
+    // defineProperty 可安全保留名为 `__proto__` 的 JSON 字段，不触发对象原型 setter。
+    Object.defineProperty(result, key, { value: normalized, enumerable: true, configurable: false, writable: false });
+  }
+  ancestors.delete(value);
+  return Object.freeze(result);
+}
+
+/**
+ * 将已经规范化的 JSON 值收窄为 Platform 字段要求的对象根节点。
+ *
+ * @param value Core JSON 规范化结果。
+ * @returns 非空、非数组对象返回 true。
+ */
+function isJsonObject(value: JsonValue | undefined): value is JsonObject {
+  return value !== undefined && value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+/**
+ * 解析 Component 的 Platform 专属字段并调用对应 Platform 校验器。
+ *
+ * @param data platforms 字段的未知值。
+ * @param component 当前 Component 的稳定身份与来源。
+ * @param config 已解析工程配置和 Platform 集合。
+ * @param diagnostics 当前扫描共享的诊断收集器。
+ * @returns 仅包含已配置且通过 JSON 结构验证的 Platform 字段。
+ */
+async function parsePlatforms(
+  data: unknown,
+  component: { readonly kind: ComponentKind; readonly id: string; readonly sourcePath: string },
+  config: ResolvedConfig,
+  diagnostics: DiagnosticCollector,
+): Promise<ComponentPlatformFields> {
+  if (data === undefined)
+    return Object.freeze({});
+  if (data === null || typeof data !== 'object' || Array.isArray(data)) {
+    diagnostics.error('COMPONENT_PLATFORMS_INVALID', 'platforms must be a mapping.', {
+      phase: 'discover', location: { path: component.sourcePath }, fieldPath: ['platforms'],
+    });
+    return Object.freeze({});
+  }
+  /** 按开放 ID 索引当前工程实际配置的品牌化 Platform。 */
+  const configured = new Map<string, AcpluginPlatform>(config.platforms.map(item => [item.platform.id, item.platform]));
+  /** 仅写入完成 Core 与 Platform 双层校验的专属字段。 */
+  const result: Record<string, Readonly<JsonObject>> = {};
+  for (const id of Object.keys(data).sort((left, right) => left.localeCompare(right, 'en'))) {
+    /** 当前 ID 对应且能够执行专属字段校验的 Platform。 */
+    const platform = configured.get(id);
+    if (!platform) {
+      diagnostics.error('COMPONENT_PLATFORM_NOT_CONFIGURED', `Component declares fields for unconfigured Platform "${id}".`, {
+        phase: 'discover', location: { path: component.sourcePath }, fieldPath: ['platforms', id],
+        hint: `Add the ${id} Platform factory to config.platforms.`,
       });
       continue;
     }
-    if (value === null || typeof value !== 'object' || Array.isArray(value)) {
-      diagnostics.error('EXTENSION_VALUE_INVALID', `Extension target "${key}" must be a mapping.`, {
-        phase: 'discover', location: { path: sourcePath }, fieldPath: ['extensions', key],
+    /** Platform 字段根必须是对象，避免 Schema 根形态在平台间漂移。 */
+    const raw = (data as Record<string, unknown>)[id];
+    if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) {
+      diagnostics.error('COMPONENT_PLATFORM_FIELDS_INVALID', `platforms.${id} must be a JSON mapping.`, {
+        phase: 'discover', platform: platform.id, location: { path: component.sourcePath }, fieldPath: ['platforms', id],
       });
       continue;
     }
-    for (const issue of extensionIssues(value, ['extensions', key])) {
-      diagnostics.error('EXTENSION_SEMANTICS_INVALID', issue.message, {
-        phase: 'discover', location: { path: sourcePath }, fieldPath: issue.path,
+    /** Core 复制并冻结后的字段，不向 Platform 暴露 YAML 解析器持有的对象。 */
+    const normalized = normalizeJsonValue(raw, ['platforms', id], component.sourcePath, diagnostics);
+    if (!isJsonObject(normalized))
+      continue;
+    result[id] = normalized;
+    if (!platform.validateComponentFields)
+      continue;
+    try {
+      /** 防止 Platform Validator 在运行时修改其他 Platform 随后观察的 Component 身份。 */
+      const componentSnapshot = Object.freeze({ ...component });
+      /** 冻结 Context 外壳，但保留其内部受控的诊断提交函数。 */
+      const context = Object.freeze({
+        command: config.command,
+        mode: config.mode,
+        component: componentSnapshot,
+        fields: normalized,
+        /** Platform 只能提交诊断，身份和缺省源码位置由 Core 固定附加。 */
+        reportDiagnostic(input: DiagnosticInput): void {
+          diagnostics.add({
+            ...input,
+            phase: input.phase ?? 'validate',
+            platform: platform.id,
+            component: { kind: component.kind, id: component.id },
+            location: input.location ?? { path: component.sourcePath },
+          });
+        },
+      });
+      await platform.validateComponentFields(context);
+    } catch {
+      diagnostics.error('PLATFORM_COMPONENT_VALIDATOR_FAILED', `Platform "${id}" failed while validating Component fields.`, {
+        phase: 'validate', platform: platform.id,
+        component: { kind: component.kind, id: component.id },
+        location: { path: component.sourcePath }, fieldPath: ['platforms', id],
       });
     }
   }
-  return object as PlatformExtensions;
+  return Object.freeze(result);
 }
 
 /**
@@ -373,11 +550,73 @@ function parseExtensions(data: unknown, sourcePath: string, diagnostics: Diagnos
 async function listDirectory(directory: string): Promise<import('node:fs').Dirent[]> {
   try {
     return (await fs.readdir(directory, { withFileTypes: true })).sort((a, b) => a.name.localeCompare(b.name, 'en'));
-  } catch (error) {
+  } catch /** error 保存当前操作捕获的异常，供本阶段转换或恢复。 */ (error) {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT')
       return [];
     throw error;
   }
+}
+
+/**
+ * 检查同一源码目录中会在常见文件系统上碰撞的大小写或 Unicode 名称。
+ *
+ * @param entries 已按名称排序的目录项。
+ * @param directory 这些目录项所属的绝对目录。
+ * @param root 工程根目录。
+ * @param diagnostics 当前扫描共享的诊断收集器。
+ */
+function validateEntryCollisions(
+  entries: readonly import('node:fs').Dirent[],
+  directory: string,
+  root: string,
+  diagnostics: DiagnosticCollector,
+): void {
+  /** NFC 与小写折叠后的名字映射到首次出现的原始目录项。 */
+  const seen = new Map<string, import('node:fs').Dirent>();
+  for (const entry of entries) {
+    /** 统一 Unicode 组合形式和大小写后的跨文件系统比较键。 */
+    const key = entry.name.normalize('NFC').toLocaleLowerCase('en-US');
+    /** 此比较键首次对应的目录项。 */
+    const previous = seen.get(key);
+    if (!previous) {
+      seen.set(key, entry);
+      continue;
+    }
+    /** 当前与首次冲突项都使用工程相对路径，避免报告宿主绝对路径。 */
+    const currentPath = relative(root, path.join(directory, entry.name));
+    /** 首次出现目录项的工程相对报告路径。 */
+    const previousPath = relative(root, path.join(directory, previous.name));
+    diagnostics.error('SOURCE_PATH_COLLISION', `Source path collides with "${previous.name}" after case and Unicode normalization.`, {
+      phase: 'discover', location: { path: currentPath }, related: [{ path: previousPath }],
+    });
+  }
+}
+
+/**
+ * 稳定读取源码目录并立即执行跨文件系统名称碰撞检查。
+ *
+ * @param directory 待读取绝对目录。
+ * @param root 工程根目录。
+ * @param diagnostics 当前扫描共享的诊断收集器。
+ * @returns 已排序目录项；目录不存在时仍为空数组。
+ */
+async function listSourceDirectory(
+  directory: string,
+  root: string,
+  diagnostics: DiagnosticCollector,
+): Promise<import('node:fs').Dirent[]> {
+  /** 名称稳定排序后的当前目录项。 */
+  let entries: import('node:fs').Dirent[];
+  try {
+    entries = await listDirectory(directory);
+  } catch {
+    diagnostics.error('SOURCE_DIRECTORY_READ_FAILED', 'Cannot read source directory.', {
+      phase: 'discover', location: { path: relative(root, directory) },
+    });
+    return [];
+  }
+  validateEntryCollisions(entries, directory, root, diagnostics);
+  return entries;
 }
 
 /**
@@ -392,11 +631,15 @@ async function scanCommands(config: ResolvedConfig, diagnostics: DiagnosticColle
   const directory = path.join(config.srcDir, 'commands');
   /** 通过结构和 Frontmatter 验证的 Command。 */
   const result: CommandComponent[] = [];
-  for (const entry of await listDirectory(directory)) {
+  for (const entry of await listSourceDirectory(directory, config.root, diagnostics)) {
     /** 当前目录项的绝对源码路径。 */
     const file = path.join(directory, entry.name);
     /** 当前目录项用于报告和 Component 的相对路径。 */
     const sourcePath = relative(config.root, file);
+    if (entry.isSymbolicLink()) {
+      diagnostics.error('SOURCE_SYMLINK_UNSUPPORTED', 'Symbolic links are not supported.', { phase: 'discover', location: { path: sourcePath } });
+      continue;
+    }
     if (!entry.isFile() || !entry.name.endsWith('.md')) {
       diagnostics.error('COMMAND_ENTRY_INVALID', 'Commands must be one-level .md files.', { phase: 'discover', location: { path: sourcePath } });
       continue;
@@ -409,21 +652,21 @@ async function scanCommands(config: ResolvedConfig, diagnostics: DiagnosticColle
     const parsed = await parseMarkdown(file, config.root, diagnostics);
     if (!parsed)
       continue;
-    validateFields(parsed.data, ['description', 'argumentHint', 'requires', 'extensions'], sourcePath, diagnostics);
+    validateFields(parsed.data, ['description', 'argumentHint', 'requires', 'platforms'], sourcePath, diagnostics);
     /** Command 必需的非空描述。 */
     const description = stringField(parsed.data, 'description', sourcePath, diagnostics, true);
     if (!description)
       continue;
-    /** 已满足必需字段要求的规范 Command。 */
+    /** 可选的命令参数提示。 */
+    const argumentHint = stringField(parsed.data, 'argumentHint', sourcePath, diagnostics);
+    validateCommandPlaceholders(parsed.body, sourcePath, diagnostics);
+    /** 已满足必需字段要求的不可变规范 Command。 */
     const command: CommandComponent = {
       kind: 'command', id, description, body: parsed.body, sourcePath,
       requires: parseRequires(parsed.data.requires, sourcePath, diagnostics),
-      extensions: parseExtensions(parsed.data.extensions, sourcePath, diagnostics),
+      platforms: await parsePlatforms(parsed.data.platforms, { kind: 'command', id, sourcePath }, config, diagnostics),
+      ...(argumentHint === undefined ? {} : { argumentHint }),
     };
-    /** 可选的命令参数提示。 */
-    const argumentHint = stringField(parsed.data, 'argumentHint', sourcePath, diagnostics);
-    if (argumentHint !== undefined)
-      command.argumentHint = argumentHint;
     result.push(command);
   }
   return result;
@@ -446,7 +689,7 @@ async function collectSkillAuxiliary(
 ): Promise<SkillAuxiliaryFile[]> {
   /** 当前递归子树累计发现的普通文件。 */
   const result: SkillAuxiliaryFile[] = [];
-  for (const entry of await listDirectory(path.join(directory, prefix))) {
+  for (const entry of await listSourceDirectory(path.join(directory, prefix), config.root, diagnostics)) {
     if (prefix === '' && entry.name === 'SKILL.md')
       continue;
     /** 辅助文件在最终 Skill 目录中的 POSIX 相对路径。 */
@@ -460,6 +703,7 @@ async function collectSkillAuxiliary(
     } else if (entry.isDirectory()) {
       result.push(...await collectSkillAuxiliary(directory, config, diagnostics, relativePath));
     } else if (entry.isFile()) {
+      /** 辅助文件的权限信息，用于保留是否可执行。 */
       const stat = await fs.stat(file);
       result.push({ path: relativePath, sourcePath: file, mode: modeFromStat(stat.mode) });
     } else {
@@ -483,11 +727,15 @@ async function scanSkills(config: ResolvedConfig, diagnostics: DiagnosticCollect
   const directory = path.join(config.srcDir, 'skills');
   /** 通过结构和 Frontmatter 验证的 Skill。 */
   const result: SkillComponent[] = [];
-  for (const entry of await listDirectory(directory)) {
+  for (const entry of await listSourceDirectory(directory, config.root, diagnostics)) {
     /** 当前 Skill 的绝对目录。 */
     const skillDirectory = path.join(directory, entry.name);
     /** 当前 Skill 目录的工程相对路径。 */
     const sourcePath = relative(config.root, skillDirectory);
+    if (entry.isSymbolicLink()) {
+      diagnostics.error('SOURCE_SYMLINK_UNSUPPORTED', 'Symbolic links are not supported.', { phase: 'discover', location: { path: sourcePath } });
+      continue;
+    }
     if (!entry.isDirectory()) {
       diagnostics.error('SKILL_ENTRY_INVALID', 'Skills must be one-level directories.', { phase: 'discover', location: { path: sourcePath } });
       continue;
@@ -506,7 +754,7 @@ async function scanSkills(config: ResolvedConfig, diagnostics: DiagnosticCollect
       continue;
     /** SKILL.md 用于诊断和 Component 来源的相对路径。 */
     const markdownPath = relative(config.root, file);
-    validateFields(parsed.data, ['description', 'invocation', 'requires', 'extensions'], markdownPath, diagnostics);
+    validateFields(parsed.data, ['description', 'invocation', 'requires', 'platforms'], markdownPath, diagnostics);
     /** Skill 必需的非空描述。 */
     const description = stringField(parsed.data, 'description', markdownPath, diagnostics, true);
     if (!description)
@@ -541,7 +789,7 @@ async function scanSkills(config: ResolvedConfig, diagnostics: DiagnosticCollect
       kind: 'skill', id: entry.name, description, invocation: { user, model },
       body: parsed.body, sourcePath: markdownPath,
       requires: parseRequires(parsed.data.requires, markdownPath, diagnostics),
-      extensions: parseExtensions(parsed.data.extensions, markdownPath, diagnostics),
+      platforms: await parsePlatforms(parsed.data.platforms, { kind: 'skill', id: entry.name, sourcePath: markdownPath }, config, diagnostics),
       auxiliaryFiles: await collectSkillAuxiliary(skillDirectory, config, diagnostics),
     });
   }
@@ -560,11 +808,15 @@ async function scanAgents(config: ResolvedConfig, diagnostics: DiagnosticCollect
   const directory = path.join(config.srcDir, 'agents');
   /** 通过结构和 Frontmatter 验证的 Agent。 */
   const result: AgentComponent[] = [];
-  for (const entry of await listDirectory(directory)) {
+  for (const entry of await listSourceDirectory(directory, config.root, diagnostics)) {
     /** 当前 Agent 目录项的绝对源码路径。 */
     const file = path.join(directory, entry.name);
     /** 当前 Agent 用于报告和 Component 的相对路径。 */
     const sourcePath = relative(config.root, file);
+    if (entry.isSymbolicLink()) {
+      diagnostics.error('SOURCE_SYMLINK_UNSUPPORTED', 'Symbolic links are not supported.', { phase: 'discover', location: { path: sourcePath } });
+      continue;
+    }
     if (!entry.isFile() || !entry.name.endsWith('.md')) {
       diagnostics.error('AGENT_ENTRY_INVALID', 'Agents must be one-level .md files.', { phase: 'discover', location: { path: sourcePath } });
       continue;
@@ -577,7 +829,7 @@ async function scanAgents(config: ResolvedConfig, diagnostics: DiagnosticCollect
     const parsed = await parseMarkdown(file, config.root, diagnostics);
     if (!parsed)
       continue;
-    validateFields(parsed.data, ['description', 'model', 'capabilities', 'requires', 'extensions'], sourcePath, diagnostics);
+    validateFields(parsed.data, ['description', 'model', 'capabilities', 'requires', 'platforms'], sourcePath, diagnostics);
     /** Agent 必需的非空描述。 */
     const description = stringField(parsed.data, 'description', sourcePath, diagnostics, true);
     if (!description)
@@ -603,7 +855,7 @@ async function scanAgents(config: ResolvedConfig, diagnostics: DiagnosticCollect
       kind: 'agent', id, description, model, capabilities,
       body: parsed.body, sourcePath,
       requires: parseRequires(parsed.data.requires, sourcePath, diagnostics),
-      extensions: parseExtensions(parsed.data.extensions, sourcePath, diagnostics),
+      platforms: await parsePlatforms(parsed.data.platforms, { kind: 'agent', id, sourcePath }, config, diagnostics),
     });
   }
   return result;
@@ -628,7 +880,7 @@ async function collectPublicTree(
   let stat: import('node:fs').Stats;
   try {
     stat = await fs.lstat(source);
-  } catch (error) {
+  } catch /** error 保存当前操作捕获的异常，供本阶段转换或恢复。 */ (error) {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
       diagnostics.error('PUBLIC_SOURCE_MISSING', 'Public copy source does not exist.', { phase: 'discover', location: { path: relative(config.root, source) } });
       return [];
@@ -647,9 +899,55 @@ async function collectPublicTree(
   }
   /** 当前目录子树累计展开的 Public 文件。 */
   const result: PublicFile[] = [];
-  for (const entry of await listDirectory(source))
+  for (const entry of await listSourceDirectory(source, config.root, diagnostics))
     result.push(...await collectPublicTree(path.join(source, entry.name), path.join(target, entry.name), config, diagnostics));
   return result;
+}
+
+/**
+ * 校验 Public 展开后的目标路径唯一性并返回稳定排序快照。
+ *
+ * @param files 默认目录或 copy rule 展开的 Public 文件。
+ * @param config 已解析工程配置。
+ * @param diagnostics 当前扫描共享的诊断收集器。
+ * @returns 按目标路径排序且保留首个冲突来源的 Public 文件。
+ */
+function finalizePublicFiles(
+  files: readonly PublicFile[],
+  config: ResolvedConfig,
+  diagnostics: DiagnosticCollector,
+): PublicFile[] {
+  /** 目标路径经过 Unicode 和大小写折叠后的首个来源。 */
+  const targets = new Map<string, PublicFile>();
+  /** 无目标冲突且可以安全交给 Artifact Registry 的文件。 */
+  const result: PublicFile[] = [];
+  for (const file of files) {
+    /** 所有目标统一为无开头斜杠的 POSIX 相对路径。 */
+    const targetPath = file.targetPath.split(path.sep).join('/').replace(/^\.\//, '');
+    if (targetPath === '' || path.posix.isAbsolute(targetPath) || targetPath.split('/').includes('..')) {
+      diagnostics.error('PUBLIC_TARGET_INVALID', 'Public target must be a non-empty relative path.', {
+        phase: 'discover', location: { path: relative(config.root, file.sourcePath) },
+      });
+      continue;
+    }
+    /** 跨文件系统碰撞使用与 Artifact Registry 相同的保守比较方式。 */
+    const key = targetPath.normalize('NFC').toLocaleLowerCase('en-US');
+    /** 已占用同一规范目标路径的 Public 文件。 */
+    const previous = targets.get(key);
+    if (previous) {
+      diagnostics.error('PUBLIC_TARGET_COLLISION', `Public target "${targetPath}" conflicts with another copy source.`, {
+        phase: 'discover',
+        location: { path: relative(config.root, file.sourcePath) },
+        related: [{ path: relative(config.root, previous.sourcePath) }],
+      });
+      continue;
+    }
+    /** 使用规范化目标创建新对象，不修改 collect 阶段的输入。 */
+    const normalized = { ...file, targetPath };
+    targets.set(key, normalized);
+    result.push(normalized);
+  }
+  return result.sort((left, right) => left.targetPath.localeCompare(right.targetPath, 'en'));
 }
 
 /**
@@ -663,12 +961,12 @@ async function scanPublic(config: ResolvedConfig, diagnostics: DiagnosticCollect
   if (!config.public.enabled || !await exists(config.public.dir))
     return [];
   if (!config.public.copy)
-    return collectPublicTree(config.public.dir, '', config, diagnostics);
+    return finalizePublicFiles(await collectPublicTree(config.public.dir, '', config, diagnostics), config, diagnostics);
   /** 所有显式 copy 规则展开后的 Public 文件。 */
   const result: PublicFile[] = [];
   for (const rule of config.public.copy)
     result.push(...await collectPublicTree(path.join(config.public.dir, rule.from), rule.to, config, diagnostics));
-  return result;
+  return finalizePublicFiles(result, config, diagnostics);
 }
 
 /**
@@ -701,14 +999,18 @@ function validateGraph(components: readonly Component[], diagnostics: Diagnostic
       ...component.requires.skills.map(id => componentKey('skill', id)),
       ...component.requires.agents.map(id => componentKey('agent', id)),
     ];
-    edges.set(from, targets);
+    /** 只有存在且非自引用的边进入 DFS，结构错误不再额外伪装成环路。 */
+    const traversable: string[] = [];
     for (const target of targets) {
       if (target === from) {
         diagnostics.error('COMPONENT_DEPENDENCY_SELF', `${from} cannot require itself.`, { phase: 'validate', component: { kind: component.kind, id: component.id }, location: { path: component.sourcePath } });
       } else if (!byKey.has(target)) {
         diagnostics.error('COMPONENT_DEPENDENCY_MISSING', `${from} requires missing ${target}.`, { phase: 'validate', component: { kind: component.kind, id: component.id }, location: { path: component.sourcePath } });
+      } else {
+        traversable.push(target);
       }
     }
+    edges.set(from, traversable);
   }
 
   /** 当前深度优先搜索路径上的节点。 */
@@ -755,27 +1057,118 @@ function validateGraph(components: readonly Component[], diagnostics: Diagnostic
 }
 
 /**
- * 检查保留源码目录是否已经启用对应的官方 Module。
+ * 验证配置来源目录从工程根开始的每一级都不是符号链接。
+ *
+ * @param root 可信工程根目录。
+ * @param directory 已通过配置层 lexical boundary 校验的来源目录。
+ * @param diagnostics 当前扫描共享的诊断收集器。
+ * @returns 目录不存在或为安全普通目录时返回 true。
+ */
+async function validateSourceDirectoryRoot(
+  root: string,
+  directory: string,
+  diagnostics: DiagnosticCollector,
+): Promise<boolean> {
+  /** 从工程根到来源目录的逐级相对路径片段。 */
+  const segments = path.relative(root, directory).split(path.sep).filter(Boolean);
+  /** 当前正在执行 lstat 的绝对路径。 */
+  let current = root;
+  for (const segment of segments) {
+    current = path.join(current, segment);
+    try {
+      /** lstat 不跟随当前层符号链接，因此能阻止配置目录通过链接逃逸。 */
+      const stat = await fs.lstat(current);
+      if (stat.isSymbolicLink()) {
+        diagnostics.error('SOURCE_ROOT_SYMLINK', 'Configured source directories cannot contain symbolic links.', {
+          phase: 'discover', location: { path: relative(root, current) },
+        });
+        return false;
+      }
+      if (!stat.isDirectory()) {
+        diagnostics.error('SOURCE_ROOT_NOT_DIRECTORY', 'Configured source path must be a directory.', {
+          phase: 'discover', location: { path: relative(root, current) },
+        });
+        return false;
+      }
+    } catch /** error 保存当前操作捕获的异常，供本阶段转换或恢复。 */ (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT')
+        return true;
+      diagnostics.error('SOURCE_ROOT_READ_FAILED', 'Cannot inspect configured source directory.', {
+        phase: 'discover', location: { path: relative(root, current) },
+      });
+      return false;
+    }
+  }
+  return true;
+}
+
+/**
+ * 检查保留源码目录是否已经启用对应的官方 Extension。
  *
  * @param config 已解析工程配置。
  * @param diagnostics 当前扫描共享的诊断收集器。
  */
-async function validateModuleDirectories(config: ResolvedConfig, diagnostics: DiagnosticCollector): Promise<void> {
-  /** Core 识别但只允许由官方 Module 解释的源码目录映射。 */
+async function validateExtensionDirectories(config: ResolvedConfig, diagnostics: DiagnosticCollector): Promise<void> {
+  /** Core 识别但只允许由官方 Extension 解释的源码目录映射。 */
   const checks = [
-    { directory: 'hooks', module: '@tokenroll/acplugin-module-hooks' },
-    { directory: 'mcp', module: '@tokenroll/acplugin-module-mcp' },
+    { directory: 'hooks', extension: '@tokenroll/acplugin-extension-hooks' },
+    { directory: 'mcp', extension: '@tokenroll/acplugin-extension-mcp' },
   ];
-  /** 已配置 Module 名称集合。 */
-  const enabled = new Set(config.modules.map(module => module.name));
+  /** 已配置 Extension 名称集合。 */
+  const enabled = new Set(config.extensions.map(extension => extension.name));
   for (const check of checks) {
+    /** 当前可选 Extension 对应的约定源码目录。 */
     const directory = path.join(config.srcDir, check.directory);
-    if ((await listDirectory(directory)).length > 0 && !enabled.has(check.module)) {
-      diagnostics.error('MODULE_REQUIRED', `Source under src/${check.directory} requires ${check.module}.`, {
-        phase: 'discover', location: { path: relative(config.root, directory) }, hint: `Add ${check.module} to modules.`,
+    if ((await listDirectory(directory)).length > 0 && !enabled.has(check.extension)) {
+      diagnostics.error('EXTENSION_REQUIRED', `Source under src/${check.directory} requires ${check.extension}.`, {
+        phase: 'discover', location: { path: relative(config.root, directory) }, hint: `Add ${check.extension} to extensions.`,
       });
     }
   }
+}
+
+/**
+ * 将 Scanner 产出的工程模型递归复制为运行时不可变快照。
+ *
+ * @param project 已完成结构和依赖图校验的工程数据。
+ * @returns Platform 与 Extension 只能只读访问的 PluginProject。
+ */
+function freezeProject(project: PluginProject): PluginProject {
+  /** 为每个 Component 创建独立的不可变依赖声明。 */
+  const freezeRequires = (requires: ComponentRequires): ComponentRequires => Object.freeze({
+    skills: Object.freeze([...requires.skills]),
+    agents: Object.freeze([...requires.agents]),
+  });
+  /** Command 数组及其对象、依赖和 Platform 映射均不可修改。 */
+  const commands = Object.freeze(project.commands.map(command => Object.freeze({
+    ...command,
+    requires: freezeRequires(command.requires),
+    platforms: Object.freeze({ ...command.platforms }),
+  })));
+  /** Skill 额外冻结 invocation 与辅助文件描述列表。 */
+  const skills = Object.freeze(project.skills.map(skill => Object.freeze({
+    ...skill,
+    invocation: Object.freeze({ ...skill.invocation }),
+    requires: freezeRequires(skill.requires),
+    platforms: Object.freeze({ ...skill.platforms }),
+    auxiliaryFiles: Object.freeze(skill.auxiliaryFiles.map(file => Object.freeze({ ...file }))),
+  })));
+  /** Agent 额外冻结能力数组，避免生命周期间发生观察差异。 */
+  const agents = Object.freeze(project.agents.map(agent => Object.freeze({
+    ...agent,
+    capabilities: Object.freeze([...agent.capabilities]),
+    requires: freezeRequires(agent.requires),
+    platforms: Object.freeze({ ...agent.platforms }),
+  })));
+  /** Public 只保存文件来源和 mode，但描述对象本身同样必须不可变。 */
+  const publicFiles = Object.freeze(project.publicFiles.map(file => Object.freeze({ ...file })));
+  /** 可选作者和关键词需要和元数据外壳一起冻结。 */
+  const metadata = Object.freeze({
+    ...project.metadata,
+    ...(project.metadata.author === undefined ? {} : { author: Object.freeze({ ...project.metadata.author }) }),
+    ...(project.metadata.keywords === undefined ? {} : { keywords: Object.freeze([...project.metadata.keywords]) }),
+  });
+  return Object.freeze({ ...project, metadata, commands, skills, agents, publicFiles });
 }
 
 /**
@@ -791,28 +1184,30 @@ export async function scanProject(
   config: ResolvedConfig,
   diagnostics: DiagnosticCollector = new DiagnosticCollector(),
 ): Promise<{ project: PluginProject; diagnostics: DiagnosticCollector }> {
-  await validateModuleDirectories(config, diagnostics);
+  /** srcDir 的完整祖先链必须安全，失败时不能继续跟随目录读取。 */
+  const sourceSafe = await validateSourceDirectoryRoot(config.root, config.srcDir, diagnostics);
+  /** 禁用 Public 时不访问其缺省路径；启用时执行同样的祖先链检查。 */
+  const publicSafe = !config.public.enabled
+    || await validateSourceDirectoryRoot(config.root, config.public.dir, diagnostics);
+  if (sourceSafe)
+    await validateExtensionDirectories(config, diagnostics);
   /** 各独立源码区域并行扫描得到的规范资源。 */
   const [commands, skills, agents, publicFiles] = await Promise.all([
-    scanCommands(config, diagnostics),
-    scanSkills(config, diagnostics),
-    scanAgents(config, diagnostics),
-    scanPublic(config, diagnostics),
+    sourceSafe ? scanCommands(config, diagnostics) : [],
+    sourceSafe ? scanSkills(config, diagnostics) : [],
+    sourceSafe ? scanAgents(config, diagnostics) : [],
+    publicSafe ? scanPublic(config, diagnostics) : [],
   ]);
   validateGraph([...commands, ...skills, ...agents], diagnostics);
 
-  /** 交给 Module 与 Compiler 使用的只含 Core 语义的工程快照。 */
-  const project: PluginProject = {
+  /** 交给固定生命周期中 Platform 与 Extension 使用的只含 Core 语义工程快照。 */
+  const project = freezeProject({
     root: config.root,
-    name: config.name,
-    version: config.version,
-    description: config.description,
+    metadata: config.metadata,
     commands,
     skills,
     agents,
     publicFiles,
-  };
-  if (config.displayName !== undefined)
-    project.displayName = config.displayName;
+  });
   return { project, diagnostics };
 }

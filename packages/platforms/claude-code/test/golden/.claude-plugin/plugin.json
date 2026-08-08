@@ -1,0 +1,22 @@
+{
+  "agents": "./agents/",
+  "author": {
+    "email": "maintainers@example.com",
+    "name": "TokenRoll",
+    "url": "https://github.com/TokenRollAI"
+  },
+  "commands": "./commands/",
+  "defaultEnabled": false,
+  "description": "Release workflow tools.",
+  "displayName": "Release Tools",
+  "homepage": "https://example.com/release-tools",
+  "keywords": [
+    "release",
+    "review"
+  ],
+  "license": "MIT",
+  "name": "release-tools",
+  "repository": "https://github.com/TokenRollAI/release-tools",
+  "skills": "./skills/",
+  "version": "1.2.3"
+}

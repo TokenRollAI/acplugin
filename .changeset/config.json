@@ -5,8 +5,8 @@
   "fixed": [
     [
       "@tokenroll/acplugin",
-      "@tokenroll/acplugin-module-hooks",
-      "@tokenroll/acplugin-module-mcp"
+      "@tokenroll/acplugin-extension-hooks",
+      "@tokenroll/acplugin-extension-mcp"
     ]
   ],
   "linked": [],
@@ -15,8 +15,12 @@
   "updateInternalDependencies": "patch",
   "ignore": [
     "@acplugin/core",
-    "@acplugin/compiler-claude-code",
-    "@acplugin/compiler-codex",
-    "@acplugin/test"
+    "@acplugin/test",
+    "@acplugin/platform-claude-code",
+    "@acplugin/platform-codex",
+    "@acplugin/platform-cursor",
+    "@acplugin/platform-antigravity",
+    "@acplugin/platform-opencode",
+    "@acplugin/platform-pi"
   ]
 }

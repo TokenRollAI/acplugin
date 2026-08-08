@@ -18,24 +18,27 @@ async function read(relativePath: string): Promise<string> {
 
 describe('repository release and documentation guards', () => {
   it('keeps the public packages in one manually publishable cohort', async () => {
+    /** 手动发布 Cohort 中三个公开包的清单路径。 */
     const packageFiles = [
       'packages/acplugin/package.json',
-      'packages/module-hooks/package.json',
-      'packages/module-mcp/package.json',
+      'packages/extensions/hooks/package.json',
+      'packages/extensions/mcp/package.json',
     ];
+    /** 三个公开包解析后的发布字段。 */
     const manifests = await Promise.all(packageFiles.map(async file => JSON.parse(await read(file)) as {
       name: string;
       version: string;
       private?: boolean;
       publishConfig?: { access?: string; provenance?: boolean };
     }));
+    /** Changesets 中声明的固定版本发布组。 */
     const changeset = JSON.parse(await read('.changeset/config.json')) as { fixed: string[][] };
 
     expect(new Set(manifests.map(manifest => manifest.version)).size).toBe(1);
     expect(manifests.map(manifest => manifest.name)).toEqual([
       '@tokenroll/acplugin',
-      '@tokenroll/acplugin-module-hooks',
-      '@tokenroll/acplugin-module-mcp',
+      '@tokenroll/acplugin-extension-hooks',
+      '@tokenroll/acplugin-extension-mcp',
     ]);
     expect(manifests.every(manifest => manifest.private !== true)).toBe(true);
     expect(manifests.every(manifest => manifest.publishConfig?.access === 'public')).toBe(true);
@@ -44,7 +47,9 @@ describe('repository release and documentation guards', () => {
   });
 
   it('does not expose an automated publication path', async () => {
+    /** PR 阶段只做静态检查的 Action 内容。 */
     const check = await read('.github/workflows/check.yml');
+    /** 手动消费 Changeset 并创建版本 PR 的 Action 内容。 */
     const patch = await read('.github/workflows/patch.yml');
 
     await expect(fs.access(path.join(root, '.github/workflows/publish-npm.yml'))).rejects.toThrow();
@@ -54,7 +59,9 @@ describe('repository release and documentation guards', () => {
   });
 
   it('checks pull requests and creates version PRs only on manual dispatch', async () => {
+    /** 用于验证 PR 触发器和命令边界的 Check Action。 */
     const check = await read('.github/workflows/check.yml');
+    /** 用于验证手动分支输入和版本 PR 的 Patch Action。 */
     const patch = await read('.github/workflows/patch.yml');
 
     expect(check).toContain('pull_request:');
@@ -64,12 +71,15 @@ describe('repository release and documentation guards', () => {
     expect(check).not.toMatch(/pnpm run (?:test|build|release:verify)/);
     expect(patch).toContain('workflow_dispatch:');
     expect(patch).toContain('target_branch:');
+    expect(patch).toContain('pnpm changeset status --output');
+    expect(patch).toContain('status.releases.length === 0');
     expect(patch).toContain('pnpm version-packages');
     expect(patch).toContain('peter-evans/create-pull-request@v8');
     expect(patch).toContain('base: ${{ inputs.target_branch }}');
   });
 
   it('keeps current docs free of the retired namespace and CLI', async () => {
+    /** 当前需要同步且不得残留旧命名的稳定文档集合。 */
     const docs = await Promise.all([
       'README.md',
       'README.zh-CN.md',
@@ -87,6 +97,7 @@ describe('repository release and documentation guards', () => {
       'llmdoc/reference/conversion-matrix.md',
       'llmdoc/reference/conversion-matrix.zh-CN.md',
     ].map(read));
+    /** 便于统一扫描旧 namespace、命令和路径的文档文本。 */
     const currentDocumentation = docs.join('\n');
 
     expect(currentDocumentation).not.toContain('@disdjj/acplugin');

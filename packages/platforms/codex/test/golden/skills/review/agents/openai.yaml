@@ -1,0 +1,8 @@
+interface:
+  brand_color: "#10A37F"
+  display_name: Review change
+  short_description: Review a change
+policy:
+  allow_implicit_invocation: false
+  products:
+    - CODEX

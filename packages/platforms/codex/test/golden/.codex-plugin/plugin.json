@@ -1,0 +1,34 @@
+{
+  "author": {
+    "email": "maintainers@example.com",
+    "name": "TokenRoll",
+    "url": "https://github.com/TokenRollAI"
+  },
+  "description": "Release workflow tools.",
+  "homepage": "https://example.com/release-tools",
+  "interface": {
+    "brandColor": "#10A37F",
+    "capabilities": [
+      "Prepare releases",
+      "Review changes"
+    ],
+    "category": "Developer Tools",
+    "composerIcon": "./assets/logo.svg",
+    "defaultPrompt": "Use Release Tools to review this change.",
+    "developerName": "TokenRoll",
+    "displayName": "Release Tools",
+    "logo": "./assets/logo.svg",
+    "longDescription": "Release workflow tools.",
+    "shortDescription": "Release workflow tools.",
+    "websiteURL": "https://example.com/release-tools"
+  },
+  "keywords": [
+    "release",
+    "review"
+  ],
+  "license": "MIT",
+  "name": "release-tools",
+  "repository": "https://github.com/TokenRollAI/release-tools",
+  "skills": "./skills/",
+  "version": "1.2.3"
+}

@@ -1,0 +1,20 @@
+{
+  "interface": {
+    "displayName": "Release Tools Marketplace"
+  },
+  "name": "release-tools-marketplace",
+  "plugins": [
+    {
+      "category": "Developer Tools",
+      "name": "release-tools",
+      "policy": {
+        "authentication": "ON_INSTALL",
+        "installation": "INSTALLED_BY_DEFAULT"
+      },
+      "source": {
+        "path": "./",
+        "source": "local"
+      }
+    }
+  ]
+}

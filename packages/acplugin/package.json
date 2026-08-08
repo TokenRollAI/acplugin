@@ -1,7 +1,7 @@
 {
   "name": "@tokenroll/acplugin",
   "version": "1.0.0",
-  "description": "Build canonical AI plugins for Claude Code and Codex.",
+  "description": "Build canonical AI plugins and integrations for six AI platforms.",
   "type": "module",
   "license": "MIT",
   "homepage": "https://github.com/TokenRollAI/acplugin#readme",
@@ -10,12 +10,21 @@
   "sideEffects": false,
   "engines": { "node": ">=20" },
   "bin": { "acplugin": "./dist/cli.mjs" },
-  "exports": { ".": { "types": "./dist/index.d.mts", "import": "./dist/index.mjs" } },
+  "exports": {
+    ".": { "types": "./dist/index.d.mts", "import": "./dist/index.mjs" },
+    "./platforms/claude-code": { "types": "./dist/platforms/claude-code.d.mts", "import": "./dist/platforms/claude-code.mjs" },
+    "./platforms/codex": { "types": "./dist/platforms/codex.d.mts", "import": "./dist/platforms/codex.mjs" },
+    "./platforms/cursor": { "types": "./dist/platforms/cursor.d.mts", "import": "./dist/platforms/cursor.mjs" },
+    "./platforms/antigravity": { "types": "./dist/platforms/antigravity.d.mts", "import": "./dist/platforms/antigravity.mjs" },
+    "./platforms/opencode": { "types": "./dist/platforms/opencode.d.mts", "import": "./dist/platforms/opencode.mjs" },
+    "./platforms/pi": { "types": "./dist/platforms/pi.d.mts", "import": "./dist/platforms/pi.mjs" }
+  },
   "files": ["dist", "README.md", "LICENSE"],
   "publishConfig": { "access": "public" },
   "scripts": {
     "build": "tsdown",
     "dev": "tsdown --watch",
+    "pretest": "pnpm --filter @acplugin/core run build && pnpm --filter '@acplugin/platform-*' run build",
     "test": "vitest run --passWithNoTests",
     "typecheck": "tsc -p tsconfig.json"
   },
@@ -28,15 +37,23 @@
     "gray-matter": "^4.0.3",
     "glob": "^13.0.6",
     "jiti": "^2.7.0",
-    "ora": "^5.4.1"
+    "ora": "^5.4.1",
+    "semver": "^7.8.5",
+    "spdx-expression-parse": "^5.0.0"
   },
   "devDependencies": {
-    "@acplugin/compiler-claude-code": "workspace:*",
-    "@acplugin/compiler-codex": "workspace:*",
     "@acplugin/core": "workspace:*",
+    "@acplugin/platform-antigravity": "workspace:*",
+    "@acplugin/platform-claude-code": "workspace:*",
+    "@acplugin/platform-codex": "workspace:*",
+    "@acplugin/platform-cursor": "workspace:*",
+    "@acplugin/platform-opencode": "workspace:*",
+    "@acplugin/platform-pi": "workspace:*",
     "@types/node": "catalog:",
+    "@types/semver": "^7.7.1",
+    "@types/spdx-expression-parse": "^4.0.0",
     "tsdown": "catalog:",
-    "typescript": "catalog:",
+    "@typescript/native": "catalog:",
     "vitest": "catalog:"
   }
 }

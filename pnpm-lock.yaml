@@ -9,15 +9,15 @@ catalogs:
     '@types/node':
       specifier: ^20.19.0
       version: 20.19.43
+    '@typescript/native':
+      specifier: npm:typescript@^7.0.2
+      version: 7.0.2
     rolldown:
       specifier: ^1.2.2
       version: 1.2.2
     tsdown:
       specifier: ^0.22.14
       version: 0.22.14
-    typescript:
-      specifier: ^7.0.2
-      version: 7.0.2
     vitest:
       specifier: ^4.1.10
       version: 4.1.10
@@ -38,9 +38,15 @@ importers:
       '@stylistic/eslint-plugin':
         specifier: ^5.10.0
         version: 5.10.0(eslint@10.8.0(jiti@2.7.0))
+      '@tokenroll/acplugin-extension-mcp':
+        specifier: workspace:^
+        version: link:packages/extensions/mcp
       '@types/node':
         specifier: 'catalog:'
         version: 20.19.43
+      '@typescript/native':
+        specifier: 'catalog:'
+        version: typescript@7.0.2
       eslint:
         specifier: ^10.8.0
         version: 10.8.0(jiti@2.7.0)
@@ -55,13 +61,13 @@ importers:
         version: 0.3.23
       tsdown:
         specifier: 'catalog:'
-        version: 0.22.14(@arethetypeswrong/core@0.18.5)(publint@0.3.23)(typescript@6.0.3)
+        version: 0.22.14(@arethetypeswrong/core@0.18.5)(@typescript/typescript6@6.0.2)(publint@0.3.23)
       typescript:
-        specifier: ^6.0.3
-        version: 6.0.3
+        specifier: npm:@typescript/typescript6@^6.0.2
+        version: '@typescript/typescript6@6.0.2'
       typescript-eslint:
         specifier: ^8.66.0
-        version: 8.66.0(eslint@10.8.0(jiti@2.7.0))(typescript@6.0.3)
+        version: 8.66.0(@typescript/typescript6@6.0.2)(eslint@10.8.0(jiti@2.7.0))
       vitest:
         specifier: 'catalog:'
         version: 4.1.10(@types/node@20.19.43)(vite@7.3.6(@types/node@20.19.43)(jiti@2.7.0)(yaml@2.9.0))
@@ -95,63 +101,49 @@ importers:
       ora:
         specifier: ^5.4.1
         version: 5.4.1
+      semver:
+        specifier: ^7.8.5
+        version: 7.8.5
+      spdx-expression-parse:
+        specifier: ^5.0.0
+        version: 5.0.0
     devDependencies:
-      '@acplugin/compiler-claude-code':
-        specifier: workspace:*
-        version: link:../compiler-claude-code
-      '@acplugin/compiler-codex':
-        specifier: workspace:*
-        version: link:../compiler-codex
       '@acplugin/core':
         specifier: workspace:*
         version: link:../core
-      '@types/node':
-        specifier: 'catalog:'
-        version: 20.19.43
-      tsdown:
-        specifier: 'catalog:'
-        version: 0.22.14(@arethetypeswrong/core@0.18.5)(publint@0.3.23)(typescript@7.0.2)
-      typescript:
-        specifier: 'catalog:'
-        version: 7.0.2
-      vitest:
-        specifier: 'catalog:'
-        version: 4.1.10(@types/node@20.19.43)(vite@7.3.6(@types/node@20.19.43)(jiti@2.7.0)(yaml@2.9.0))
-
-  packages/compiler-claude-code:
-    dependencies:
-      '@acplugin/core':
+      '@acplugin/platform-antigravity':
         specifier: workspace:*
-        version: link:../core
-    devDependencies:
-      '@types/node':
-        specifier: 'catalog:'
-        version: 20.19.43
-      tsdown:
-        specifier: 'catalog:'
-        version: 0.22.14(@arethetypeswrong/core@0.18.5)(publint@0.3.23)(typescript@7.0.2)
-      typescript:
-        specifier: 'catalog:'
-        version: 7.0.2
-      vitest:
-        specifier: 'catalog:'
-        version: 4.1.10(@types/node@20.19.43)(vite@7.3.6(@types/node@20.19.43)(jiti@2.7.0)(yaml@2.9.0))
-
-  packages/compiler-codex:
-    dependencies:
-      '@acplugin/core':
+        version: link:../platforms/antigravity
+      '@acplugin/platform-claude-code':
         specifier: workspace:*
-        version: link:../core
-    devDependencies:
+        version: link:../platforms/claude-code
+      '@acplugin/platform-codex':
+        specifier: workspace:*
+        version: link:../platforms/codex
+      '@acplugin/platform-cursor':
+        specifier: workspace:*
+        version: link:../platforms/cursor
+      '@acplugin/platform-opencode':
+        specifier: workspace:*
+        version: link:../platforms/opencode
+      '@acplugin/platform-pi':
+        specifier: workspace:*
+        version: link:../platforms/pi
       '@types/node':
         specifier: 'catalog:'
         version: 20.19.43
+      '@types/semver':
+        specifier: ^7.7.1
+        version: 7.8.0
+      '@types/spdx-expression-parse':
+        specifier: ^4.0.0
+        version: 4.0.0
+      '@typescript/native':
+        specifier: 'catalog:'
+        version: typescript@7.0.2
       tsdown:
         specifier: 'catalog:'
         version: 0.22.14(@arethetypeswrong/core@0.18.5)(publint@0.3.23)(typescript@7.0.2)
-      typescript:
-        specifier: 'catalog:'
-        version: 7.0.2
       vitest:
         specifier: 'catalog:'
         version: 4.1.10(@types/node@20.19.43)(vite@7.3.6(@types/node@20.19.43)(jiti@2.7.0)(yaml@2.9.0))
@@ -161,6 +153,9 @@ importers:
       semver:
         specifier: ^7.8.5
         version: 7.8.5
+      spdx-expression-parse:
+        specifier: ^5.0.0
+        version: 5.0.0
       yaml:
         specifier: ^2.9.0
         version: 2.9.0
@@ -171,17 +166,20 @@ importers:
       '@types/semver':
         specifier: ^7.7.1
         version: 7.8.0
+      '@types/spdx-expression-parse':
+        specifier: ^4.0.0
+        version: 4.0.0
+      '@typescript/native':
+        specifier: 'catalog:'
+        version: typescript@7.0.2
       tsdown:
         specifier: 'catalog:'
         version: 0.22.14(@arethetypeswrong/core@0.18.5)(publint@0.3.23)(typescript@7.0.2)
-      typescript:
-        specifier: 'catalog:'
-        version: 7.0.2
       vitest:
         specifier: 'catalog:'
         version: 4.1.10(@types/node@20.19.43)(vite@7.3.6(@types/node@20.19.43)(jiti@2.7.0)(yaml@2.9.0))
 
-  packages/module-hooks:
+  packages/extensions/hooks:
     dependencies:
       rolldown:
         specifier: 'catalog:'
@@ -189,21 +187,21 @@ importers:
     devDependencies:
       '@tokenroll/acplugin':
         specifier: workspace:^
-        version: link:../acplugin
+        version: link:../../acplugin
       '@types/node':
         specifier: 'catalog:'
         version: 20.19.43
+      '@typescript/native':
+        specifier: 'catalog:'
+        version: typescript@7.0.2
       tsdown:
         specifier: 'catalog:'
         version: 0.22.14(@arethetypeswrong/core@0.18.5)(publint@0.3.23)(typescript@7.0.2)
-      typescript:
-        specifier: 'catalog:'
-        version: 7.0.2
       vitest:
         specifier: 'catalog:'
         version: 4.1.10(@types/node@20.19.43)(vite@7.3.6(@types/node@20.19.43)(jiti@2.7.0)(yaml@2.9.0))
 
-  packages/module-mcp:
+  packages/extensions/mcp:
     dependencies:
       rolldown:
         specifier: 'catalog:'
@@ -211,47 +209,164 @@ importers:
     devDependencies:
       '@tokenroll/acplugin':
         specifier: workspace:^
-        version: link:../acplugin
+        version: link:../../acplugin
       '@types/node':
         specifier: 'catalog:'
         version: 20.19.43
+      '@typescript/native':
+        specifier: 'catalog:'
+        version: typescript@7.0.2
       tsdown:
         specifier: 'catalog:'
         version: 0.22.14(@arethetypeswrong/core@0.18.5)(publint@0.3.23)(typescript@7.0.2)
-      typescript:
+      vitest:
         specifier: 'catalog:'
-        version: 7.0.2
+        version: 4.1.10(@types/node@20.19.43)(vite@7.3.6(@types/node@20.19.43)(jiti@2.7.0)(yaml@2.9.0))
+
+  packages/platforms/antigravity:
+    dependencies:
+      '@acplugin/core':
+        specifier: workspace:*
+        version: link:../../core
+    devDependencies:
+      '@types/node':
+        specifier: 'catalog:'
+        version: 20.19.43
+      '@typescript/native':
+        specifier: 'catalog:'
+        version: typescript@7.0.2
+      tsdown:
+        specifier: 'catalog:'
+        version: 0.22.14(@arethetypeswrong/core@0.18.5)(publint@0.3.23)(typescript@7.0.2)
+      vitest:
+        specifier: 'catalog:'
+        version: 4.1.10(@types/node@20.19.43)(vite@7.3.6(@types/node@20.19.43)(jiti@2.7.0)(yaml@2.9.0))
+
+  packages/platforms/claude-code:
+    dependencies:
+      '@acplugin/core':
+        specifier: workspace:*
+        version: link:../../core
+    devDependencies:
+      '@types/node':
+        specifier: 'catalog:'
+        version: 20.19.43
+      '@typescript/native':
+        specifier: 'catalog:'
+        version: typescript@7.0.2
+      tsdown:
+        specifier: 'catalog:'
+        version: 0.22.14(@arethetypeswrong/core@0.18.5)(publint@0.3.23)(typescript@7.0.2)
+      vitest:
+        specifier: 'catalog:'
+        version: 4.1.10(@types/node@20.19.43)(vite@7.3.6(@types/node@20.19.43)(jiti@2.7.0)(yaml@2.9.0))
+
+  packages/platforms/codex:
+    dependencies:
+      '@acplugin/core':
+        specifier: workspace:*
+        version: link:../../core
+      image-size:
+        specifier: ^2.0.2
+        version: 2.0.2
+      saxes:
+        specifier: ^6.0.0
+        version: 6.0.0
+      yaml:
+        specifier: ^2.9.0
+        version: 2.9.0
+    devDependencies:
+      '@types/node':
+        specifier: 'catalog:'
+        version: 20.19.43
+      '@typescript/native':
+        specifier: 'catalog:'
+        version: typescript@7.0.2
+      tsdown:
+        specifier: 'catalog:'
+        version: 0.22.14(@arethetypeswrong/core@0.18.5)(publint@0.3.23)(typescript@7.0.2)
+      vitest:
+        specifier: 'catalog:'
+        version: 4.1.10(@types/node@20.19.43)(vite@7.3.6(@types/node@20.19.43)(jiti@2.7.0)(yaml@2.9.0))
+
+  packages/platforms/cursor:
+    dependencies:
+      '@acplugin/core':
+        specifier: workspace:*
+        version: link:../../core
+    devDependencies:
+      '@types/node':
+        specifier: 'catalog:'
+        version: 20.19.43
+      '@typescript/native':
+        specifier: 'catalog:'
+        version: typescript@7.0.2
+      tsdown:
+        specifier: 'catalog:'
+        version: 0.22.14(@arethetypeswrong/core@0.18.5)(publint@0.3.23)(typescript@7.0.2)
+      vitest:
+        specifier: 'catalog:'
+        version: 4.1.10(@types/node@20.19.43)(vite@7.3.6(@types/node@20.19.43)(jiti@2.7.0)(yaml@2.9.0))
+
+  packages/platforms/opencode:
+    dependencies:
+      '@acplugin/core':
+        specifier: workspace:*
+        version: link:../../core
+    devDependencies:
+      '@types/node':
+        specifier: 'catalog:'
+        version: 20.19.43
+      '@typescript/native':
+        specifier: 'catalog:'
+        version: typescript@7.0.2
+      tsdown:
+        specifier: 'catalog:'
+        version: 0.22.14(@arethetypeswrong/core@0.18.5)(publint@0.3.23)(typescript@7.0.2)
+      vitest:
+        specifier: 'catalog:'
+        version: 4.1.10(@types/node@20.19.43)(vite@7.3.6(@types/node@20.19.43)(jiti@2.7.0)(yaml@2.9.0))
+
+  packages/platforms/pi:
+    dependencies:
+      '@acplugin/core':
+        specifier: workspace:*
+        version: link:../../core
+    devDependencies:
+      '@types/node':
+        specifier: 'catalog:'
+        version: 20.19.43
+      '@typescript/native':
+        specifier: 'catalog:'
+        version: typescript@7.0.2
+      tsdown:
+        specifier: 'catalog:'
+        version: 0.22.14(@arethetypeswrong/core@0.18.5)(publint@0.3.23)(typescript@7.0.2)
       vitest:
         specifier: 'catalog:'
         version: 4.1.10(@types/node@20.19.43)(vite@7.3.6(@types/node@20.19.43)(jiti@2.7.0)(yaml@2.9.0))
 
   packages/test:
     dependencies:
-      '@acplugin/compiler-claude-code':
-        specifier: workspace:*
-        version: link:../compiler-claude-code
-      '@acplugin/compiler-codex':
-        specifier: workspace:*
-        version: link:../compiler-codex
       '@acplugin/core':
         specifier: workspace:*
         version: link:../core
       '@tokenroll/acplugin':
         specifier: workspace:*
         version: link:../acplugin
-      '@tokenroll/acplugin-module-hooks':
+      '@tokenroll/acplugin-extension-hooks':
         specifier: workspace:*
-        version: link:../module-hooks
-      '@tokenroll/acplugin-module-mcp':
+        version: link:../extensions/hooks
+      '@tokenroll/acplugin-extension-mcp':
         specifier: workspace:*
-        version: link:../module-mcp
+        version: link:../extensions/mcp
     devDependencies:
       '@types/node':
         specifier: 'catalog:'
         version: 20.19.43
-      typescript:
+      '@typescript/native':
         specifier: 'catalog:'
-        version: 7.0.2
+        version: typescript@7.0.2
       vitest:
         specifier: 'catalog:'
         version: 4.1.10(@types/node@20.19.43)(vite@7.3.6(@types/node@20.19.43)(jiti@2.7.0)(yaml@2.9.0))
@@ -986,6 +1101,9 @@ packages:
   '@types/semver@7.8.0':
     resolution: {integrity: sha512-1mAINjtQCXXeLkJ9ehXkwOcBpqtLxiVtKhpUf83DdRNdQKV0iXZpaHYqRr7nj+wvxuJzoAmAwXI+sCNMv1CzLQ==}
 
+  '@types/spdx-expression-parse@4.0.0':
+    resolution: {integrity: sha512-odQzy87phelGS4inXOzjmusx4hoCVD0IbxUANxHzVkmTzMRTNnUPoq1urIl7S1qf09KcDWKLFIftPmLtgbsAHA==}
+
   '@typescript-eslint/eslint-plugin@8.66.0':
     resolution: {integrity: sha512-p088eaGrzYz1s+7cov0aMOCkNGTJlVxF4jgubf28c8L0Cv9Rloj8YBHnv4hXLq6IIEE1AsjNWavO+k+8kP2Y0A==}
     engines: {node: ^18.18.0 || ^20.9.0 || >=21.1.0}
@@ -1168,6 +1286,10 @@ packages:
     engines: {node: '>=16.20.0'}
     cpu: [x64]
     os: [win32]
+
+  '@typescript/typescript6@6.0.2':
+    resolution: {integrity: sha512-mbCddXd+jm7hfx7w2YU64/Av4/NqqeG3GoRZgxPcgoTxYjhrcfJRw9ULch71SS4G+Q3bOXFhRvPqjguN0Hyp5w==}
+    hasBin: true
 
   '@vitest/expect@4.1.10':
     resolution: {integrity: sha512-YsCn+qAk1GWjQOWFEsEcL2gNQ0zmVmQu3T03qP6UyjhtmdtwtbuI+DASn/7iQB3HGTXkdBwGddzxPlmiql5vlA==}
@@ -1716,6 +1838,11 @@ packages:
     resolution: {integrity: sha512-BAg6QkE8W+TuQLrrw0Ugr7HegXduRuuj8/ti2kSOc+jz1dmx8/WNcjr6XGnq5YpDWxFwwaavqD0+jIUOKelTsw==}
     engines: {node: '>= 4'}
 
+  image-size@2.0.2:
+    resolution: {integrity: sha512-IRqXKlaXwgSMAMtpNzZa1ZAe8m+Sa1770Dhk8VkSsP9LS+iHD62Zd8FQKs8fbPiagBE7BzoFX23cxFnwshpV6w==}
+    engines: {node: '>=16.x'}
+    hasBin: true
+
   import-without-cache@0.4.0:
     resolution: {integrity: sha512-NkJQA7oZ4YHQhd2+H3BoRFKF3d/XNsiKpHZCQEMH9pDX27hQQLsTyOocyRgaIVtf8gHX3Nt3LPkR4e5EdtPAGQ==}
     engines: {node: ^22.18.0 || >=24.0.0}
@@ -2050,6 +2177,10 @@ packages:
   safer-buffer@2.1.2:
     resolution: {integrity: sha512-YZo3K82SD7Riyi0E1EQPojLz7kpepnSQI9IyPbHHg1XXXevb5dJI7tpyN2ADxGcQbHG7vcyRHk0cbwqcQriUtg==}
 
+  saxes@6.0.0:
+    resolution: {integrity: sha512-xAg7SOnEhrm5zI3puOOKyy1OMcMlIJZYNJY7xLBwSze0UjhPLnWfj2GF2EpT0jmzaJKIWKHLsaSSajf35bcYnA==}
+    engines: {node: '>=v12.22.7'}
+
   section-matter@1.0.0:
     resolution: {integrity: sha512-vfD3pmTzGpufjScBh50YHKzEu2lxBWhVEHsNGoEXmCmn2hKGfeNLYMzCJpe8cD7gqX7TJluOVpBkAequ6dgMmA==}
     engines: {node: '>=4'}
@@ -2087,6 +2218,15 @@ packages:
 
   spawndamnit@3.0.1:
     resolution: {integrity: sha512-MmnduQUuHCoFckZoWnXsTg7JaiLBJrKFj9UI2MbRPGaJeVpsLcVBu6P/IGZovziM/YBsellCmsprgNA+w0CzVg==}
+
+  spdx-exceptions@2.5.0:
+    resolution: {integrity: sha512-PiU42r+xO4UbUS1buo3LPJkjlO7430Xn5SVAhdpzzsPHsjbYVflnnFdATgabnLude+Cqu25p6N+g2lw/PFsa4w==}
+
+  spdx-expression-parse@5.0.0:
+    resolution: {integrity: sha512-vngmw3Rgn+o2arXNbnZaj5UtOEBuWBfvaI+Wc8GFfykIhA5/vdK9/Sp/XkLv63dykz2rxKDvKEHupF5P0FORcQ==}
+
+  spdx-license-ids@3.0.23:
+    resolution: {integrity: sha512-CWLcCCH7VLu13TgOH+r8p1O/Znwhqv/dbb6lqWy67G+pT1kHmeD/+V36AVb/vq8QMIQwVShJ6Ssl5FPh0fuSdw==}
 
   sprintf-js@1.0.3:
     resolution: {integrity: sha512-D9cPgkvLlV3t3IzL0D0YLvGA9Ahk4PcvVwUbN0dSGr1aP0Nrt4AEnTUbuGvquEC0mA64Gqt1fzirlRs5ibXx8g==}
@@ -2334,6 +2474,9 @@ packages:
   word-wrap@1.2.5:
     resolution: {integrity: sha512-BN22B5eaMMI9UMtjrGd5g5eCYPpCPDUy0FJXbYsaT5zYxjFOckS53SQDE3pWkVoWpHXVb3BrYcEN4Twa55B5cA==}
     engines: {node: '>=0.10.0'}
+
+  xmlchars@2.2.0:
+    resolution: {integrity: sha512-JZnDKK8B0RCDw84FNdDAIpZK+JuJw+s7Lz8nksI7SIuU3UXJJslUthsi+uWBUYOwPFwW7W7PRLRfUKpxjtjFCw==}
 
   yaml@2.9.0:
     resolution: {integrity: sha512-2AvhNX3mb8zd6Zy7INTtSpl1F15HW6Wnqj0srWlkKLcpYl/gMIMJiyuGq2KeI2YFxUPjdlB+3Lc10seMLtL4cA==}
@@ -2967,40 +3110,42 @@ snapshots:
 
   '@types/semver@7.8.0': {}
 
-  '@typescript-eslint/eslint-plugin@8.66.0(@typescript-eslint/parser@8.66.0(eslint@10.8.0(jiti@2.7.0))(typescript@6.0.3))(eslint@10.8.0(jiti@2.7.0))(typescript@6.0.3)':
+  '@types/spdx-expression-parse@4.0.0': {}
+
+  '@typescript-eslint/eslint-plugin@8.66.0(@typescript-eslint/parser@8.66.0(@typescript/typescript6@6.0.2)(eslint@10.8.0(jiti@2.7.0)))(@typescript/typescript6@6.0.2)(eslint@10.8.0(jiti@2.7.0))':
     dependencies:
       '@eslint-community/regexpp': 4.12.2
-      '@typescript-eslint/parser': 8.66.0(eslint@10.8.0(jiti@2.7.0))(typescript@6.0.3)
+      '@typescript-eslint/parser': 8.66.0(@typescript/typescript6@6.0.2)(eslint@10.8.0(jiti@2.7.0))
       '@typescript-eslint/scope-manager': 8.66.0
-      '@typescript-eslint/type-utils': 8.66.0(eslint@10.8.0(jiti@2.7.0))(typescript@6.0.3)
-      '@typescript-eslint/utils': 8.66.0(eslint@10.8.0(jiti@2.7.0))(typescript@6.0.3)
+      '@typescript-eslint/type-utils': 8.66.0(@typescript/typescript6@6.0.2)(eslint@10.8.0(jiti@2.7.0))
+      '@typescript-eslint/utils': 8.66.0(@typescript/typescript6@6.0.2)(eslint@10.8.0(jiti@2.7.0))
       '@typescript-eslint/visitor-keys': 8.66.0
       eslint: 10.8.0(jiti@2.7.0)
       ignore: 7.0.6
       natural-compare: 1.4.0
-      ts-api-utils: 2.5.0(typescript@6.0.3)
-      typescript: 6.0.3
+      ts-api-utils: 2.5.0(@typescript/typescript6@6.0.2)
+      typescript: '@typescript/typescript6@6.0.2'
     transitivePeerDependencies:
       - supports-color
 
-  '@typescript-eslint/parser@8.66.0(eslint@10.8.0(jiti@2.7.0))(typescript@6.0.3)':
+  '@typescript-eslint/parser@8.66.0(@typescript/typescript6@6.0.2)(eslint@10.8.0(jiti@2.7.0))':
     dependencies:
       '@typescript-eslint/scope-manager': 8.66.0
       '@typescript-eslint/types': 8.66.0
-      '@typescript-eslint/typescript-estree': 8.66.0(typescript@6.0.3)
+      '@typescript-eslint/typescript-estree': 8.66.0(@typescript/typescript6@6.0.2)
       '@typescript-eslint/visitor-keys': 8.66.0
       debug: 4.4.3
       eslint: 10.8.0(jiti@2.7.0)
-      typescript: 6.0.3
+      typescript: '@typescript/typescript6@6.0.2'
     transitivePeerDependencies:
       - supports-color
 
-  '@typescript-eslint/project-service@8.66.0(typescript@6.0.3)':
+  '@typescript-eslint/project-service@8.66.0(@typescript/typescript6@6.0.2)':
     dependencies:
-      '@typescript-eslint/tsconfig-utils': 8.66.0(typescript@6.0.3)
+      '@typescript-eslint/tsconfig-utils': 8.66.0(@typescript/typescript6@6.0.2)
       '@typescript-eslint/types': 8.66.0
       debug: 4.4.3
-      typescript: 6.0.3
+      typescript: '@typescript/typescript6@6.0.2'
     transitivePeerDependencies:
       - supports-color
 
@@ -3009,19 +3154,19 @@ snapshots:
       '@typescript-eslint/types': 8.66.0
       '@typescript-eslint/visitor-keys': 8.66.0
 
-  '@typescript-eslint/tsconfig-utils@8.66.0(typescript@6.0.3)':
+  '@typescript-eslint/tsconfig-utils@8.66.0(@typescript/typescript6@6.0.2)':
     dependencies:
-      typescript: 6.0.3
+      typescript: '@typescript/typescript6@6.0.2'
 
-  '@typescript-eslint/type-utils@8.66.0(eslint@10.8.0(jiti@2.7.0))(typescript@6.0.3)':
+  '@typescript-eslint/type-utils@8.66.0(@typescript/typescript6@6.0.2)(eslint@10.8.0(jiti@2.7.0))':
     dependencies:
       '@typescript-eslint/types': 8.66.0
-      '@typescript-eslint/typescript-estree': 8.66.0(typescript@6.0.3)
-      '@typescript-eslint/utils': 8.66.0(eslint@10.8.0(jiti@2.7.0))(typescript@6.0.3)
+      '@typescript-eslint/typescript-estree': 8.66.0(@typescript/typescript6@6.0.2)
+      '@typescript-eslint/utils': 8.66.0(@typescript/typescript6@6.0.2)(eslint@10.8.0(jiti@2.7.0))
       debug: 4.4.3
       eslint: 10.8.0(jiti@2.7.0)
-      ts-api-utils: 2.5.0(typescript@6.0.3)
-      typescript: 6.0.3
+      ts-api-utils: 2.5.0(@typescript/typescript6@6.0.2)
+      typescript: '@typescript/typescript6@6.0.2'
     transitivePeerDependencies:
       - supports-color
 
@@ -3029,29 +3174,29 @@ snapshots:
 
   '@typescript-eslint/types@8.66.0': {}
 
-  '@typescript-eslint/typescript-estree@8.66.0(typescript@6.0.3)':
+  '@typescript-eslint/typescript-estree@8.66.0(@typescript/typescript6@6.0.2)':
     dependencies:
-      '@typescript-eslint/project-service': 8.66.0(typescript@6.0.3)
-      '@typescript-eslint/tsconfig-utils': 8.66.0(typescript@6.0.3)
+      '@typescript-eslint/project-service': 8.66.0(@typescript/typescript6@6.0.2)
+      '@typescript-eslint/tsconfig-utils': 8.66.0(@typescript/typescript6@6.0.2)
       '@typescript-eslint/types': 8.66.0
       '@typescript-eslint/visitor-keys': 8.66.0
       debug: 4.4.3
       minimatch: 10.2.6
       semver: 7.8.5
       tinyglobby: 0.2.17
-      ts-api-utils: 2.5.0(typescript@6.0.3)
-      typescript: 6.0.3
+      ts-api-utils: 2.5.0(@typescript/typescript6@6.0.2)
+      typescript: '@typescript/typescript6@6.0.2'
     transitivePeerDependencies:
       - supports-color
 
-  '@typescript-eslint/utils@8.66.0(eslint@10.8.0(jiti@2.7.0))(typescript@6.0.3)':
+  '@typescript-eslint/utils@8.66.0(@typescript/typescript6@6.0.2)(eslint@10.8.0(jiti@2.7.0))':
     dependencies:
       '@eslint-community/eslint-utils': 4.10.1(eslint@10.8.0(jiti@2.7.0))
       '@typescript-eslint/scope-manager': 8.66.0
       '@typescript-eslint/types': 8.66.0
-      '@typescript-eslint/typescript-estree': 8.66.0(typescript@6.0.3)
+      '@typescript-eslint/typescript-estree': 8.66.0(@typescript/typescript6@6.0.2)
       eslint: 10.8.0(jiti@2.7.0)
-      typescript: 6.0.3
+      typescript: '@typescript/typescript6@6.0.2'
     transitivePeerDependencies:
       - supports-color
 
@@ -3119,6 +3264,10 @@ snapshots:
 
   '@typescript/typescript-win32-x64@7.0.2':
     optional: true
+
+  '@typescript/typescript6@6.0.2':
+    dependencies:
+      '@typescript/old': typescript@6.0.3
 
   '@vitest/expect@4.1.10':
     dependencies:
@@ -3616,6 +3765,8 @@ snapshots:
 
   ignore@7.0.6: {}
 
+  image-size@2.0.2: {}
+
   import-without-cache@0.4.0: {}
 
   imurmurhash@0.1.4: {}
@@ -3861,7 +4012,7 @@ snapshots:
 
   reusify@1.1.0: {}
 
-  rolldown-plugin-dts@0.27.14(rolldown@1.2.2)(typescript@6.0.3):
+  rolldown-plugin-dts@0.27.14(@typescript/typescript6@6.0.2)(rolldown@1.2.2):
     dependencies:
       dts-resolver: 3.0.0
       get-tsconfig: 5.0.0-beta.5
@@ -3871,7 +4022,7 @@ snapshots:
       yuku-codegen: 0.8.3
       yuku-parser: 0.8.3
     optionalDependencies:
-      typescript: 6.0.3
+      typescript: '@typescript/typescript6@6.0.2'
     transitivePeerDependencies:
       - oxc-resolver
 
@@ -3952,6 +4103,10 @@ snapshots:
 
   safer-buffer@2.1.2: {}
 
+  saxes@6.0.0:
+    dependencies:
+      xmlchars: 2.2.0
+
   section-matter@1.0.0:
     dependencies:
       extend-shallow: 2.0.1
@@ -3979,6 +4134,15 @@ snapshots:
     dependencies:
       cross-spawn: 7.0.6
       signal-exit: 4.1.0
+
+  spdx-exceptions@2.5.0: {}
+
+  spdx-expression-parse@5.0.0:
+    dependencies:
+      spdx-exceptions: 2.5.0
+      spdx-license-ids: 3.0.23
+
+  spdx-license-ids@3.0.23: {}
 
   sprintf-js@1.0.3: {}
 
@@ -4023,11 +4187,11 @@ snapshots:
 
   tree-kill@1.2.2: {}
 
-  ts-api-utils@2.5.0(typescript@6.0.3):
+  ts-api-utils@2.5.0(@typescript/typescript6@6.0.2):
     dependencies:
-      typescript: 6.0.3
+      typescript: '@typescript/typescript6@6.0.2'
 
-  tsdown@0.22.14(@arethetypeswrong/core@0.18.5)(publint@0.3.23)(typescript@6.0.3):
+  tsdown@0.22.14(@arethetypeswrong/core@0.18.5)(@typescript/typescript6@6.0.2)(publint@0.3.23):
     dependencies:
       ansis: 4.3.1
       cac: 7.0.0
@@ -4038,7 +4202,7 @@ snapshots:
       obug: 2.1.4
       picomatch: 4.0.5
       rolldown: 1.2.2
-      rolldown-plugin-dts: 0.27.14(rolldown@1.2.2)(typescript@6.0.3)
+      rolldown-plugin-dts: 0.27.14(@typescript/typescript6@6.0.2)(rolldown@1.2.2)
       tinyexec: 1.2.4
       tinyglobby: 0.2.17
       tree-kill: 1.2.2
@@ -4047,7 +4211,7 @@ snapshots:
     optionalDependencies:
       '@arethetypeswrong/core': 0.18.5
       publint: 0.3.23
-      typescript: 6.0.3
+      typescript: '@typescript/typescript6@6.0.2'
     transitivePeerDependencies:
       - '@typescript/native-preview'
       - '@volar/typescript'
@@ -4085,14 +4249,14 @@ snapshots:
     dependencies:
       prelude-ls: 1.2.1
 
-  typescript-eslint@8.66.0(eslint@10.8.0(jiti@2.7.0))(typescript@6.0.3):
+  typescript-eslint@8.66.0(@typescript/typescript6@6.0.2)(eslint@10.8.0(jiti@2.7.0)):
     dependencies:
-      '@typescript-eslint/eslint-plugin': 8.66.0(@typescript-eslint/parser@8.66.0(eslint@10.8.0(jiti@2.7.0))(typescript@6.0.3))(eslint@10.8.0(jiti@2.7.0))(typescript@6.0.3)
-      '@typescript-eslint/parser': 8.66.0(eslint@10.8.0(jiti@2.7.0))(typescript@6.0.3)
-      '@typescript-eslint/typescript-estree': 8.66.0(typescript@6.0.3)
-      '@typescript-eslint/utils': 8.66.0(eslint@10.8.0(jiti@2.7.0))(typescript@6.0.3)
+      '@typescript-eslint/eslint-plugin': 8.66.0(@typescript-eslint/parser@8.66.0(@typescript/typescript6@6.0.2)(eslint@10.8.0(jiti@2.7.0)))(@typescript/typescript6@6.0.2)(eslint@10.8.0(jiti@2.7.0))
+      '@typescript-eslint/parser': 8.66.0(@typescript/typescript6@6.0.2)(eslint@10.8.0(jiti@2.7.0))
+      '@typescript-eslint/typescript-estree': 8.66.0(@typescript/typescript6@6.0.2)
+      '@typescript-eslint/utils': 8.66.0(@typescript/typescript6@6.0.2)(eslint@10.8.0(jiti@2.7.0))
       eslint: 10.8.0(jiti@2.7.0)
-      typescript: 6.0.3
+      typescript: '@typescript/typescript6@6.0.2'
     transitivePeerDependencies:
       - supports-color
 
@@ -4197,6 +4361,8 @@ snapshots:
       stackback: 0.0.2
 
   word-wrap@1.2.5: {}
+
+  xmlchars@2.2.0: {}
 
   yaml@2.9.0: {}
 

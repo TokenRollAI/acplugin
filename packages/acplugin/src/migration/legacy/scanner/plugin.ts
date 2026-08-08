@@ -139,9 +139,14 @@ export function resolvePluginDir(rootDir: string, source: string, pluginRoot?: s
  *
  * @param pluginDir 旧 Plugin 根目录。
  * @param meta Marketplace 已提供的可选元数据。
+ * @param metadataSource 报告使用的来源根相对元数据清单路径。
  * @returns 资源路径已经解析的完整 PluginScanResult。
  */
-export function scanPlugin(pluginDir: string, meta?: PluginMeta): PluginScanResult {
+export function scanPlugin(
+  pluginDir: string,
+  meta?: PluginMeta,
+  metadataSource = '.claude-plugin/plugin.json',
+): PluginScanResult {
   // Marketplace 未提供元数据时回退到 Plugin 自己的清单。
   /** 当前 Plugin 最终使用的旧元数据。 */
   const resolvedMeta = meta || readPluginMeta(pluginDir);
@@ -176,6 +181,8 @@ export function scanPlugin(pluginDir: string, meta?: PluginMeta): PluginScanResu
     : path.join(pluginDir, '.mcp.json');
   /** 容错解析后的旧 MCP 配置。 */
   const mcpConfig = scanMCPJson(mcpPath);
+  /** 容错解析后的旧 Hooks 配置。 */
+  const hooks = scanHooksJson(hooksPath);
 
   // 保存 MCP 命令显式引用的 scripts 等 Plugin 级文件，避免迁移时静默丢失。
   /** 旧 MCP 引用的未分类 Plugin 文件。 */
@@ -183,12 +190,14 @@ export function scanPlugin(pluginDir: string, meta?: PluginMeta): PluginScanResu
 
   return {
     meta: resolvedMeta,
+    metadataSource,
     skills: scanSkillsDir(skillsDir),
     instructions: [],
     mcp: mcpConfig,
     agents: scanAgentsDir(agentsDir),
     commands: scanCommandsDir(commandsDir),
-    hooks: scanHooksJson(hooksPath),
+    hooks,
+    ...(hooks === null ? {} : { hooksSourcePath: hooksPath }),
     pluginFiles,
     rootDir: pluginDir,
   };
@@ -257,6 +266,7 @@ function scanMCPReferencedFiles(pluginDir: string, mcp: MCPConfig | null): Plugi
   for (const server of mcp.servers) {
     // 从命令参数提取 Plugin 根变量后的第一级目录。
     for (const arg of server.args || []) {
+      /** 当前参数内全部 Plugin 根变量路径引用。 */
       const matches = arg.matchAll(/\$\{CLAUDE_PLUGIN_ROOT\}\/([^\s"]+)/g);
       for (const m of matches) {
         referencedDirs.add(m[1].split('/')[0]);
@@ -264,6 +274,7 @@ function scanMCPReferencedFiles(pluginDir: string, mcp: MCPConfig | null): Plugi
     }
     // 从环境值提取 Plugin 根变量后的第一级目录。
     for (const val of Object.values(server.env || {})) {
+      /** 当前环境值内全部 Plugin 根变量路径引用。 */
       const matches = val.matchAll(/\$\{CLAUDE_PLUGIN_ROOT\}\/([^\s"]+)/g);
       for (const m of matches) {
         referencedDirs.add(m[1].split('/')[0]);
@@ -278,6 +289,7 @@ function scanMCPReferencedFiles(pluginDir: string, mcp: MCPConfig | null): Plugi
     const dirPath = resolveInside(pluginDir, dirName, 'MCP referenced path');
     if (!fileExists(dirPath)) continue;
     for (const file of listFilesRecursive(dirPath)) {
+      /** MCP 引用目录中当前文件的可选文本内容。 */
       const content = readFile(file);
       if (content !== null) {
         files.push({
@@ -367,33 +379,28 @@ export function scanAllPlugins(rootDir: string): PluginScanResult[] {
     switch (targetType) {
       case 'skills-dir':
         result = {
-          meta, skills: scanSkillsDir(pluginDir),
+          meta, metadataSource: '.claude-plugin/marketplace.json', skills: scanSkillsDir(pluginDir),
           instructions: [], mcp: null, agents: [], commands: [], hooks: null, pluginFiles: [], rootDir: pluginDir,
         };
         break;
       case 'agents-dir':
         result = {
-          meta, agents: scanAgentsDir(pluginDir),
+          meta, metadataSource: '.claude-plugin/marketplace.json', agents: scanAgentsDir(pluginDir),
           skills: [], instructions: [], mcp: null, commands: [], hooks: null, pluginFiles: [], rootDir: pluginDir,
         };
         break;
       case 'commands-dir':
         result = {
-          meta, commands: scanCommandsDir(pluginDir),
+          meta, metadataSource: '.claude-plugin/marketplace.json', commands: scanCommandsDir(pluginDir),
           skills: [], instructions: [], mcp: null, agents: [], hooks: null, pluginFiles: [], rootDir: pluginDir,
         };
         break;
       default: // plugin-root 与 unknown 都按完整 Plugin 尝试扫描。
-        result = scanPlugin(pluginDir, meta);
+        result = scanPlugin(pluginDir, meta, '.claude-plugin/marketplace.json');
     }
 
-    // 空条目不会生成没有意义的规范工程成员。
-    /** 当前扫描结果中可迁移资源的数量。 */
-    const resourceCount = result.skills.length + result.agents.length
-      + result.commands.length + (result.hooks ? Object.keys(result.hooks).length : 0);
-    if (resourceCount > 0) {
-      results.push(result);
-    }
+    // Marketplace 选择语义以清单条目为准；MCP-only 或 metadata-only Plugin 仍是合法工程。
+    results.push(result);
   }
 
   return results;

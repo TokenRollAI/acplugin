@@ -1,23 +1,23 @@
 ---
 name: add-platform
-description: Add a new installable-plugin target to acplugin through a private Compiler and official Module adapters. Use when introducing another AI platform target or revising a target's current manifest, component, Hooks, or MCP contract.
+description: Add a new acplugin Platform through an independent private package and official Extension adapters. Use when introducing another AI platform or revising a Platform manifest, Component, Hooks, MCP, delivery-unit, or compatibility contract.
 ---
 
-# Add a target platform
+# Add a Platform
 
-1. Verify the current official installable-plugin contract. Record manifest path/schema, install root semantics, Component discovery, Hooks events/protocol, MCP transports/config, secret handling, and a real validation/install command. Do not confuse project overlays with installable plugins.
-2. Add the target ID to Core contracts/config validation and CLI choices.
-3. Create a private `packages/compiler-<target>/` package. The Compiler must:
+1. Verify the current official delivery contract from primary documentation. Record whether the output is a static Plugin, workspace overlay, or package; then record schema/path/install-root semantics, Component discovery, Hooks events/protocol, MCP transports/config, secret handling, and a real validation/install command.
+2. Create one private `packages/platforms/<id>/` package. It must implement the branded Core Platform contract and declare an accurate `deliveryType`.
+3. Keep all Platform-specific behavior in that package:
    - compile every canonical Component;
-   - own base/reserved Manifest fields;
-   - emit deterministic Artifacts without filesystem side effects;
-   - report complete compatibility and dependency propagation;
-   - validate generated identities, references, paths, and collisions.
-4. Bundle the private Compiler into `@tokenroll/acplugin`; it must not appear in the public package runtime manifest or packed imports.
-5. Add target adapters to official Hooks/MCP Modules only for verified capabilities. Keep target protocol JSON out of author handlers/descriptors.
-6. Register CLI/default-target behavior only after compatibility policy is defined. Do not silently expand the default target cohort.
-7. Add golden fixtures, strict/relaxed cases, target schema checks, installed-cache path tests, Hook runtime tests, and MCP protocol smoke tests.
-8. Update README, `AGENTS.md`, platform reference docs, tarball consumer verification, and release acceptance criteria.
+   - own base/reserved Documents and Manifest fields;
+   - emit deterministic Artifacts without direct output writes;
+   - report complete compatibility and metadata disposition;
+   - validate generated identities, references, paths, collisions, and the final materialized candidate.
+4. Export a thin factory from `packages/acplugin/src/platforms/<id>.ts` and the main facade, then bundle the private package into `@tokenroll/acplugin`. No private `@acplugin/*` runtime dependency or import may survive in the public tarball.
+5. Add adapters to the official Hooks/MCP Extensions only for capabilities verified on this Platform. The Extension owns the Adapter; the Platform exposes only controlled Document extension points and never imports an Extension.
+6. Add the Platform to CLI selection and `init` choices only after compatibility and empty-state behavior are defined. Do not silently expand the default Claude Code + Codex cohort.
+7. Add package-owned golden/schema/candidate tests, strict/relaxed integration cases, installed-cache or real-consumer smoke tests appropriate to the delivery type, Hook runtime tests, and MCP protocol tests.
+8. Update the six-or-more-Platform matrices, `AGENTS.md`, package docs, release tarball consumer verification, official links, and contract verification date.
 
 Run the full repository and packed-consumer checks:
 

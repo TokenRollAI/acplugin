@@ -5,23 +5,23 @@
 以下公开包使用同一个版本发布：
 
 - `@tokenroll/acplugin`
-- `@tokenroll/acplugin-module-hooks`
-- `@tokenroll/acplugin-module-mcp`
+- `@tokenroll/acplugin-extension-hooks`
+- `@tokenroll/acplugin-extension-mcp`
 
-Core、内置 Compiler 和测试工作区是私有包，不能发布，也不能作为运行时依赖出现在 tarball 中。所有 npm 发布、Registry 检查、Git Tag 和 GitHub Release 均由获得授权的维护者手动执行。仓库没有自动发布工作流。
+Core、六个内置 Platform 包和测试工作区是私有包，不能发布，也不能作为运行时依赖出现在 tarball 中。所有 npm 发布、Registry 检查、Git Tag 和 GitHub Release 均由获得授权的维护者手动执行。仓库没有自动发布工作流。
 
 ## 仓库工作流
 
 `Check` 在 Pull Request 创建时自动执行，并且只运行 lint 和 typecheck。
 
-`Patch` 从仓库默认分支手动触发，必须提供目标分支。目标分支必须至少包含一个除 `README.md` 外的 `.changeset/*.md` 文件。工作流会检出目标分支，使用 `pnpm version-packages` 消费全部 Changeset，验证固定公开包组的版本发生了变化，刷新 pnpm lockfile，运行 lint 和 typecheck，然后创建或更新一个以所选目标分支为 base 的版本 PR。
+`Patch` 从仓库默认分支手动触发，必须提供目标分支。目标分支必须至少包含一个让公开包产生版本变更的有效 Changeset；空 Changeset 不满足门禁。工作流会检出目标分支，使用 `pnpm changeset status` 在任何版本写入前验证发布计划，再用 `pnpm version-packages` 消费全部 Changeset，验证固定公开包组的版本发生了变化，刷新 pnpm lockfile，运行 lint 和 typecheck，然后创建或更新一个以所选目标分支为 base 的版本 PR。
 
 为了让 `Patch` 使用 `GITHUB_TOKEN` 创建 PR，必须启用仓库设置 **Actions → General → Workflow permissions → Allow GitHub Actions to create and approve pull requests**。该工作流不会发布包，也不会创建任何 Release 引用。
 
 ## 准备发布
 
 1. 为用户可见变更添加 Changeset，并通过 `pnpm version-packages` 更新固定包组版本；
-2. 确认三个公开清单版本完全相同，且仓库中的 Module Peer Dependency 仍使用 `workspace:^`；
+2. 确认三个公开清单版本完全相同，且仓库中的 Extension Peer Dependency 仍使用 `workspace:^`；
 3. 运行：
 
    ```bash
@@ -30,7 +30,7 @@ Core、内置 Compiler 和测试工作区是私有包，不能发布，也不能
    pnpm run release:verify
    ```
 
-`release:verify` 会在临时目录中打包三个包，检查清单与内容，把 tarball 安装到干净的外部消费者，然后对消费者执行类型检查、导入、验证和构建。它绝不会发布任何内容。
+`release:verify` 会在临时目录中打包三个包，对实际 tarball 执行类型解析与 Package Lint，检查清单和内容，再安装到干净的外部消费者中，验证默认工程以及自动生成的六 Platform/两 Extension 脚手架。它绝不会发布任何内容。
 
 在打包最终待发布产物前，必须把经过精确验证的发布准备提交到 `main`。
 
@@ -40,8 +40,8 @@ Core、内置 Compiler 和测试工作区是私有包，不能发布，也不能
 
 ```bash
 ACPLUGIN_RELEASE_DIR="$(mktemp -d)"
-pnpm --filter @tokenroll/acplugin-module-hooks pack --pack-destination "$ACPLUGIN_RELEASE_DIR"
-pnpm --filter @tokenroll/acplugin-module-mcp pack --pack-destination "$ACPLUGIN_RELEASE_DIR"
+pnpm --filter @tokenroll/acplugin-extension-hooks pack --pack-destination "$ACPLUGIN_RELEASE_DIR"
+pnpm --filter @tokenroll/acplugin-extension-mcp pack --pack-destination "$ACPLUGIN_RELEASE_DIR"
 pnpm --filter @tokenroll/acplugin pack --pack-destination "$ACPLUGIN_RELEASE_DIR"
 ```
 
@@ -51,8 +51,8 @@ pnpm --filter @tokenroll/acplugin pack --pack-destination "$ACPLUGIN_RELEASE_DIR
 
 由获得授权的 TokenRoll npm 组织维护者使用 2FA 发布每个 tarball。严格遵循以下顺序：
 
-1. `@tokenroll/acplugin-module-hooks`
-2. `@tokenroll/acplugin-module-mcp`
+1. `@tokenroll/acplugin-extension-hooks`
+2. `@tokenroll/acplugin-extension-mcp`
 3. `@tokenroll/acplugin`
 
 每个 tarball 发布后，必须手动检查精确版本，再继续下一个：

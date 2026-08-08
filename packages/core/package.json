@@ -3,8 +3,15 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "engines": { "node": ">=20" },
-  "exports": { ".": { "types": "./dist/index.d.mts", "import": "./dist/index.mjs" } },
+  "engines": {
+    "node": ">=20"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.mts",
+      "import": "./dist/index.mjs"
+    }
+  },
   "scripts": {
     "build": "tsdown",
     "test": "vitest run --passWithNoTests",
@@ -12,13 +19,15 @@
   },
   "dependencies": {
     "semver": "^7.8.5",
+    "spdx-expression-parse": "^5.0.0",
     "yaml": "^2.9.0"
   },
   "devDependencies": {
     "@types/node": "catalog:",
     "@types/semver": "^7.7.1",
+    "@types/spdx-expression-parse": "^4.0.0",
     "tsdown": "catalog:",
-    "typescript": "catalog:",
+    "@typescript/native": "catalog:",
     "vitest": "catalog:"
   }
 }

@@ -1,0 +1,29 @@
+{
+  "name": "@tokenroll/acplugin-extension-mcp",
+  "version": "1.0.0",
+  "description": "Portable MCP authoring and platform adapters for acplugin.",
+  "type": "module",
+  "license": "MIT",
+  "homepage": "https://github.com/TokenRollAI/acplugin#mcp-extension",
+  "repository": { "type": "git", "url": "git+https://github.com/TokenRollAI/acplugin.git", "directory": "packages/extensions/mcp" },
+  "bugs": { "url": "https://github.com/TokenRollAI/acplugin/issues" },
+  "sideEffects": false,
+  "engines": { "node": ">=20" },
+  "exports": { ".": { "types": "./dist/index.d.mts", "import": "./dist/index.mjs" } },
+  "files": ["dist", "README.md", "LICENSE"],
+  "publishConfig": { "access": "public" },
+  "scripts": {
+    "build": "tsdown",
+    "test": "vitest run --passWithNoTests",
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "peerDependencies": { "@tokenroll/acplugin": "workspace:^" },
+  "dependencies": { "rolldown": "catalog:" },
+  "devDependencies": {
+    "@tokenroll/acplugin": "workspace:^",
+    "@types/node": "catalog:",
+    "tsdown": "catalog:",
+    "@typescript/native": "catalog:",
+    "vitest": "catalog:"
+  }
+}

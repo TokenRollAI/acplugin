@@ -47,14 +47,20 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
-      - name: Require at least one Changeset
+      - name: Require at least one effective Changeset
         shell: bash
         run: |
           set -euo pipefail
-          if ! find .changeset -maxdepth 1 -type f -name '*.md' ! -name 'README.md' -print -quit | grep -q .; then
-            echo "::error::The target branch must contain at least one Changeset."
-            exit 1
-          fi
+          status_file="$(mktemp)"
+          pnpm changeset status --output "$status_file"
+          node - "$status_file" <<'NODE'
+          const fs = require('node:fs')
+          const status = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'))
+          if (!Array.isArray(status.releases) || status.releases.length === 0) {
+            console.error('::error::The target branch must contain at least one Changeset that bumps a public package.')
+            process.exit(1)
+          }
+          NODE
 
       - name: Consume Changesets and bump the fixed cohort
         shell: bash

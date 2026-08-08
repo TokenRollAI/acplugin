@@ -1,0 +1,32 @@
+{
+  "name": "@acplugin/platform-codex",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.mts",
+      "import": "./dist/index.mjs"
+    }
+  },
+  "scripts": {
+    "build": "tsdown",
+    "test": "vitest run --passWithNoTests",
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@acplugin/core": "workspace:*",
+    "image-size": "^2.0.2",
+    "saxes": "^6.0.0",
+    "yaml": "^2.9.0"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "tsdown": "catalog:",
+    "@typescript/native": "catalog:",
+    "vitest": "catalog:"
+  }
+}

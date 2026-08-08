@@ -1,0 +1,78 @@
+import { promises as fs } from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { describe, expect, it } from 'vitest';
+import { codex } from '@tokenroll/acplugin';
+import { PLATFORM_ID } from '@tokenroll/acplugin/platforms/codex';
+
+/** 跨包契约测试读取源码边界时使用的仓库根目录。 */
+const repositoryRoot = fileURLToPath(new URL('../../..', import.meta.url));
+
+/**
+ * 递归读取 Codex Platform 的全部 TypeScript 源码。
+ *
+ * @param directory 当前需要遍历的源码目录。
+ * @returns 按文件名稳定排序并拼接后的源码文本。
+ */
+async function platformSources(directory: string): Promise<string> {
+  /** 当前目录按名称排序后的文件系统项。 */
+  const entries = (await fs.readdir(directory, { withFileTypes: true }))
+    .sort((left, right) => left.name.localeCompare(right.name, 'en'));
+  /** 当前目录与全部子目录累计的 TypeScript 源码。 */
+  const sources: string[] = [];
+  for (const entry of entries) {
+    /** 当前目录项的绝对路径。 */
+    const target = path.join(directory, entry.name);
+    if (entry.isDirectory())
+      sources.push(await platformSources(target));
+    else if (entry.isFile() && entry.name.endsWith('.ts'))
+      sources.push(await fs.readFile(target, 'utf8'));
+  }
+  return sources.join('\n');
+}
+
+describe('Codex public Platform integration', () => {
+  it('re-exports the private Platform factory with typed interface and Marketplace policy', () => {
+    /** 通过正式公开主包创建的 Codex Platform。 */
+    const platform = codex({
+      strict: false,
+      interface: {
+        category: 'Developer Tools',
+        capabilities: ['Review changes'],
+        defaultPrompt: 'Review this change.',
+      },
+      marketplace: {
+        displayName: 'TokenRoll Plugins',
+        policy: { installation: 'INSTALLED_BY_DEFAULT' },
+      },
+    });
+
+    expect(platform.id).toBe(PLATFORM_ID);
+    expect(platform.strict).toBe(false);
+    expect(platform.deliveryType).toBe('plugin');
+    expect(platform.options).toEqual({
+      interface: {
+        category: 'Developer Tools',
+        capabilities: ['Review changes'],
+        defaultPrompt: 'Review this change.',
+      },
+      marketplace: {
+        displayName: 'TokenRoll Plugins',
+        policy: { installation: 'INSTALLED_BY_DEFAULT' },
+      },
+    });
+    expect(Object.isFrozen(platform.options)).toBe(true);
+    expect(Object.isFrozen(platform.options!.interface)).toBe(true);
+    expect(Object.isFrozen(platform.options!.marketplace)).toBe(true);
+  });
+
+  it('keeps Hooks and MCP implementation packages outside the Platform dependency boundary', async () => {
+    /** Codex 私有 Platform 的完整源码文本。 */
+    const source = await platformSources(path.join(repositoryRoot, 'packages/platforms/codex/src'));
+
+    expect(source).not.toContain('@tokenroll/acplugin-extension-hooks');
+    expect(source).not.toContain('@tokenroll/acplugin-extension-mcp');
+    expect(source).not.toContain('@tokenroll/acplugin-module-hooks');
+    expect(source).not.toContain('@tokenroll/acplugin-module-mcp');
+  });
+});

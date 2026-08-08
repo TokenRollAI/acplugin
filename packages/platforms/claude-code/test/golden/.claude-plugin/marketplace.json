@@ -1,0 +1,34 @@
+{
+  "description": "Release workflow tools.",
+  "metadata": {
+    "pluginRoot": "./"
+  },
+  "name": "release-tools-marketplace",
+  "owner": {
+    "email": "maintainers@example.com",
+    "name": "TokenRoll",
+    "url": "https://github.com/TokenRollAI"
+  },
+  "plugins": [
+    {
+      "author": {
+        "email": "maintainers@example.com",
+        "name": "TokenRoll",
+        "url": "https://github.com/TokenRollAI"
+      },
+      "description": "Release workflow tools.",
+      "homepage": "https://example.com/release-tools",
+      "keywords": [
+        "release",
+        "review"
+      ],
+      "license": "MIT",
+      "name": "release-tools",
+      "repository": "https://github.com/TokenRollAI/release-tools",
+      "source": "./",
+      "strict": true,
+      "version": "1.2.3"
+    }
+  ],
+  "version": "1.2.3"
+}

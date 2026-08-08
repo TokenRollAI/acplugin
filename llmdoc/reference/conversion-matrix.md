@@ -1,36 +1,65 @@
-# Target support matrix
+# Platform support matrix
 
 > [中文对照](conversion-matrix.zh-CN.md)
 
-This matrix describes canonical acplugin 1.0 builds. The tolerant converters retained below `packages/acplugin/src/migration/legacy/` are Migration implementation details, not additional build targets.
+This matrix describes canonical acplugin 1.0 builds. Tolerant conversion code below `packages/acplugin/src/migration/legacy/` belongs only to Migration and is not another build path.
 
-| Capability | Claude Code | Codex |
-| --- | --- | --- |
-| Skills | Native | Native |
-| Commands | Native | Explicit `command-<id>` fallback Skill |
-| Agents | Native | Explicit `agent-<id>` model-only fallback Skill |
-| Public files | Target-root copy | Target-root copy |
-| Hooks Module | Native supported events | Native portable events |
-| Remote HTTP MCP | Native declaration | Native declaration |
-| Local stdio MCP | Bundled Node 20 ESM | Bundled Node 20 ESM |
+## Delivery and Components
 
-Commands are supported on Codex through a semantic transformation. Agents are degraded because installable Codex plugins cannot register custom project/user Agents. With the default strict setting, an Agent therefore fails the Codex target; `--no-strict` explicitly accepts the generated fallback and structured compatibility warning.
+| Capability | Claude Code | Codex | Cursor | Antigravity | OpenCode | Pi |
+| --- | --- | --- | --- | --- | --- | --- |
+| Delivery unit | Installable Plugin | Installable Plugin | Installable Plugin | Installable Plugin | Workspace overlay | npm package |
+| Skill | Native | Native | Native | Native | Native | Native |
+| Command | Native Command | Transform to explicit `command-<id>` Skill | Native Command | Transform to explicit `command-<id>` Skill | Native workspace Command | Transform to Prompt Template |
+| Agent | Native Agent | Degraded `agent-<id>` guidance Skill | Native Subagent; some model/capability fields degrade | Degraded `agent-<id>` guidance Skill | Native Subagent; capabilities transform to tools/permissions | Degraded `agent-<id>` guidance Skill |
+| Public files | Plugin-root copy | Plugin-root copy | Plugin-root copy | Plugin-root copy | Workspace-root copy | Package-root copy |
+| Separate Marketplace distribution | Optional | Optional | Not generated | Not generated | Not applicable | Not applicable |
 
-Hooks and MCP are not Core Components. They join the same build lifecycle only when `@tokenroll/acplugin-module-hooks` or `@tokenroll/acplugin-module-mcp` is configured. Source under `src/hooks` or `src/mcp` without the corresponding Module is an error.
+`native` means the Platform has an equivalent installable resource. `transform` means acplugin emits a different native resource while preserving the workflow intent. `degraded` means an important runtime guarantee cannot be preserved. Strict mode rejects any degraded or unsupported result; use `--no-strict` only after reviewing the structured compatibility report.
+
+OpenCode is intentionally a workspace overlay and does not receive a fabricated generic `package.json`. Pi is a real npm package and its manifest must not leak workspace/private fields. Antigravity emits only Manifest fields confirmed by its public contract.
+
+## Hooks Extension
+
+| Portable event | Claude Code | Codex | Cursor | Antigravity | OpenCode | Pi |
+| --- | --- | --- | --- | --- | --- | --- |
+| `SessionStart` | Native | Native | Transform | Native | Native | Native |
+| `SessionEnd` | Native | Native | Transform | Native | Degraded | Native |
+| `UserPromptSubmit` | Native | Native | Transform | Unsupported | Native | Native |
+| `PreToolUse` | Native | Native | Transform | Native | Native | Native |
+| `PermissionRequest` | Native | Native | Unsupported | Unsupported | Unsupported | Unsupported |
+| `PostToolUse` | Native | Native | Transform | Native | Native | Native |
+| `PreCompact` | Native | Native | Transform | Native | Unsupported | Native |
+| `PostCompact` | Native | Native | Unsupported | Unsupported | Native | Native |
+| `SubagentStart` | Native | Native | Transform | Unsupported | Unsupported | Unsupported |
+| `SubagentStop` | Native | Native | Transform | Unsupported | Unsupported | Unsupported |
+| `Stop` | Native | Native | Transform | Unsupported | Degraded | Degraded |
+
+Platform-only events remain explicitly scoped and do not expand the portable union. A supported event can still report a field-level degradation when the host ignores a meaningful matcher or has no stable status-message field. Empty Hooks produce no runtime or Manifest artifact.
+
+## MCP Extension
+
+| Transport | Claude Code | Codex | Cursor | Antigravity | OpenCode | Pi |
+| --- | --- | --- | --- | --- | --- | --- |
+| Remote Streamable HTTP | Native | Native | Native | Native | Native | Unsupported |
+| Bundled local stdio | Native | Native | Unsupported | Unsupported | Native local process | Unsupported |
+
+Remote MCP authoring is declarative: the author supplies an endpoint and secret references. Local stdio MCP is executable content: the author supplies a complete `server.ts`, which the Extension bundles once as Node 20 ESM and reuses only on Platforms with a verified install-root contract. No Adapter reads secret environment values during build.
 
 ## Source and output ownership
 
 | Concern | Source of truth |
 | --- | --- |
-| Config, Components, Modules, Artifacts | `packages/core/src/types.ts` |
+| Config, Components, lifecycle contracts, Artifacts | `packages/core/src/types.ts`, `contracts.ts` |
 | Discovery and dependency graph | `packages/core/src/scanner.ts` |
-| Lifecycle and target dispatch | `packages/core/src/builder.ts` |
+| Lifecycle and Platform dispatch | `packages/core/src/lifecycle.ts` |
 | Transactional output | `packages/core/src/transaction.ts` |
-| Claude output schema | `packages/compiler-claude-code/src/index.ts` |
-| Codex output schema and fallbacks | `packages/compiler-codex/src/index.ts` |
-| Hooks discovery/runtime bundling | `packages/module-hooks/src/index.ts` |
-| MCP declaration/runtime bundling | `packages/module-mcp/src/index.ts` |
-| Public facade, config loading | `packages/acplugin/src/index.ts` |
-| CLI and Migration boundary | `packages/acplugin/src/cli.ts` |
+| Platform output contracts | `packages/platforms/<id>/src/` |
+| Hooks discovery, bundling, and Platform Adapters | `packages/extensions/hooks/src/` |
+| MCP discovery, bundling, and Platform Adapters | `packages/extensions/mcp/src/` |
+| Public facade and config loading | `packages/acplugin/src/index.ts` |
+| CLI and isolated Migration boundary | `packages/acplugin/src/cli.ts`, `migration/` |
 
-Compilers own target paths and manifests. Modules may contribute Artifacts, uniquely owned top-level manifest fields, and compatibility entries, but cannot replace a Compiler or write `dist` directly.
+Platforms own output paths, Documents, manifests, schemas, validation, and delivery-unit type. Extension Adapters may add owned Artifacts, patch declared add-only Document extension points, and report compatibility; they cannot replace a Platform or write `dist` directly.
+
+Official contracts were last rechecked on 2026-08-06 against [Claude Code Hooks](https://code.claude.com/docs/en/hooks), [Codex Hooks](https://learn.chatgpt.com/docs/hooks), the [Cursor Plugin Schema](https://github.com/cursor/plugins/blob/main/schemas/plugin.schema.json), [Antigravity Plugins](https://antigravity.google/docs/plugins?app=cli), [OpenCode Plugins](https://opencode.ai/docs/plugins/), [OpenCode MCP](https://opencode.ai/docs/mcp-servers/), and [Pi Packages](https://pi.dev/docs/latest/packages).

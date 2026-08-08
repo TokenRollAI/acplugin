@@ -20,12 +20,12 @@ export interface SkillFrontmatter {
   'hooks'?: Record<string, unknown>;
 }
 
-/** 旧 Skill 目录中除 SKILL.md 外的辅助文本文件。 */
+/** 旧 Skill 目录中除 SKILL.md 外、需要按原始字节保留的辅助文件。 */
 export interface SkillAuxFile {
   /** 相对于 Skill 目录的路径，例如 `references/doc.md`。 */
   relativePath: string;
-  /** 迁移时原样保留的文本内容。 */
-  content: string;
+  /** 旧辅助文件的绝对来源路径，迁移时直接执行字节复制。 */
+  sourcePath: string;
 }
 
 /** Legacy Scanner 读取的完整旧 Skill。 */
@@ -230,6 +230,8 @@ export interface ScanResult {
   commands: Command[];
   /** 可选的旧 Hooks 配置。 */
   hooks: Hooks | null;
+  /** Hooks 实际读取文件的绝对路径；没有 Hooks 时省略。 */
+  hooksSourcePath?: string;
   /** 未分类的 Plugin 级资源文件。 */
   pluginFiles: PluginResourceFile[];
   /** 当前 ScanResult 对应的绝对来源根目录。 */
@@ -240,6 +242,8 @@ export interface ScanResult {
 export interface PluginScanResult extends ScanResult {
   /** 旧 Plugin 清单元数据。 */
   meta: PluginMeta;
+  /** 元数据实际来自的来源根相对清单路径。 */
+  metadataSource: string;
 }
 
 /** Marketplace 扫描清单及其中成功解析的全部 Plugin。 */

@@ -10,13 +10,18 @@ import type { ScanResult, Skill, SkillFrontmatter, SkillAuxFile, Instruction, MC
  * @returns 供隔离迁移层消费的宽松 ScanResult。
  */
 export function scanClaudeProject(rootDir: string): ScanResult {
+  /** Claude Project 固定的旧 Hooks 配置文件。 */
+  const hooksSourcePath = path.join(rootDir, '.claude', 'settings.json');
+  /** 从 Settings 中容错读取的 Hooks 映射。 */
+  const hooks = scanSettingsHooks(hooksSourcePath);
   return {
     skills: scanSkillsDir(path.join(rootDir, '.claude', 'skills')),
     instructions: scanInstructions(rootDir),
     mcp: scanMCPJson(path.join(rootDir, '.mcp.json')),
     agents: scanAgentsDir(path.join(rootDir, '.claude', 'agents')),
     commands: scanCommandsDir(path.join(rootDir, '.claude', 'commands')),
-    hooks: scanSettingsHooks(path.join(rootDir, '.claude', 'settings.json')),
+    hooks,
+    ...(hooks === null ? {} : { hooksSourcePath }),
     pluginFiles: [],
     rootDir,
   };
@@ -42,6 +47,7 @@ export function scanSkillsDir(skillsDir: string): Skill[] {
     /** 无论 Frontmatter 是否有效都需要保留的辅助文件。 */
     const auxFiles = scanSkillAuxFiles(dir);
     try {
+      /** 成功解析的旧 Skill Frontmatter 与正文。 */
       const { data, body } = parseFrontmatter<SkillFrontmatter>(content);
       skills.push({
         dirName: path.basename(dir),
@@ -65,7 +71,7 @@ export function scanSkillsDir(skillsDir: string): Skill[] {
 }
 
 /**
- * 递归扫描 Skill 目录中除 SKILL.md 外的全部辅助文本文件。
+ * 递归扫描 Skill 目录中除 SKILL.md 外的全部辅助文件。
  *
  * @param skillDir 单个旧 Skill 根目录。
  * @returns references、scripts、assets 等子目录中的辅助文件。
@@ -79,10 +85,8 @@ function scanSkillAuxFiles(skillDir: string): SkillAuxFile[] {
     /** 当前文件相对于旧 Skill 根目录的路径。 */
     const relativePath = path.relative(skillDir, file);
     if (relativePath === 'SKILL.md') continue;
-    const content = readFile(file);
-    if (content !== null) {
-      auxFiles.push({ relativePath, content });
-    }
+    // 辅助文件可能是图片、压缩包或其他二进制内容，只记录可信来源路径，迁移阶段按字节复制。
+    auxFiles.push({ relativePath, sourcePath: file });
   }
   return auxFiles;
 }
@@ -97,9 +101,11 @@ export function scanAgentsDir(agentsDir: string): Agent[] {
   /** 当前目录累计发现的旧 Agents。 */
   const agents: Agent[] = [];
   for (const file of listFiles(agentsDir, '\\.md$')) {
+    /** 当前旧 Agent Markdown 的完整内容。 */
     const content = readFile(file);
     if (!content) continue;
     try {
+      /** 成功解析的旧 Agent Frontmatter 与正文。 */
       const { data, body } = parseFrontmatter<AgentFrontmatter>(content);
       agents.push({
         fileName: path.basename(file, '.md'),
@@ -130,6 +136,7 @@ export function scanCommandsDir(commandsDir: string): Command[] {
   /** 当前目录累计发现的旧 Commands。 */
   const commands: Command[] = [];
   for (const file of listFiles(commandsDir, '\\.md$')) {
+    /** 当前旧 Command Markdown 的完整内容。 */
     const content = readFile(file);
     if (!content) continue;
     commands.push({
@@ -185,6 +192,7 @@ export function scanSettingsHooks(settingsPath: string): Hooks | null {
   if (!content) return null;
 
   try {
+    /** 旧 Settings 解析出的未知 JSON 对象。 */
     const data = JSON.parse(content);
     return data.hooks || null;
   } catch {
@@ -204,6 +212,7 @@ export function scanHooksJson(hooksJsonPath: string): Hooks | null {
   if (!content) return null;
 
   try {
+    /** 旧 hooks.json 解析出的未知 JSON 对象。 */
     const data = JSON.parse(content);
     return data.hooks || null;
   } catch {
@@ -226,6 +235,7 @@ function scanInstructions(rootDir: string): Instruction[] {
   for (const name of ['CLAUDE.md', '.claude/CLAUDE.md']) {
     /** 当前 CLAUDE.md 候选文件绝对路径。 */
     const filePath = path.join(rootDir, name);
+    /** 当前候选 Instruction 的可选文本内容。 */
     const content = readFile(filePath);
     if (content) {
       instructions.push({ fileName: path.basename(name), content, sourcePath: filePath, isRule: false });
@@ -235,6 +245,7 @@ function scanInstructions(rootDir: string): Instruction[] {
   /** `.claude/rules` 旧规则目录。 */
   const rulesDir = path.join(rootDir, '.claude', 'rules');
   for (const file of listFiles(rulesDir, '\\.md$')) {
+    /** 当前旧 Rule Markdown 的可选文本内容。 */
     const content = readFile(file);
     if (content) {
       instructions.push({ fileName: path.basename(file), content, sourcePath: file, isRule: true });
