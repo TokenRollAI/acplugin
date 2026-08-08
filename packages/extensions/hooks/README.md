@@ -2,6 +2,8 @@
 
 Portable Hook authoring plus six official Platform adapters for `@tokenroll/acplugin`.
 
+Requires Node.js `^20.19.0 || ^22.13.0 || >=23.5.0`.
+
 `统一书写 Hook，并由官方 Adapter 构建为六个平台各自支持的静态或运行时产物。`
 
 ```bash

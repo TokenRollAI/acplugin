@@ -10,9 +10,13 @@
 
 Core、六个内置 Platform 包和测试工作区是私有包，不能发布，也不能作为运行时依赖出现在 tarball 中。所有 npm 发布、Registry 检查、Git Tag 和 GitHub Release 均由获得授权的维护者手动执行。仓库没有自动发布工作流。
 
+仓库构建与发布工具要求 Node.js `^22.18.0 || >=24.11.0`，CI 固定使用 22.18.0；三个公开包继续使用独立的运行时范围 `^20.19.0 || ^22.13.0 || >=23.5.0`。
+
 ## 仓库工作流
 
 `Check` 在 Pull Request 创建时自动执行，并且只运行 lint 和 typecheck。
+
+`Verify` 仅能手工触发，并使用只读仓库权限。它先在 Node 22.18 上构建并完整验证三个 tarball，上传这组精确 Artifact，再在干净的 Node 20.19 工程中下载并消费同一组文件；不会发布或创建 Release 引用。
 
 `Patch` 从仓库默认分支手动触发，必须提供目标分支。目标分支必须至少包含一个让公开包产生版本变更的有效 Changeset；空 Changeset 不满足门禁。工作流会检出目标分支，使用 `pnpm changeset status` 在任何版本写入前验证发布计划，再用 `pnpm version-packages` 消费全部 Changeset，验证固定公开包组的版本发生了变化，刷新 pnpm lockfile，运行 lint 和 typecheck，然后创建或更新一个以所选目标分支为 base 的版本 PR。
 
@@ -30,7 +34,7 @@ Core、六个内置 Platform 包和测试工作区是私有包，不能发布，
    pnpm run release:verify
    ```
 
-`release:verify` 会在临时目录中打包三个包，对实际 tarball 执行类型解析与 Package Lint，检查清单和内容，再安装到干净的外部消费者中，验证默认工程以及自动生成的六 Platform/两 Extension 脚手架。它绝不会发布任何内容。
+`release:verify` 会在临时目录中打包三个包，对实际 tarball 执行类型解析与 Package Lint，检查清单和内容，再安装到干净的外部消费者中，验证默认工程以及自动生成的六 Platform/两 Extension 脚手架。对于主包，它会解析 tarball 内真实 ESM 图，证明 CLI 到 Migration 的边仍是 lazy，逐条核对外部 import 与已声明运行时依赖，并拒绝任何指向可选 MCP Extension 的运行时边。它绝不会发布任何内容。CI 通过 `--tarball-dir <empty-directory>` 保留精确验证过的文件，供独立 Node 20.19 consumer job 使用；本地调用省略该参数并清理临时文件。
 
 在打包最终待发布产物前，必须把经过精确验证的发布准备提交到 `main`。
 

@@ -2,7 +2,7 @@
 
 > [中文对照](usage.zh-CN.md)
 
-acplugin projects author one canonical plugin and compile Platform-owned deliveries for Claude Code, Codex, Cursor, Antigravity, OpenCode, and Pi. Node.js 20 or newer and pnpm are required.
+acplugin projects author one canonical plugin and compile Platform-owned deliveries for Claude Code, Codex, Cursor, Antigravity, OpenCode, and Pi. Node.js `^20.19.0 || ^22.13.0 || >=23.5.0` and pnpm are required.
 
 ## Create a project
 
@@ -22,6 +22,8 @@ pnpm dlx @tokenroll/acplugin init my-plugin --yes \
 ```
 
 An enabled Extension adds its dependency, import, config entry, and empty source directory; `init` never invents a Hook handler or MCP server.
+
+Known `init` input errors use the stable `INIT_INVALID` diagnostic and preserve a safe actionable reason. The specialized error class remains internal and is not exported from the public facade.
 
 ## Author Components
 
@@ -55,7 +57,7 @@ pnpm exec acplugin dev
 - `validate` generates and materializes every selected Platform in temporary storage without changing `dist`.
 - `inspect` adds Artifact details without changing `dist`.
 - `build` atomically replaces the complete managed output only after every Platform succeeds.
-- `dev` watches config, canonical resources, Public, descriptors, and registered bundle imports; it coalesces changes, closes watcher-readiness gaps with a catch-up build, and retains the last successful output after a failed rebuild.
+- `dev` watches config, Jiti-transformed local config imports, canonical resources, Public, descriptors, and registered bundle imports. External transformed helpers are watched at their nearest package root. Native ESM imports that bypass Jiti transformation and runtime-computed dynamic targets are not precisely discoverable; keep them below the project root or connect their package through a transformed helper. Dev coalesces changes, closes watcher-readiness gaps with a catch-up build, and retains the last successful output after a failed rebuild.
 
 Common options are `--config`, `--platform <id...>`, `--mode`, `--no-strict`, and `--json`. Strict mode is on by default. For example, a Codex build containing an Agent fails because Codex can only receive an explicit degraded Skill fallback; use `--no-strict` when that result is intentional.
 

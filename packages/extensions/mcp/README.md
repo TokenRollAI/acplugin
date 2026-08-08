@@ -2,6 +2,8 @@
 
 Optional MCP declarations, local builds, and Platform adapters for `@tokenroll/acplugin`.
 
+Requires Node.js `^20.19.0 || ^22.13.0 || >=23.5.0`.
+
 `可选的 MCP 远程声明、本地构建能力，以及面向各 acplugin Platform 的适配实现。`
 
 ```bash

@@ -70,7 +70,7 @@ Platform 实现包均为私有包，并由 tsdown 内联进 `@tokenroll/acplugin
 
 `packages/extensions/hooks/` 发现 `src/hooks/<id>/hook.ts`，验证事件、Matcher、超时和结果语义，并把每个实现只构建一次，生成平台中立的 Node 20 ESM Handler。其六个内置 Platform Adapter 为各宿主生成经过验证的静态配置或运行时集成，并逐项报告不支持/降级事件。运行时失败只使用固定错误码且不输出 payload；第三方许可说明与 Handler 相邻。
 
-`packages/extensions/mcp/` 发现 `src/mcp/<id>/mcp.ts`。远程 HTTP 只保留公开值和环境变量引用；本地 stdio 必须提供完整 Server 代码，统一 Bundle 一次 Node 20 ESM，拒绝无法解析的动态 import，并在不读取 Secret 引用值的前提下通过有边界的真实 initialize/tools-list smoke。六个平台 Adapter 只生成宿主可安装的传输：Claude Code/Codex 支持两者，Cursor/Antigravity 支持远程 HTTP，OpenCode 支持远程/本地，Pi 对两者均报告不支持。
+`packages/extensions/mcp/` 发现 `src/mcp/<id>/mcp.ts`。远程 HTTP 只保留公开值和环境变量引用；本地 stdio 必须提供完整 Server 代码，统一 Bundle 一次 Node 20 ESM，拒绝无法解析的动态 import，并在 development 与 production 中都于不读取 Secret 引用值的前提下通过有边界的真实 initialize/tools-list smoke。该协议检查没有 mode 或缓存跳过分支。六个平台 Adapter 只生成宿主可安装的传输：Claude Code/Codex 支持两者，Cursor/Antigravity 支持远程 HTTP，OpenCode 支持远程/本地，Pi 对两者均报告不支持。
 
 Extension build context 以 `addWatchFile()` 作为唯一依赖登记边界。官方 bundler 通过它上报实际 Rolldown 模块图；Core 校验绝对文件身份，具体 watcher 策略与 ready 补偿仍只由 CLI 负责。
 

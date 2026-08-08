@@ -2,6 +2,8 @@
 
 Canonical AI plugin framework and CLI for building Claude Code, Codex, Cursor, Antigravity, OpenCode, and Pi deliveries from one source project.
 
+Requires Node.js `^20.19.0 || ^22.13.0 || >=23.5.0`.
+
 ```bash
 pnpm add -D @tokenroll/acplugin
 ```

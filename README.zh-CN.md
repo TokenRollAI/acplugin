@@ -8,7 +8,8 @@ acplugin 是一个统一的 AI Plugin 框架和 CLI。开发者只维护一套 C
 
 ## 环境要求
 
-- Node.js 20 或更高版本
+- 已发布 CLI/运行时：Node.js `^20.19.0 || ^22.13.0 || >=23.5.0`
+- 仓库开发/构建：Node.js `^22.18.0 || >=24.11.0`
 - 生成工程和本仓库统一使用 pnpm
 
 ## 快速开始
@@ -264,7 +265,7 @@ export default defineMcpServer({
 });
 ```
 
-本地 MCP 需要由作者提供完整的 stdio MCP 实现，acplugin 将其 bundle 为 Node 20 ESM。构建会拒绝无法静态解析的运行时 dynamic import，只把声明的公开字面量环境值传给探测进程，并要求在超时和输出上限内完成 `initialize → initialized → tools/list` 协议 smoke；任何 Secret 引用值都不会被读取。HTTP MCP 只需要声明远程 endpoint、认证和 Header 引用。生产 HTTP 必须使用 HTTPS，开发模式仅允许 loopback HTTP。
+本地 MCP 需要由作者提供完整的 stdio MCP 实现，acplugin 将其 bundle 为 Node 20 ESM。development 与 production 构建都会拒绝无法静态解析的运行时 dynamic import，只把声明的公开字面量环境值传给探测进程，并要求在超时和输出上限内完成 `initialize → initialized → tools/list` 协议 smoke；不会通过 mode 分支或缓存跳过该检查，任何 Secret 引用值也不会被读取。HTTP MCP 只需要声明远程 endpoint、认证和 Header 引用。生产 HTTP 必须使用 HTTPS，开发模式仅允许 loopback HTTP。
 
 Claude Code、Codex 和 OpenCode 同时支持远程 HTTP 与 Bundle 后的本地 stdio；Cursor 与 Antigravity 只支持远程 HTTP；Pi 会报告 MCP 不支持。详见[完整兼容矩阵](./llmdoc/reference/conversion-matrix.zh-CN.md)。
 
@@ -292,7 +293,7 @@ acplugin migrate <source> [destination]
 - `validate`：完整生成并验证 Platform，但不写 `dist`。
 - `inspect`：额外返回 Artifact 详情，但不写 `dist`。
 - `build`：所有 Platform 成功后才原子替换完整 `dist`。
-- `dev`：监听配置、Components、Public、descriptor 和 Extension 登记的 Bundle 依赖；每批新 watcher ready 后先补偿构建，失败时保留上次成功产物，修复后恢复构建。
+- `dev`：监听配置、经 Jiti 转换的本地配置 import、Components、Public、descriptor 和 Extension 登记的 Bundle 依赖；工程外的已转换配置 helper 会按最近 package root 保守递归监听。每批新 watcher ready 后先补偿构建，失败时保留上次成功产物，修复后恢复构建。绕过 Jiti transform 的原生 ESM import 和运行时计算的动态 import 无法被精确发现，应放在工程根内，或由一个已转换 helper 使其 package root 进入监听边界。
 - 裸 `acplugin` 只打印 Help，不发起交互。
 
 退出码：`0` 成功、`1` 工程/构建/Migration 失败、`2` CLI 用法或框架内部失败、`130` 取消。非 watch 命令的 JSON 模式只向 stdout 输出一个带版本的文档。

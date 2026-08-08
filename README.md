@@ -8,7 +8,8 @@ This is not a Claude-project converter. The canonical project is the source of t
 
 ## Requirements
 
-- Node.js 20 or newer
+- Published CLI/runtime: Node.js `^20.19.0 || ^22.13.0 || >=23.5.0`
+- Repository development/build: Node.js `^22.18.0 || >=24.11.0`
 - pnpm for generated projects and this repository
 
 ## Quick start
@@ -278,7 +279,7 @@ export default defineMcpServer({
 });
 ```
 
-For local MCP, you provide a complete stdio MCP implementation in `server.ts`; acplugin bundles it for Node 20 ESM. The build rejects unresolved runtime dynamic imports, starts the bundle with only declared literal environment values, and requires a bounded `initialize → initialized → tools/list` smoke test to pass. Referenced secret values are never read. For HTTP MCP, you declare the remote endpoint and auth/header references—there is no local server implementation to provide. Production HTTP endpoints require HTTPS; development permits loopback HTTP.
+For local MCP, you provide a complete stdio MCP implementation in `server.ts`; acplugin bundles it for Node 20 ESM. Both development and production builds reject unresolved runtime dynamic imports, start the bundle with only declared literal environment values, and require a bounded `initialize → initialized → tools/list` smoke test to pass. No mode branch or cache bypasses this protocol check. Referenced secret values are never read. For HTTP MCP, you declare the remote endpoint and auth/header references—there is no local server implementation to provide. Production HTTP endpoints require HTTPS; development permits loopback HTTP.
 
 Claude Code, Codex, and OpenCode support both remote HTTP and bundled local stdio. Cursor and Antigravity support remote HTTP only; Pi reports MCP unsupported. See the [complete compatibility matrix](./llmdoc/reference/conversion-matrix.md).
 
@@ -308,7 +309,7 @@ Common project options include `--config`, `--platform`, `--mode`, `--no-strict`
 - `validate` runs complete Platform generation and materialization validation without writing `dist`.
 - `inspect` adds detailed Artifact metadata without writing `dist`.
 - `build` atomically replaces the complete managed `dist` only after every selected Platform succeeds.
-- `dev` watches config, Components, Public files, descriptors, and Extension-registered bundle dependencies. It performs a catch-up build after each new watcher becomes ready, retains the last successful output after failures, and rebuilds after recovery.
+- `dev` watches config, Jiti-transformed local config imports, Components, Public files, descriptors, and Extension-registered bundle dependencies. External transformed config helpers are watched conservatively at their nearest package root. It performs a catch-up build after each new watcher becomes ready, retains the last successful output after failures, and rebuilds after recovery. Native ESM imports that bypass Jiti transformation and runtime-computed dynamic import targets cannot be discovered precisely; keep them under the project root or make their package root reachable through a transformed helper.
 - Bare `acplugin` prints Help and never prompts.
 
 Exit codes are `0` success, `1` project/build/migration failure, `2` CLI usage or internal framework failure, and `130` cancellation. JSON mode writes one schema-versioned document to stdout for non-watch commands; diagnostics/logs use stderr.

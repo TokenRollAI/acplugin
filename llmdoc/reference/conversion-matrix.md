@@ -19,6 +19,8 @@ This matrix describes canonical acplugin 1.0 builds. Tolerant conversion code be
 
 OpenCode is intentionally a workspace overlay and does not receive a fabricated generic `package.json`. Pi is a real npm package and its manifest must not leak workspace/private fields. Antigravity emits only Manifest fields confirmed by its public contract.
 
+When a Codex Command body uses `{{arguments}}`, the fallback Skill replaces it with explicit invocation guidance and reports an independent `arguments/transform` capability. A declared `argumentHint` remains a separate degraded capability because Codex Skill metadata has no equivalent hint UI.
+
 ## Hooks Extension
 
 | Portable event | Claude Code | Codex | Cursor | Antigravity | OpenCode | Pi |
@@ -44,7 +46,7 @@ Platform-only events remain explicitly scoped and do not expand the portable uni
 | Remote Streamable HTTP | Native | Native | Native | Native | Native | Unsupported |
 | Bundled local stdio | Native | Native | Unsupported | Unsupported | Native local process | Unsupported |
 
-Remote MCP authoring is declarative: the author supplies an endpoint and secret references. Local stdio MCP is executable content: the author supplies a complete `server.ts`, which the Extension bundles once as Node 20 ESM and reuses only on Platforms with a verified install-root contract. No Adapter reads secret environment values during build.
+Remote MCP authoring is declarative: the author supplies an endpoint and secret references. Local stdio MCP is executable content: the author supplies a complete `server.ts`, which the Extension bundles once as Node 20 ESM and reuses only on Platforms with a verified install-root contract. The bounded initialize/tools-list smoke runs in both development and production; no Adapter reads secret environment values during build.
 
 ## Source and output ownership
 

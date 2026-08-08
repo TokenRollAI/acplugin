@@ -10,9 +10,13 @@ The public packages are released at one version:
 
 Core, the six built-in Platform packages, and the test workspace are private and must not be published or appear as packed runtime dependencies. Every npm publication, Registry check, Git tag, and GitHub Release is performed manually by an authorized maintainer. The repository has no automated publication workflow.
 
+Repository build and release tooling requires Node.js `^22.18.0 || >=24.11.0`; CI uses 22.18.0. The published packages retain the separate runtime range `^20.19.0 || ^22.13.0 || >=23.5.0`.
+
 ## Repository workflows
 
 `Check` runs automatically for pull requests and performs only lint and typecheck.
+
+`Verify` is manually dispatched with read-only repository permissions. It builds and fully validates the three tarballs on Node 22.18, uploads that exact artifact set, then downloads and consumes it in a clean Node 20.19 project. It never publishes or creates release references.
 
 `Patch` is manually dispatched from the repository default branch with a required target-branch input. The target branch must contain at least one effective Changeset that produces a public-package release; an empty Changeset does not pass the gate. Before any version write, the workflow checks the release plan with `pnpm changeset status`. It then consumes all Changesets with `pnpm version-packages`, verifies that the fixed public cohort version changed, refreshes the pnpm lockfile, runs lint and typecheck, and creates or updates a version PR whose base is the selected target branch.
 
@@ -30,7 +34,7 @@ The repository setting **Actions → General → Workflow permissions → Allow 
    pnpm run release:verify
    ```
 
-`release:verify` packs all three packages in a temporary directory, runs type-resolution and package-lint checks on the actual tarballs, checks their manifests and contents, installs them into a clean external consumer, then imports/builds the default project and a generated six-Platform/two-Extension scaffold. It never publishes.
+`release:verify` packs all three packages in a temporary directory, runs type-resolution and package-lint checks on the actual tarballs, checks their manifests and contents, installs them into a clean external consumer, then imports/builds the default project and a generated six-Platform/two-Extension scaffold. For the main package it parses the packed ESM graph, proves the CLI-to-Migration edge remains lazy, checks every external import against declared runtime dependencies, and rejects any runtime edge to the optional MCP Extension. It never publishes. CI passes `--tarball-dir <empty-directory>` to retain the exact verified files for the separate Node 20.19 consumer job; local calls omit the flag and clean their temporary files.
 
 Commit the exact verified release preparation to `main` before packing the artifacts that will be published.
 

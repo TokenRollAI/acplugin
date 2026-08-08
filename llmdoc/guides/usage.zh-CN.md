@@ -2,7 +2,7 @@
 
 > [English version](usage.md)
 
-acplugin 工程只创作一份规范 Plugin，然后为 Claude Code、Codex、Cursor、Antigravity、OpenCode 和 Pi 编译由各 Platform 拥有的交付产物。运行环境需要 Node.js 20 或更高版本以及 pnpm。
+acplugin 工程只创作一份规范 Plugin，然后为 Claude Code、Codex、Cursor、Antigravity、OpenCode 和 Pi 编译由各 Platform 拥有的交付产物。运行环境需要 Node.js `^20.19.0 || ^22.13.0 || >=23.5.0` 以及 pnpm。
 
 ## 创建工程
 
@@ -22,6 +22,8 @@ pnpm dlx @tokenroll/acplugin init my-plugin --yes \
 ```
 
 启用 Extension 只会添加依赖、Import、配置项和空源码目录；`init` 不会伪造 Hook Handler 或 MCP Server。
+
+已知的 `init` 输入错误使用稳定的 `INIT_INVALID` 诊断，并保留安全、可操作的原因；对应的专用错误类型保持内部实现，不从公开门面导出。
 
 ## 创作 Components
 
@@ -55,7 +57,7 @@ pnpm exec acplugin dev
 - `validate` 会在临时目录中生成并物化全部选中 Platform，不修改 `dist`；
 - `inspect` 会增加 Artifact 明细，但不修改 `dist`；
 - `build` 只有在全部 Platform 成功后才会原子替换完整受管输出；
-- `dev` 监听配置、规范资源、Public、descriptor 和登记的 Bundle import，合并变更并用 watcher ready 后的补偿构建关闭竞态窗口；重建失败时保留最后一次成功输出。
+- `dev` 监听配置、经 Jiti 转换的本地配置 import、规范资源、Public、descriptor 和登记的 Bundle import；工程外的已转换 helper 按最近 package root 监听。绕过 Jiti transform 的原生 ESM import 与运行时计算的动态目标无法被精确发现，应放在工程根下，或通过已转换 helper 把对应 package 接入监听边界。Dev 会合并变更，用 watcher ready 后的补偿构建关闭竞态窗口，并在重建失败时保留最后一次成功输出。
 
 通用选项包括 `--config`、`--platform <id...>`、`--mode`、`--no-strict` 和 `--json`。默认启用严格模式。例如，包含 Agent 的 Codex 构建会失败，因为 Codex 只能接收显式降级的 Skill 回退；当该结果符合预期时，可使用 `--no-strict` 明确接受。
 

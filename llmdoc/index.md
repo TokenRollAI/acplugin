@@ -17,7 +17,11 @@ acplugin is a canonical AI Plugin framework and CLI. Authors write Commands, Ski
 ## Architecture
 
 - [System architecture](architecture/system.md) · [系统架构](architecture/system.zh-CN.md) — Core-owned lifecycle, Platforms, Extensions, Adapter boundaries, Artifact graph, and managed output transaction.
+- [ADR-0001: lifecycle determinism and cache](architecture/decisions/0001-lifecycle-determinism-and-cache.md) · [ADR-0001：生命周期确定性与缓存](architecture/decisions/0001-lifecycle-determinism-and-cache.zh-CN.md)
+- [ADR-0002: Extension contribution order](architecture/decisions/0002-extension-contribution-order.md) · [ADR-0002：Extension 贡献顺序](architecture/decisions/0002-extension-contribution-order.zh-CN.md)
+- [ADR-0003: Node toolchain and runtime support](architecture/decisions/0003-node-toolchain-and-runtime-support.md) · [ADR-0003：Node 工具链与运行时支持](architecture/decisions/0003-node-toolchain-and-runtime-support.zh-CN.md)
 
 ## Reference
 
 - [Target support matrix](reference/conversion-matrix.md) · [目标支持矩阵](reference/conversion-matrix.zh-CN.md) — native, transformed, and degraded target capabilities plus implementation ownership.
+- [Domain glossary](reference/domain-glossary.md) · [领域术语](reference/domain-glossary.zh-CN.md) — build, commit, cleanup, determinism, cacheability, and Extension ordering terms.

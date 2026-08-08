@@ -19,6 +19,8 @@
 
 OpenCode 明确是 Workspace Overlay，不会收到伪造的通用 `package.json`。Pi 是真实 npm Package，其 Manifest 不得泄漏 workspace/private 字段。Antigravity 只输出公开契约已经确认的 Manifest 字段。
 
+当 Codex Command 正文使用 `{{arguments}}` 时，回退 Skill 会把它替换为显式调用指引，并独立报告 `arguments/transform` 能力。作者声明的 `argumentHint` 仍是另一项 degraded 能力，因为 Codex Skill 元数据没有等价的参数提示 UI。
+
 ## Hooks Extension
 
 | 可移植事件 | Claude Code | Codex | Cursor | Antigravity | OpenCode | Pi |
@@ -44,7 +46,7 @@ Platform-only 事件保持显式平台限定，不会扩充可移植事件联合
 | 远程 Streamable HTTP | 原生 | 原生 | 原生 | 原生 | 原生 | 不支持 |
 | Bundle 后的本地 stdio | 原生 | 原生 | 不支持 | 不支持 | 原生本地进程 | 不支持 |
 
-远程 MCP 是声明式内容：作者提供 Endpoint 和秘密引用。本地 stdio MCP 是可执行内容：作者提供完整 `server.ts`，Extension 只 Bundle 一次 Node 20 ESM，并只复用到具有已验证安装根契约的 Platform。任何 Adapter 都不会在构建时读取环境变量秘密值。
+远程 MCP 是声明式内容：作者提供 Endpoint 和秘密引用。本地 stdio MCP 是可执行内容：作者提供完整 `server.ts`，Extension 只 Bundle 一次 Node 20 ESM，并只复用到具有已验证安装根契约的 Platform。有边界的 initialize/tools-list smoke 会在 development 与 production 中都执行；任何 Adapter 都不会在构建时读取环境变量秘密值。
 
 ## 源码与输出所有权
 
