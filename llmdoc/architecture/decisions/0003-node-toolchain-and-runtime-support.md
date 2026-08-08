@@ -12,9 +12,9 @@ The repository build tool and the published packages have different Node.js cons
 
 1. Repository development, build, and release verification use `^22.18.0 || >=24.11.0`; the standard CI version is 22.18.0.
 2. The CLI pins Commander 14.0.1, whose engine range still includes Node 20. Existing CLI behavior is protected by subprocess tests.
-3. The three public packages declare the intersection supported by their current direct runtime dependencies: `^20.19.0 || ^22.13.0 || >=23.5.0`.
+3. All public packages declare the intersection supported by their current direct runtime dependencies: `^20.19.0 || ^22.13.0 || >=23.5.0`.
 4. Generated Hooks/MCP code and package bundles retain the `node20` target. `@types/node` remains on the Node 20.19 API baseline.
-5. Private package manifests are not mass-rewritten to the repository toolchain range. They are not published, and their emitted code remains part of the Node 20-targeted public bundle.
+5. Private package manifests are not mass-rewritten to the repository toolchain range. Core is not published and its emitted code remains part of the Node 20-targeted main-package bundle.
 6. Release verification builds and packs on Node 22.18, then installs the exact verified tarballs in a separate Node 20.19 clean consumer smoke test.
 
 ## Consequences
@@ -35,6 +35,7 @@ The repository build tool and the published packages have different Node.js cons
 
 - Root `package.json:7-9,29-44`
 - `packages/acplugin/package.json:11,31-57`
+- `packages/platforms/*/package.json:11`
 - `packages/extensions/hooks/package.json:11,21-28`
 - `packages/extensions/mcp/package.json:11,20-27`
 - `.github/workflows/check.yml:16-19`

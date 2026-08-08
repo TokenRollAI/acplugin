@@ -13,7 +13,7 @@ pnpm install
 pnpm build
 ```
 
-`init` 可通过 `--hooks` 和 `--mcp` 加入官方 Hooks/MCP Extension。默认配置会构建 Claude Code 和 Codex，并使用 `src/`、`public/` 和 `dist/` 目录。也可以显式选择任意受支持组合：
+`init` 可通过 `--hooks` 和 `--mcp` 加入官方 Hooks/MCP Extension。未传 `--platform` 时，它的脚手架选择是 Claude Code 和 Codex，但仍会显式写入两个 Platform 依赖、import 和配置项。也可以改为选择任意受支持组合：
 
 ```bash
 pnpm dlx @tokenroll/acplugin init my-plugin --yes \
@@ -21,7 +21,7 @@ pnpm dlx @tokenroll/acplugin init my-plugin --yes \
   --hooks --mcp
 ```
 
-启用 Extension 只会添加依赖、Import、配置项和空源码目录；`init` 不会伪造 Hook Handler 或 MCP Server。
+每个所选 Platform 都是独立 package。启用 Extension 同样只会添加依赖、Import、配置项和空源码目录；`init` 不会伪造 Hook Handler 或 MCP Server。构建运行时不会默认发现或安装 package。
 
 已知的 `init` 输入错误使用稳定的 `INIT_INVALID` 诊断，并保留安全、可操作的原因；对应的专用错误类型保持内部实现，不从公开门面导出。
 
@@ -33,11 +33,14 @@ Commands 放在 `src/commands/<id>.md`，Skills 放在 `src/skills/<id>/SKILL.md
 
 ```ts
 import { defineConfig } from '@tokenroll/acplugin';
+import claudeCode from '@tokenroll/acplugin-platform-claude-code';
+import codex from '@tokenroll/acplugin-platform-codex';
 
 export default defineConfig({
   name: 'my-plugin',
   version: '1.0.0',
   description: 'Reusable AI workflows.',
+  platforms: [claudeCode(), codex()],
 });
 ```
 
@@ -61,10 +64,16 @@ pnpm exec acplugin dev
 
 通用选项包括 `--config`、`--platform <id...>`、`--mode`、`--no-strict` 和 `--json`。默认启用严格模式。例如，包含 Agent 的 Codex 构建会失败，因为 Codex 只能接收显式降级的 Skill 回退；当该结果符合预期时，可使用 `--no-strict` 明确接受。
 
-现有工程通过公开工厂配置非默认 Platform：
+现有工程需要显式安装并导入每个 Platform package：
 
 ```ts
-import { antigravity, claudeCode, codex, cursor, defineConfig, openCode, pi } from '@tokenroll/acplugin';
+import { defineConfig } from '@tokenroll/acplugin';
+import antigravity from '@tokenroll/acplugin-platform-antigravity';
+import claudeCode from '@tokenroll/acplugin-platform-claude-code';
+import codex from '@tokenroll/acplugin-platform-codex';
+import cursor from '@tokenroll/acplugin-platform-cursor';
+import openCode from '@tokenroll/acplugin-platform-opencode';
+import pi from '@tokenroll/acplugin-platform-pi';
 
 export default defineConfig({
   name: 'my-plugin',
@@ -75,7 +84,7 @@ export default defineConfig({
 });
 ```
 
-OpenCode 产物是 Workspace Overlay，Pi 产物是 npm Package，不会被错误标记为静态 Plugin。启用严格多平台构建前应先查看[平台支持矩阵](../reference/conversion-matrix.zh-CN.md)。
+`platforms` 是必填项，`--platform <id...>` 只会筛选该列表中已经实例化的 ID。主包不重新导出官方工厂，也不提供 Platform subpath。OpenCode 产物是 Workspace Overlay，Pi 产物是 npm Package，不会被错误标记为静态 Plugin。启用严格多平台构建前应先查看[平台支持矩阵](../reference/conversion-matrix.zh-CN.md)。
 
 ## Public 文件
 

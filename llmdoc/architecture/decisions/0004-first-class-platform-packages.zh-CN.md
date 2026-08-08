@@ -8,7 +8,7 @@
 
 六个官方 Platform 原先是私有 `@acplugin/*` workspace 包，由主包内联并重新导出。该模型虽然让单 tarball 使用简单，却让官方 Platform 依赖第三方无法访问的 Core，并迫使主包知道全部官方实现。Extension 已证明“独立公开 package + 主包 peer dependency + 公开 lifecycle SDK”可以保持 owner、品牌和生命周期边界。
 
-`@tokenroll/acplugin/platforms/<id>` 只是主包 export subpath，不是独立 npm package，不能提供独立安装、版本和第三方对等发布模型。
+如果把 `@tokenroll/acplugin/platforms/<id>` 做成 export subpath，它仍由主包拥有并统一版本化，不能提供独立安装、发布和第三方对等模型。
 
 ## 决策
 

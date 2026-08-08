@@ -6,13 +6,19 @@
 
 acplugin 是一套规范化 AI Plugin 框架和 CLI。作者只需维护一份由框架定义的源码结构，即可为 Claude Code、Codex、Cursor、Antigravity、OpenCode 和 Pi 编译由各 Platform 拥有的交付产物。
 
-公开发布的固定包组包括：
+独立版本化的公开 package 包括：
 
 - `@tokenroll/acplugin`
+- `@tokenroll/acplugin-platform-claude-code`
+- `@tokenroll/acplugin-platform-codex`
+- `@tokenroll/acplugin-platform-cursor`
+- `@tokenroll/acplugin-platform-antigravity`
+- `@tokenroll/acplugin-platform-opencode`
+- `@tokenroll/acplugin-platform-pi`
 - `@tokenroll/acplugin-extension-hooks`
 - `@tokenroll/acplugin-extension-mcp`
 
-Core、内置 Platform 实现和集成测试工作区都是私有包。主公开包会内联 Core 和 Platform，因此消费者不会依赖任何 `@acplugin/*` 包。
+Core 和集成测试工作区是私有包。主包内联 Core；每个官方 Platform/Extension 则通过 peer dependency 从 `@tokenroll/acplugin` 导入公开 SDK。消费者不会依赖任何 `@acplugin/*` 包。
 
 ## 创作边界
 
@@ -20,7 +26,7 @@ Core Component 包括 Commands、Skills 和 Agents。`acplugin.config.ts` 在顶
 
 Instructions 被有意排除在可安装 Plugin 边界之外。Hooks 和 MCP 是可选 Extension：启用后通过其自有 Platform Adapter 加入同一套 Core 生命周期，不会替换 Platform。
 
-默认 Platform 是 Claude Code 和 Codex。Cursor 与 Antigravity 是可选静态 Plugin，OpenCode 是可选 Workspace Overlay，Pi 是可选 npm Package。每个平台都会明确报告原生转换和语义损失，不会伪装成最低公共格式。
+`platforms` 必填：构建只使用显式导入的实例，主包不会按 ID 发现或加载实现。未传 `--platform` 时，`init` 仍把 Claude Code 和 Codex 作为脚手架选择，但会显式写入两个依赖和 import。Claude Code、Codex、Cursor 与 Antigravity 是静态 Plugin，OpenCode 是 Workspace Overlay，Pi 是 npm Package。每个平台都会明确报告原生转换和语义损失，不会伪装成最低公共格式。
 
 ## 运行时与工具链
 
@@ -33,7 +39,7 @@ Instructions 被有意排除在可安装 Plugin 边界之外。Hooks 和 MCP 是
 
 各 Workspace 通过 catalog 中的 `@typescript/native` 别名安装 TypeScript 7 编译器，因此所有 Package 的 `tsc` Script 都实际使用 7.x。由于 TypeScript 7 不再暴露旧 JavaScript Compiler API，根目录只为 typescript-eslint 和注释 AST 检查器把官方 `@typescript/typescript6` 兼容 API 安装为 `typescript`。Vitest、tsdown、Rolldown 和 Node 类型同样通过 catalog 共享；平台专属运行时与 Lint 依赖仍由实际使用它们的 Package 独立声明。
 
-CLI 入口是 `packages/acplugin/src/cli.ts`；公开门面和配置加载器位于 `packages/acplugin/src/index.ts`。
+CLI 入口是 `packages/acplugin/src/cli.ts`；公开门面位于 `packages/acplugin/src/index.ts`，`packages/acplugin/src/project-config.ts` 负责加载可信工程配置。官方集成工厂只存在于各自 package 中。
 
 ## Migration 边界
 

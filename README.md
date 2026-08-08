@@ -21,24 +21,29 @@ pnpm install
 pnpm build
 ```
 
-Or add the CLI to an existing empty project:
+Or add the framework and the Platforms you want to an existing empty project:
 
 ```bash
-pnpm add -D @tokenroll/acplugin
+pnpm add -D @tokenroll/acplugin \
+  @tokenroll/acplugin-platform-claude-code \
+  @tokenroll/acplugin-platform-codex
 ```
 
 ```ts
 // acplugin.config.ts
 import { defineConfig } from '@tokenroll/acplugin';
+import claudeCode from '@tokenroll/acplugin-platform-claude-code';
+import codex from '@tokenroll/acplugin-platform-codex';
 
 export default defineConfig({
   name: 'my-plugin',
   version: '1.0.0',
   description: 'Reusable AI workflows.',
+  platforms: [claudeCode(), codex()],
 });
 ```
 
-The default build produces both `dist/claude-code` and `dist/codex`. Cursor, Antigravity, OpenCode, and Pi are opt-in because their compatibility and delivery types differ.
+`init` selects Claude Code and Codex unless you pass `--platform`, but it writes both packages and imports explicitly. The runtime has no implicit Platforms: every build uses exactly the instances in `platforms`.
 
 `acplugin.config.ts`, Hook descriptors, and MCP descriptors are trusted executable project code loaded by the local Node.js process. Review them with the same care as build scripts; Migration input remains untrusted data and is never executed as canonical descriptor code.
 
@@ -73,7 +78,9 @@ acplugin deliberately has no Instructions Component. Repository-wide instruction
 `acplugin.config.ts` exports an object or a sync/async function receiving `{ command, mode }`.
 
 ```ts
-import { claudeCode, codex, defineConfig } from '@tokenroll/acplugin';
+import { defineConfig } from '@tokenroll/acplugin';
+import claudeCode from '@tokenroll/acplugin-platform-claude-code';
+import codex from '@tokenroll/acplugin-platform-codex';
 
 export default defineConfig(({ mode }) => ({
   name: 'team-review',
@@ -106,20 +113,25 @@ Top-level fields:
 | `displayName` | Optional presentation name. |
 | `srcDir` | Canonical source directory; defaults to `src`. |
 | `public` | `false`, a directory, or explicit copy rules. |
-| `platforms` | Platform factory list; defaults to Claude Code and Codex. |
+| `platforms` | Required, non-empty list of explicitly imported Platform instances. |
 | `extensions` | Optional horizontal capabilities such as Hooks and MCP. |
 | `build.outDir` | Managed output directory; defaults to `dist`. |
 | `build.strict` | Fail on degraded/unsupported compatibility; defaults to `true`. |
 
-All built-in Platform factories are exported from the main package:
+Official Platforms are independent packages with a peer dependency on the framework:
 
 ```ts
-import { antigravity, claudeCode, codex, cursor, openCode, pi } from '@tokenroll/acplugin';
+import antigravity from '@tokenroll/acplugin-platform-antigravity';
+import claudeCode from '@tokenroll/acplugin-platform-claude-code';
+import codex from '@tokenroll/acplugin-platform-codex';
+import cursor from '@tokenroll/acplugin-platform-cursor';
+import openCode from '@tokenroll/acplugin-platform-opencode';
+import pi from '@tokenroll/acplugin-platform-pi';
 
 const platforms = [claudeCode(), codex(), cursor(), antigravity(), openCode(), pi()];
 ```
 
-Claude Code, Codex, Cursor, and Antigravity emit static Plugin delivery units. OpenCode emits a workspace overlay; Pi emits an npm package. `acplugin init --platform <id...>` writes the selected factories explicitly.
+Claude Code, Codex, Cursor, and Antigravity emit static Plugin delivery units. OpenCode emits a workspace overlay; Pi emits an npm package. `acplugin init --platform <id...>` installs and writes the selected packages explicitly. The main package does not re-export official integrations, discover packages by ID, or install anything during a build.
 
 ## Core Components
 
@@ -188,12 +200,14 @@ pnpm add -D @tokenroll/acplugin-extension-hooks
 
 ```ts
 import { defineConfig } from '@tokenroll/acplugin';
+import claudeCode from '@tokenroll/acplugin-platform-claude-code';
 import hooks from '@tokenroll/acplugin-extension-hooks';
 
 export default defineConfig({
   name: 'policy-plugin',
   version: '1.0.0',
   description: 'Portable policy hooks.',
+  platforms: [claudeCode()],
   extensions: [hooks()],
 });
 ```
@@ -242,12 +256,14 @@ pnpm add -D @tokenroll/acplugin-extension-mcp
 
 ```ts
 import { defineConfig } from '@tokenroll/acplugin';
+import claudeCode from '@tokenroll/acplugin-platform-claude-code';
 import mcp from '@tokenroll/acplugin-extension-mcp';
 
 export default defineConfig({
   name: 'tools-plugin',
   version: '1.0.0',
   description: 'Portable MCP tools.',
+  platforms: [claudeCode()],
   extensions: [mcp()],
 });
 ```
@@ -344,10 +360,16 @@ Use `--dry-run` for scan/map/validation without destination writes and `--strict
 Public packages:
 
 - `@tokenroll/acplugin`
+- `@tokenroll/acplugin-platform-claude-code`
+- `@tokenroll/acplugin-platform-codex`
+- `@tokenroll/acplugin-platform-cursor`
+- `@tokenroll/acplugin-platform-antigravity`
+- `@tokenroll/acplugin-platform-opencode`
+- `@tokenroll/acplugin-platform-pi`
 - `@tokenroll/acplugin-extension-hooks`
 - `@tokenroll/acplugin-extension-mcp`
 
-Core, built-in Platform implementations, and the Vitest integration workspace are private packages bundled or excluded from public runtime manifests.
+The official integrations use the same public lifecycle SDK available to third-party packages and declare the main package as a peer dependency. Only Core and the Vitest integration workspace remain private; Core is bundled into the main package and no public runtime manifest contains `@acplugin/*`.
 
 ```bash
 pnpm install
@@ -355,11 +377,11 @@ pnpm run check
 pnpm run release:verify
 ```
 
-`release:verify` creates pnpm tarballs, inspects their files/manifests and type resolution, installs all three into a clean external consumer, builds the default project, and creates/builds a six-Platform/two-Extension scaffold. It performs no npm publication.
+`release:verify` creates all nine public tarballs from one revision, inspects their files/manifests and type resolution, verifies peer rewriting and brand interoperability, and installs a six-Platform/two-Extension scaffold into a clean external consumer. It performs no npm publication.
 
 Pull requests automatically run lint and typecheck. The manually dispatched `Patch` workflow accepts a target branch containing at least one effective Changeset that bumps a public package, consumes its Changesets to bump versions and generate changelogs, and opens a version PR back to that branch.
 
-Every npm release is manual. A maintainer publishes the verified tarballs in Hooks → MCP → main order, verifies each exact Registry version, and only then manually creates the matching `tokenroll-vX.Y.Z` tag and GitHub Release. The repository contains no automated publication workflow.
+Every package is versioned independently and only changed packages are published. If a new integration release requires a newly published main-package peer range, publish and verify that main-package version first; otherwise unrelated integrations have no prescribed order. Each exact Registry version, package-specific tag, and GitHub Release is handled manually. The repository contains no automated publication workflow.
 
 ## License
 

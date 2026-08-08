@@ -21,24 +21,29 @@ pnpm install
 pnpm build
 ```
 
-也可以在空工程中安装：
+也可以在空工程中安装框架和需要的 Platform：
 
 ```bash
-pnpm add -D @tokenroll/acplugin
+pnpm add -D @tokenroll/acplugin \
+  @tokenroll/acplugin-platform-claude-code \
+  @tokenroll/acplugin-platform-codex
 ```
 
 ```ts
 // acplugin.config.ts
 import { defineConfig } from '@tokenroll/acplugin';
+import claudeCode from '@tokenroll/acplugin-platform-claude-code';
+import codex from '@tokenroll/acplugin-platform-codex';
 
 export default defineConfig({
   name: 'my-plugin',
   version: '1.0.0',
   description: '可复用的 AI 工作流。',
+  platforms: [claudeCode(), codex()],
 });
 ```
 
-默认同时生成 `dist/claude-code` 和 `dist/codex`。Cursor、Antigravity、OpenCode 和 Pi 需要显式启用，因为它们的兼容性和交付形态不同。
+`init` 在没有传入 `--platform` 时会选择 Claude Code 和 Codex，但会显式写入两个 package 及其 import。运行时没有隐式 Platform：每次构建只使用 `platforms` 中的实例。
 
 `acplugin.config.ts`、Hook descriptor 和 MCP descriptor 是由本地 Node.js 进程加载的可信工程代码，应按构建脚本同等标准审查。Migration 输入始终作为不可信数据处理，不会被当作规范 descriptor 执行。
 
@@ -73,7 +78,9 @@ acplugin 不提供 Instructions Component。仓库级 Instructions 属于宿主/
 `acplugin.config.ts` 可以导出对象，也可以导出接收 `{ command, mode }` 的同步/异步函数。
 
 ```ts
-import { claudeCode, codex, defineConfig } from '@tokenroll/acplugin';
+import { defineConfig } from '@tokenroll/acplugin';
+import claudeCode from '@tokenroll/acplugin-platform-claude-code';
+import codex from '@tokenroll/acplugin-platform-codex';
 
 export default defineConfig(({ mode }) => ({
   name: 'team-review',
@@ -104,20 +111,25 @@ export default defineConfig(({ mode }) => ({
 | `displayName` | 可选展示名称。 |
 | `srcDir` | 规范化源码目录，默认 `src`。 |
 | `public` | `false`、目录，或明确 copy 规则。 |
-| `platforms` | Platform 工厂列表，默认 Claude Code + Codex。 |
+| `platforms` | 必填的非空列表，内容是显式导入的 Platform 实例。 |
 | `extensions` | Hooks/MCP 等可选横向能力。 |
 | `build.outDir` | 托管输出目录，默认 `dist`。 |
 | `build.strict` | 遇到 degraded/unsupported 是否失败，默认 `true`。 |
 
-主包导出全部内置 Platform 工厂：
+官方 Platform 是以主包为 peer dependency 的独立 package：
 
 ```ts
-import { antigravity, claudeCode, codex, cursor, openCode, pi } from '@tokenroll/acplugin';
+import antigravity from '@tokenroll/acplugin-platform-antigravity';
+import claudeCode from '@tokenroll/acplugin-platform-claude-code';
+import codex from '@tokenroll/acplugin-platform-codex';
+import cursor from '@tokenroll/acplugin-platform-cursor';
+import openCode from '@tokenroll/acplugin-platform-opencode';
+import pi from '@tokenroll/acplugin-platform-pi';
 
 const platforms = [claudeCode(), codex(), cursor(), antigravity(), openCode(), pi()];
 ```
 
-Claude Code、Codex、Cursor 和 Antigravity 生成静态 Plugin 交付单元；OpenCode 生成 Workspace Overlay；Pi 生成 npm Package。`acplugin init --platform <id...>` 会显式写入所选工厂。
+Claude Code、Codex、Cursor 和 Antigravity 生成静态 Plugin 交付单元；OpenCode 生成 Workspace Overlay；Pi 生成 npm Package。`acplugin init --platform <id...>` 会显式安装并写入所选 package。主包不会重新导出官方集成、按 ID 发现 package，也不会在构建时安装依赖。
 
 ## 核心 Components
 
@@ -186,12 +198,14 @@ pnpm add -D @tokenroll/acplugin-extension-hooks
 
 ```ts
 import { defineConfig } from '@tokenroll/acplugin';
+import claudeCode from '@tokenroll/acplugin-platform-claude-code';
 import hooks from '@tokenroll/acplugin-extension-hooks';
 
 export default defineConfig({
   name: 'policy-plugin',
   version: '1.0.0',
   description: '可移植策略 Hooks。',
+  platforms: [claudeCode()],
   extensions: [hooks()],
 });
 ```
@@ -236,6 +250,20 @@ acplugin 把每个实现只 bundle 一次，生成平台中立的 Node 20 ESM Ha
 
 ```bash
 pnpm add -D @tokenroll/acplugin-extension-mcp
+```
+
+```ts
+import { defineConfig } from '@tokenroll/acplugin';
+import claudeCode from '@tokenroll/acplugin-platform-claude-code';
+import mcp from '@tokenroll/acplugin-extension-mcp';
+
+export default defineConfig({
+  name: 'tools-plugin',
+  version: '1.0.0',
+  description: '可移植 MCP 工具。',
+  platforms: [claudeCode()],
+  extensions: [mcp()],
+});
 ```
 
 远程 Streamable HTTP：
@@ -328,10 +356,16 @@ acplugin migrate owner/repository ./new-workspace --all
 公开包：
 
 - `@tokenroll/acplugin`
+- `@tokenroll/acplugin-platform-claude-code`
+- `@tokenroll/acplugin-platform-codex`
+- `@tokenroll/acplugin-platform-cursor`
+- `@tokenroll/acplugin-platform-antigravity`
+- `@tokenroll/acplugin-platform-opencode`
+- `@tokenroll/acplugin-platform-pi`
 - `@tokenroll/acplugin-extension-hooks`
 - `@tokenroll/acplugin-extension-mcp`
 
-Core、内置 Platform 实现和 Vitest Test workspace 均为私有包，会被内联或排除在公开运行时依赖之外。
+官方集成使用与第三方 package 相同的公开 lifecycle SDK，并把主包声明为 peer dependency。只有 Core 和 Vitest Test workspace 保持私有；Core 会内联进主包，任何公开运行时清单都不得包含 `@acplugin/*`。
 
 ```bash
 pnpm install
@@ -339,11 +373,11 @@ pnpm run check
 pnpm run release:verify
 ```
 
-`release:verify` 会创建三个 pnpm tarball、检查 Manifest/文件列表和类型解析、安装到 monorepo 外的干净消费者、构建默认工程，并生成和构建六 Platform/两 Extension 脚手架；不会发布 npm。
+`release:verify` 会从同一 Revision 创建九个公开 tarball，检查 Manifest、文件列表、类型解析、peer rewrite 和品牌互操作，并在 monorepo 外的干净消费者中构建六 Platform/两 Extension 脚手架；不会发布 npm。
 
 PR 会自动执行 lint 和 typecheck。手工触发的 `Patch` Workflow 接收一个至少包含一份会升级公开包的有效 Changeset 的目标分支，消费 Changesets 以升级版本并生成 changelog，随后创建一个合并回该目标分支的版本 PR。
 
-所有 npm 版本都从已验证 tarball 手工发布，顺序为 Hooks → MCP → 主包。逐一验证 Registry 精确版本后，再由维护者手工创建对应的 `tokenroll-vX.Y.Z` Tag 和 GitHub Release；仓库不包含自动发布 Workflow。
+九个公开 package 独立版本化，只发布发生版本变化的 package。如果新的集成版本要求尚未发布的主包 peer range，先发布并验证该主包版本；除此之外，各集成之间没有固定顺序。每个 Registry 精确版本、package 对应的 Tag 和 GitHub Release 都由维护者手工处理；仓库不包含自动发布 Workflow。
 
 ## License
 

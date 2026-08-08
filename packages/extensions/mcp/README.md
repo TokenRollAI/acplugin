@@ -7,17 +7,21 @@ Requires Node.js `^20.19.0 || ^22.13.0 || >=23.5.0`.
 `可选的 MCP 远程声明、本地构建能力，以及面向各 acplugin Platform 的适配实现。`
 
 ```bash
-pnpm add -D @tokenroll/acplugin @tokenroll/acplugin-extension-mcp
+pnpm add -D @tokenroll/acplugin \
+  @tokenroll/acplugin-platform-claude-code \
+  @tokenroll/acplugin-extension-mcp
 ```
 
 ```ts
 import { defineConfig } from '@tokenroll/acplugin';
+import claudeCode from '@tokenroll/acplugin-platform-claude-code';
 import mcp from '@tokenroll/acplugin-extension-mcp';
 
 export default defineConfig({
   name: 'my-plugin',
   version: '1.0.0',
   description: 'Reusable AI workflows.',
+  platforms: [claudeCode()],
   extensions: [mcp()],
 });
 ```

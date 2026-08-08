@@ -50,7 +50,7 @@ Platforms run in config order; Extensions run in config order and do not form a 
 
 `buildEnd` runs in reverse initialized order after success or failure. On a candidate commit, the transaction keeps the prior output as a rollback backup while reverse cleanup runs. A cleanup failure is reported, passed to remaining cleanup hooks, and rolls the swap back to the previous complete output. Failures before the swap reach cleanup through the normal error path.
 
-## Built-in Platforms
+## Official Platform packages
 
 `packages/platforms/claude-code/` emits native Commands, Skills, Agents, `.claude-plugin/plugin.json`, and optional Marketplace distributions.
 
@@ -64,7 +64,7 @@ Platforms run in config order; Extensions run in config order and do not form a 
 
 `packages/platforms/pi/` emits an npm package with native Skills, Command Prompt Templates, and Agent guidance Skills. Its package Manifest declares only Pi discovery fields and cannot leak `private`, `workspaces`, or private workspace dependencies.
 
-Platform implementation packages are private and bundled into `@tokenroll/acplugin` by tsdown. The public facade exposes stable Platform factories and subpath contracts, not private serializers or validators.
+Each directory is published as `@tokenroll/acplugin-platform-<id>`. Production code imports only the public SDK from `@tokenroll/acplugin`, declares it as a peer dependency, and exports its factory as both the default and a named export. The main package neither bundles nor re-exports these implementations; private serializers and validators stay inside the owning Platform tarball.
 
 ## Official Extensions
 
@@ -93,4 +93,4 @@ Pre-commit failure leaves old output untouched. Failure after backup/swap rolls 
 
 `packages/acplugin/src/index.ts` exposes the public facade while `project-config.ts` loads fresh trusted TypeScript config/descriptor modules with Jiti and `run-project.ts` connects resolved projects to Core. Nested config objects are runtime-schema checked before lifecycle use. `cli.ts` owns commands, JSON/text output discipline, exit codes, watch coalescing, and lazy Migration import. Stable diagnostics redact external exceptions, absolute paths, and recognizable credential forms.
 
-The normal facade and CLI startup do not import `migration/`. The packed main tarball contains no private package imports or runtime dependencies; `scripts/verify-release.mjs` proves this in an external consumer.
+The normal facade and CLI startup do not import `migration/`. The packed main tarball contains no private package imports, official integration manifest dependencies, or normal eager edges to those integrations. Migration's lazy chunk is the isolated exception that bundles the Claude Code Platform and MCP implementation needed to validate generated projects. `scripts/verify-release.mjs` proves the eager boundary, all nine public package manifests, peer rewrites, and private Symbol-brand interoperability through one main-package peer instance in external consumers.

@@ -8,7 +8,7 @@
 
 The six official Platforms were private `@acplugin/*` workspace packages bundled and re-exported by the main package. That model simplified single-tarball use, but gave official Platforms a private Core dependency unavailable to third parties and forced the framework package to know every official implementation. Extensions already demonstrate that an independently published package can use the public lifecycle SDK through a peer dependency while preserving ownership, branding, and lifecycle boundaries.
 
-`@tokenroll/acplugin/platforms/<id>` is an export subpath owned by the main package, not an independent npm package with its own installation, version, and publication boundary.
+Making `@tokenroll/acplugin/platforms/<id>` an export subpath would still leave it owned and versioned by the main package rather than create an independent installation and publication boundary.
 
 ## Decision
 

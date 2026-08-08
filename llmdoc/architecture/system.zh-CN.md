@@ -50,7 +50,7 @@ Platform 按配置顺序执行；Extension 同样按配置顺序执行，不形�
 
 `buildEnd` 在成功或失败后按初始化的逆序执行。候选提交期间，事务会在逆序清理完成前保留旧输出作为回滚备份。清理失败会写入报告、传递给剩余清理 Hook，并把目录交换回滚到上一份完整输出。交换前失败则通过普通错误路径进入清理阶段。
 
-## 内置 Platform
+## 官方 Platform package
 
 `packages/platforms/claude-code/` 生成原生 Commands、Skills、Agents、`.claude-plugin/plugin.json` 和可选 Marketplace 分发。
 
@@ -64,7 +64,7 @@ Platform 按配置顺序执行；Extension 同样按配置顺序执行，不形�
 
 `packages/platforms/pi/` 生成 npm Package，包含原生 Skills、Command Prompt Templates 和 Agent 指导 Skills。Package Manifest 只声明 Pi 发现字段，不能泄漏 `private`、`workspaces` 或私有工作区依赖。
 
-Platform 实现包均为私有包，并由 tsdown 内联进 `@tokenroll/acplugin`。公开门面只暴露稳定的 Platform 工厂和子路径契约，不暴露私有 Serializer 或 Validator。
+每个目录分别发布为 `@tokenroll/acplugin-platform-<id>`。生产源码只从 `@tokenroll/acplugin` 导入公开 SDK，将其声明为 peer dependency，并同时默认导出和具名导出工厂。主包既不内联也不重新导出这些实现；私有 Serializer 和 Validator 留在所属 Platform tarball 内。
 
 ## 官方 Extensions
 
@@ -93,4 +93,4 @@ Extension build context 以 `addWatchFile()` 作为唯一依赖登记边界。�
 
 `packages/acplugin/src/index.ts` 暴露公开门面；`project-config.ts` 使用 Jiti 重新加载受信任的 TypeScript 配置和描述文件，`run-project.ts` 把解析后的工程连接到 Core。嵌套配置对象会在进入生命周期前完成运行时 Schema 检查。`cli.ts` 负责命令、JSON/文本输出纪律、退出码、监听事件合并和 Migration 延迟导入。稳定诊断会隐藏外部异常、本机绝对路径和可识别的凭据形式。
 
-普通公开门面和 CLI 启动过程不会导入 `migration/`。主包 tarball 不包含私有包导入或私有运行时依赖；`scripts/verify-release.mjs` 会在外部消费者中验证这一点。
+普通公开门面和 CLI 启动过程不会导入 `migration/`。主包 tarball 不包含私有包导入、官方集成 manifest 依赖或指向集成的正常 eager 边。Migration lazy chunk 是隔离的例外：它内联生成工程自验证所需的 Claude Code Platform 与 MCP 实现。`scripts/verify-release.mjs` 会在外部消费者中验证 eager 边界、九个公开 package manifest、peer rewrite，以及经同一主包 peer 实例产生的私有 Symbol 品牌互操作。

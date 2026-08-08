@@ -6,13 +6,19 @@
 
 acplugin is a canonical AI Plugin framework and CLI. Authors maintain one framework-owned source layout and compile Platform-owned deliveries for Claude Code, Codex, Cursor, Antigravity, OpenCode, and Pi.
 
-The public release cohort is:
+The independently versioned public packages are:
 
 - `@tokenroll/acplugin`
+- `@tokenroll/acplugin-platform-claude-code`
+- `@tokenroll/acplugin-platform-codex`
+- `@tokenroll/acplugin-platform-cursor`
+- `@tokenroll/acplugin-platform-antigravity`
+- `@tokenroll/acplugin-platform-opencode`
+- `@tokenroll/acplugin-platform-pi`
 - `@tokenroll/acplugin-extension-hooks`
 - `@tokenroll/acplugin-extension-mcp`
 
-Core, built-in Platform implementations, and the integration-test workspace are private packages. The main public package bundles Core and Platforms so consumers never depend on `@acplugin/*`.
+Core and the integration-test workspace are private packages. The main package bundles Core, while every official Platform and Extension imports the public SDK from `@tokenroll/acplugin` through a peer dependency. Consumers never depend on `@acplugin/*`.
 
 ## Authoring boundary
 
@@ -20,7 +26,7 @@ Core Components are Commands, Skills, and Agents. `acplugin.config.ts` defines t
 
 Instructions are intentionally outside the installable Plugin boundary. Hooks and MCP are optional Extensions: enabling one joins the same Core-owned lifecycle through its own Platform Adapters rather than replacing a Platform.
 
-Default Platforms are Claude Code and Codex. Cursor and Antigravity are opt-in static Plugins, OpenCode is an opt-in workspace overlay, and Pi is an opt-in npm package. Every Platform reports native transformations and semantic losses instead of claiming a lowest-common-denominator format.
+`platforms` is required: builds use explicitly imported instances and the main package never discovers or loads an implementation by ID. `init` keeps Claude Code and Codex as its scaffolding selection when no `--platform` option is supplied, but writes both dependencies and imports. Claude Code, Codex, Cursor, and Antigravity are static Plugins, OpenCode is a workspace overlay, and Pi is an npm package. Every Platform reports native transformations and semantic losses instead of claiming a lowest-common-denominator format.
 
 ## Runtime and tooling
 
@@ -33,7 +39,7 @@ Default Platforms are Claude Code and Codex. Cursor and Antigravity are opt-in s
 
 The TypeScript 7 compiler is installed across workspaces through the cataloged `@typescript/native` alias, so every package `tsc` script uses 7.x. The root keeps the official `@typescript/typescript6` compatibility API under the `typescript` name only for tools such as typescript-eslint and the comment AST checker, because TypeScript 7 no longer exposes the legacy JavaScript compiler API. Vitest, tsdown, Rolldown, and Node types are also shared through the catalog; package-specific runtime and lint dependencies stay in the package that owns them.
 
-The CLI entry is `packages/acplugin/src/cli.ts`; the facade/config loader is `packages/acplugin/src/index.ts`.
+The CLI entry is `packages/acplugin/src/cli.ts`; the facade is `packages/acplugin/src/index.ts`, and `packages/acplugin/src/project-config.ts` loads trusted project configuration. Official integration factories live only in their own packages.
 
 ## Migration boundary
 

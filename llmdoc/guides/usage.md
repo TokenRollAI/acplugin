@@ -13,7 +13,7 @@ pnpm install
 pnpm build
 ```
 
-`init` can add the official Hooks and MCP Extensions with `--hooks` and `--mcp`. The default configuration builds Claude Code and Codex and uses `src/`, `public/`, and `dist/`. Select any supported set explicitly:
+`init` can add the official Hooks and MCP Extensions with `--hooks` and `--mcp`. Without `--platform`, its scaffolding selection is Claude Code and Codex; it still writes both Platform dependencies, imports, and config entries explicitly. Select any supported set instead:
 
 ```bash
 pnpm dlx @tokenroll/acplugin init my-plugin --yes \
@@ -21,7 +21,7 @@ pnpm dlx @tokenroll/acplugin init my-plugin --yes \
   --hooks --mcp
 ```
 
-An enabled Extension adds its dependency, import, config entry, and empty source directory; `init` never invents a Hook handler or MCP server.
+Every selected Platform is an independent package. An enabled Extension similarly adds its dependency, import, config entry, and empty source directory; `init` never invents a Hook handler or MCP server. The build runtime has no default package discovery or installation behavior.
 
 Known `init` input errors use the stable `INIT_INVALID` diagnostic and preserve a safe actionable reason. The specialized error class remains internal and is not exported from the public facade.
 
@@ -33,11 +33,14 @@ The required top-level identity belongs directly in `acplugin.config.ts`:
 
 ```ts
 import { defineConfig } from '@tokenroll/acplugin';
+import claudeCode from '@tokenroll/acplugin-platform-claude-code';
+import codex from '@tokenroll/acplugin-platform-codex';
 
 export default defineConfig({
   name: 'my-plugin',
   version: '1.0.0',
   description: 'Reusable AI workflows.',
+  platforms: [claudeCode(), codex()],
 });
 ```
 
@@ -61,10 +64,16 @@ pnpm exec acplugin dev
 
 Common options are `--config`, `--platform <id...>`, `--mode`, `--no-strict`, and `--json`. Strict mode is on by default. For example, a Codex build containing an Agent fails because Codex can only receive an explicit degraded Skill fallback; use `--no-strict` when that result is intentional.
 
-To configure non-default Platforms in an existing project, use the exported factories:
+To configure Platforms in an existing project, install and import each package explicitly:
 
 ```ts
-import { antigravity, claudeCode, codex, cursor, defineConfig, openCode, pi } from '@tokenroll/acplugin';
+import { defineConfig } from '@tokenroll/acplugin';
+import antigravity from '@tokenroll/acplugin-platform-antigravity';
+import claudeCode from '@tokenroll/acplugin-platform-claude-code';
+import codex from '@tokenroll/acplugin-platform-codex';
+import cursor from '@tokenroll/acplugin-platform-cursor';
+import openCode from '@tokenroll/acplugin-platform-opencode';
+import pi from '@tokenroll/acplugin-platform-pi';
 
 export default defineConfig({
   name: 'my-plugin',
@@ -75,7 +84,7 @@ export default defineConfig({
 });
 ```
 
-OpenCode output is a workspace overlay and Pi output is an npm package. They are not mislabeled as static Plugins. See the [Platform support matrix](../reference/conversion-matrix.md) before enabling strict multi-Platform builds.
+`platforms` is required and `--platform <id...>` only filters IDs already instantiated in that list. The main package does not re-export official factories or provide Platform subpaths. OpenCode output is a workspace overlay and Pi output is an npm package. They are not mislabeled as static Plugins. See the [Platform support matrix](../reference/conversion-matrix.md) before enabling strict multi-Platform builds.
 
 ## Public files
 

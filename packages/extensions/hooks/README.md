@@ -7,18 +7,22 @@ Requires Node.js `^20.19.0 || ^22.13.0 || >=23.5.0`.
 `统一书写 Hook，并由官方 Adapter 构建为六个平台各自支持的静态或运行时产物。`
 
 ```bash
-pnpm add -D @tokenroll/acplugin @tokenroll/acplugin-extension-hooks
+pnpm add -D @tokenroll/acplugin \
+  @tokenroll/acplugin-platform-claude-code \
+  @tokenroll/acplugin-extension-hooks
 ```
 
 ```ts
 // acplugin.config.ts
 import { defineConfig } from '@tokenroll/acplugin';
+import claudeCode from '@tokenroll/acplugin-platform-claude-code';
 import hooks from '@tokenroll/acplugin-extension-hooks';
 
 export default defineConfig({
   name: 'my-plugin',
   version: '1.0.0',
   description: 'Reusable AI workflows.',
+  platforms: [claudeCode()],
   extensions: [hooks()],
 });
 ```

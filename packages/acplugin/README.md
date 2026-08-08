@@ -1,21 +1,26 @@
 # @tokenroll/acplugin
 
-Canonical AI plugin framework and CLI for building Claude Code, Codex, Cursor, Antigravity, OpenCode, and Pi deliveries from one source project.
+Canonical AI plugin framework, public lifecycle SDK, and CLI. Platform and Extension implementations are independently installed peer packages.
 
 Requires Node.js `^20.19.0 || ^22.13.0 || >=23.5.0`.
 
 ```bash
-pnpm add -D @tokenroll/acplugin
+pnpm add -D @tokenroll/acplugin \
+  @tokenroll/acplugin-platform-claude-code \
+  @tokenroll/acplugin-platform-codex
 ```
 
 ```ts
 // acplugin.config.ts
 import { defineConfig } from '@tokenroll/acplugin';
+import claudeCode from '@tokenroll/acplugin-platform-claude-code';
+import codex from '@tokenroll/acplugin-platform-codex';
 
 export default defineConfig({
   name: 'my-plugin',
   version: '1.0.0',
   description: 'Reusable AI workflows.',
+  platforms: [claudeCode(), codex()],
 });
 ```
 
@@ -28,17 +33,23 @@ public/
 acplugin.config.ts
 ```
 
-The default Platforms are `claude-code` and `codex`. Commands and Agents are adapted explicitly when a Platform has no equivalent native component. Select all six during scaffolding with:
+`platforms` is required and there is no runtime default. `init` selects Claude Code and Codex only as a scaffolding default, writing their dependencies and imports explicitly. Select all six during scaffolding with:
 
 ```bash
 pnpm exec acplugin init my-plugin --yes \
   --platform claude-code codex cursor antigravity opencode pi
 ```
 
-Or configure exported factories directly:
+Or install and configure the independent packages directly:
 
 ```ts
-import { antigravity, claudeCode, codex, cursor, defineConfig, openCode, pi } from '@tokenroll/acplugin';
+import { defineConfig } from '@tokenroll/acplugin';
+import antigravity from '@tokenroll/acplugin-platform-antigravity';
+import claudeCode from '@tokenroll/acplugin-platform-claude-code';
+import codex from '@tokenroll/acplugin-platform-codex';
+import cursor from '@tokenroll/acplugin-platform-cursor';
+import openCode from '@tokenroll/acplugin-platform-opencode';
+import pi from '@tokenroll/acplugin-platform-pi';
 
 export default defineConfig({
   name: 'my-plugin',
@@ -51,12 +62,15 @@ export default defineConfig({
 
 Claude Code, Codex, Cursor, and Antigravity produce Plugin delivery units. OpenCode produces a workspace overlay; Pi produces an npm package. The compatibility report records native, transformed, degraded, and unsupported behavior before any managed output is committed.
 
+The main package does not re-export official Platforms or Extensions and has no `platforms/*` subpath. Official packages use the same `definePlatform()` and Adapter contracts exposed to third-party authors, so the framework does not need a registry, naming convention, or source change to accept another implementation.
+
 Claude Code can be configured as an explicit Platform. Omitting `marketplace` builds only the installable Plugin; `marketplace: {}` additionally creates a self-contained single-Plugin Marketplace from the top-level metadata.
 
 Claude Code 可以作为显式 Platform 配置。省略 `marketplace` 时只构建可安装 Plugin；配置 `marketplace: {}` 时，会从顶层元数据推导并额外生成一个自包含的单 Plugin Marketplace。
 
 ```ts
-import { claudeCode, defineConfig } from '@tokenroll/acplugin';
+import { defineConfig } from '@tokenroll/acplugin';
+import claudeCode from '@tokenroll/acplugin-platform-claude-code';
 
 export default defineConfig({
   name: 'my-plugin',

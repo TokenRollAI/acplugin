@@ -1,32 +1,39 @@
-# Manually releasing the public package cohort
+# Manually releasing independently versioned public packages
 
 > [中文对照](release.zh-CN.md)
 
-The public packages are released at one version:
+The repository has nine independently versioned public packages:
 
 - `@tokenroll/acplugin`
+- `@tokenroll/acplugin-platform-claude-code`
+- `@tokenroll/acplugin-platform-codex`
+- `@tokenroll/acplugin-platform-cursor`
+- `@tokenroll/acplugin-platform-antigravity`
+- `@tokenroll/acplugin-platform-opencode`
+- `@tokenroll/acplugin-platform-pi`
 - `@tokenroll/acplugin-extension-hooks`
 - `@tokenroll/acplugin-extension-mcp`
 
-Core, the six built-in Platform packages, and the test workspace are private and must not be published or appear as packed runtime dependencies. Every npm publication, Registry check, Git tag, and GitHub Release is performed manually by an authorized maintainer. The repository has no automated publication workflow.
+Core and the test workspace are private and must not be published or appear as packed runtime dependencies. Every npm publication, Registry check, Git tag, and GitHub Release is performed manually by an authorized maintainer. The repository has no automated publication workflow.
 
-Repository build and release tooling requires Node.js `^22.18.0 || >=24.11.0`; CI uses 22.18.0. The published packages retain the separate runtime range `^20.19.0 || ^22.13.0 || >=23.5.0`.
+Repository build and release tooling requires Node.js `^22.18.0 || >=24.11.0`; CI uses 22.18.0. All nine public packages currently declare the separate runtime range `^20.19.0 || ^22.13.0 || >=23.5.0`.
 
 ## Repository workflows
 
 `Check` runs automatically for pull requests and performs only lint and typecheck.
 
-`Verify` is manually dispatched with read-only repository permissions. It builds and fully validates the three tarballs on Node 22.18, uploads that exact artifact set, then downloads and consumes it in a clean Node 20.19 project. It never publishes or creates release references.
+`Verify` is manually dispatched with read-only repository permissions. It builds and validates all nine tarballs from one revision on Node 22.18, uploads that exact artifact set, then consumes it in a clean Node 20.19 project. It never publishes or creates release references. Verifying one revision together does not make the packages a fixed version cohort.
 
-`Patch` is manually dispatched from the repository default branch with a required target-branch input. The target branch must contain at least one effective Changeset that produces a public-package release; an empty Changeset does not pass the gate. Before any version write, the workflow checks the release plan with `pnpm changeset status`. It then consumes all Changesets with `pnpm version-packages`, verifies that the fixed public cohort version changed, refreshes the pnpm lockfile, runs lint and typecheck, and creates or updates a version PR whose base is the selected target branch.
+`Patch` is manually dispatched from the repository default branch with a required target-branch input. The target branch must contain at least one effective Changeset that releases a public package; an empty Changeset does not pass the gate. Before any version write, the workflow checks the release plan with `pnpm changeset status`. It then consumes all Changesets with `pnpm version-packages`, verifies that at least one public version changed, refreshes the pnpm lockfile, runs lint and typecheck, and creates or updates a version PR whose base is the selected target branch.
 
 The repository setting **Actions → General → Workflow permissions → Allow GitHub Actions to create and approve pull requests** must be enabled for `Patch` to create the PR with `GITHUB_TOKEN`. The workflow does not publish packages or create release references.
 
 ## Prepare a release
 
-1. Add a Changeset for user-visible changes and version the fixed package group with `pnpm version-packages`.
-2. Confirm all three public manifests have the same version and Extension peer dependencies still use `workspace:^` in the repository.
-3. Run:
+1. Add Changesets for the affected public packages. Integration changes should name their owning Platform or Extension package; change the main package only when its CLI or public SDK changes.
+2. Inspect `pnpm changeset status`, consume the Changesets with `pnpm version-packages`, refresh the lockfile with `pnpm install --lockfile-only`, and confirm only the intended manifests changed. Versions need not match.
+3. Confirm every official Platform/Extension still declares `@tokenroll/acplugin` as `workspace:^` in the repository. Packing must rewrite it to a normal `^x.y.z` peer range.
+4. Run:
 
    ```bash
    pnpm install --frozen-lockfile
@@ -34,55 +41,41 @@ The repository setting **Actions → General → Workflow permissions → Allow 
    pnpm run release:verify
    ```
 
-`release:verify` packs all three packages in a temporary directory, runs type-resolution and package-lint checks on the actual tarballs, checks their manifests and contents, installs them into a clean external consumer, then imports/builds the default project and a generated six-Platform/two-Extension scaffold. For the main package it parses the packed ESM graph, proves the CLI-to-Migration edge remains lazy, checks every external import against declared runtime dependencies, and rejects any runtime edge to the optional MCP Extension. It never publishes. CI passes `--tarball-dir <empty-directory>` to retain the exact verified files for the separate Node 20.19 consumer job; local calls omit the flag and clean their temporary files.
+`release:verify` packs all nine packages in a temporary directory, runs type-resolution and package-lint checks on the actual tarballs, validates manifests and contents, verifies peer rewriting and private Symbol-brand interoperability through one main-package peer instance, then installs and builds a six-Platform/two-Extension scaffold in a clean external consumer. For the main package it parses the packed ESM graph, proves the CLI-to-Migration edge remains lazy, checks every external import against declared runtime dependencies, and rejects normal runtime dependencies on official integrations. It never publishes. CI passes `--tarball-dir <empty-directory>` to retain the exact verified files for the separate Node 20.19 consumer job; local calls can use the same option when tarballs need to be retained for release.
 
-Commit the exact verified release preparation to `main` before packing the artifacts that will be published.
+Commit the exact verified release preparation before publishing. Do not rebuild from another revision after verification.
 
-## Pack the release cohort
+## Select the tarballs to publish
 
-Create a private temporary directory outside the repository and pack in dependency-safe order:
+Publish only packages whose versions changed in the release plan. Retain or download the exact nine-tarball artifact set produced by `release:verify`, then select the changed package tarballs from that set. The unchanged tarballs are cross-package verification inputs, not releases.
 
-```bash
-ACPLUGIN_RELEASE_DIR="$(mktemp -d)"
-pnpm --filter @tokenroll/acplugin-extension-hooks pack --pack-destination "$ACPLUGIN_RELEASE_DIR"
-pnpm --filter @tokenroll/acplugin-extension-mcp pack --pack-destination "$ACPLUGIN_RELEASE_DIR"
-pnpm --filter @tokenroll/acplugin pack --pack-destination "$ACPLUGIN_RELEASE_DIR"
-```
+Before publishing an integration, inspect its packed peer range for `@tokenroll/acplugin`:
 
-Inspect the three generated tarball paths before continuing. They must be produced from the same verified revision and carry one exact version.
+- if that range requires a new main-package version from the same release, publish and verify the main package first;
+- if the range is already satisfied in the Registry, the integration can be published independently;
+- Platform and Extension packages have no ordering dependency on one another.
 
 ## Publish manually
 
-An authorized TokenRoll npm organization maintainer publishes each generated tarball with 2FA. Use this strict order:
-
-1. `@tokenroll/acplugin-extension-hooks`
-2. `@tokenroll/acplugin-extension-mcp`
-3. `@tokenroll/acplugin`
-
-For each tarball, run the publication and exact-version check manually before continuing:
+An authorized TokenRoll npm organization maintainer publishes each selected tarball with 2FA and immediately checks its exact version:
 
 ```bash
 npm publish <tarball-path> --access public --otp <OTP>
 npm view <package-name>@<version> version
 ```
 
-Do not publish private `@acplugin/*` packages. If publication is interrupted, query every exact version and continue only with the first missing package in the prescribed order; npm versions are immutable and must not be republished.
+If publication is interrupted, query every planned exact version and continue only with missing versions whose peer dependencies are already available. npm versions are immutable and must not be republished.
 
-## Create the release references manually
+## Create release references manually
 
-Only after all three exact npm versions are visible in the Registry may a maintainer create and push the matching tag:
-
-```bash
-git tag tokenroll-vX.Y.Z
-git push origin tokenroll-vX.Y.Z
-```
-
-The tag does not trigger publication. Create the GitHub Release manually after verifying the pushed tag and all three Registry versions.
+The old single-cohort `tokenroll-vX.Y.Z` tag cannot represent independently versioned packages and no longer applies. After an exact package version is visible in the Registry, a maintainer may create its package-specific tag and GitHub Release using the repository's separately approved naming convention. Do not guess or automate that convention in a workflow.
 
 ## Safety rules
 
 - Never use `npm unpublish` or mutate dist-tags as part of recovery.
-- Never create or push the tag before all three exact npm versions are verified.
+- Never publish an integration before its packed main-package peer range exists in the Registry.
 - Never publish private `@acplugin/*` workspace packages.
+- Never publish an unchanged package merely because all nine were verified together.
+- Never create or push release references before their exact npm versions are verified.
 - Never add or invoke automated npm publication, Tag creation, or GitHub Release automation without an explicit project decision.
-- Remove the private temporary tarball directory after the release audit is complete.
+- Remove private temporary tarball directories after the release audit is complete.
