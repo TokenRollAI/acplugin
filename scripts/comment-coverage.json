@@ -53,6 +53,7 @@
     "packages/test/test/architecture.test.ts",
     "packages/test/test/build.test.ts",
     "packages/test/test/cli.test.ts",
+    "packages/test/test/comment-coverage.test.ts",
     "packages/test/test/claude-code.test.ts",
     "packages/test/test/codex.test.ts",
     "packages/test/test/ecosystem-contract.test.ts",
