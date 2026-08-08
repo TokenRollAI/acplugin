@@ -2,6 +2,19 @@ import * as fs from 'fs';
 import * as path from 'path';
 
 /**
+ * 按 UTF-16 code unit 比较容错 Legacy Scanner 的目录项名称。
+ *
+ * @param left 左侧名称。
+ * @param right 右侧名称。
+ * @returns 与 Array.sort 约定一致的 -1、0 或 1。
+ */
+function compareCodeUnits(left: string, right: string): number {
+  if (left === right)
+    return 0;
+  return left < right ? -1 : 1;
+}
+
+/**
  * 递归创建 Legacy Scanner 或迁移写入所需目录。
  *
  * @param dirPath 目标目录路径。
@@ -55,7 +68,8 @@ export function fileExists(filePath: string): boolean {
 export function listFiles(dir: string, pattern?: string): string[] {
   if (!fs.existsSync(dir)) return [];
   /** 当前目录的一级目录项。 */
-  const entries = fs.readdirSync(dir, { withFileTypes: true, recursive: false });
+  const entries = fs.readdirSync(dir, { withFileTypes: true, recursive: false })
+    .sort((left, right) => compareCodeUnits(left.name, right.name));
   return entries
     .filter(e => e.isFile() && (!pattern || e.name.match(new RegExp(pattern))))
     .map(e => path.join(dir, e.name));
@@ -70,7 +84,8 @@ export function listFiles(dir: string, pattern?: string): string[] {
 export function listDirs(dir: string): string[] {
   if (!fs.existsSync(dir)) return [];
   /** 当前目录的一级目录项。 */
-  const entries = fs.readdirSync(dir, { withFileTypes: true });
+  const entries = fs.readdirSync(dir, { withFileTypes: true })
+    .sort((left, right) => compareCodeUnits(left.name, right.name));
   return entries
     .filter(e => e.isDirectory())
     .map(e => path.join(dir, e.name));
@@ -87,7 +102,8 @@ export function listFilesRecursive(dir: string): string[] {
   /** 当前递归子树累计发现的普通文件。 */
   const results: string[] = [];
   /** 当前目录的一级目录项。 */
-  const entries = fs.readdirSync(dir, { withFileTypes: true });
+  const entries = fs.readdirSync(dir, { withFileTypes: true })
+    .sort((left, right) => compareCodeUnits(left.name, right.name));
   for (const entry of entries) {
     /** 当前目录项的完整路径。 */
     const fullPath = path.join(dir, entry.name);

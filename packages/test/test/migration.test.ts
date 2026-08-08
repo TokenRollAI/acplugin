@@ -11,6 +11,41 @@ const roots: string[] = [];
 /** 仓库内用于验证旧 Claude 工程迁移的固定 Fixture。 */
 const legacyProjectFixture = path.resolve(import.meta.dirname, '../fixtures/migration/claude-project');
 
+/**
+ * 创建四种资源都包含规范化 ID 冲突的旧 Claude 工程。
+ *
+ * @param root 当前测试的临时工作目录。
+ * @param directory 来源工程目录名。
+ * @param reversed 是否反转文件创建和 MCP 对象插入顺序。
+ * @returns 已写入完整碰撞矩阵的旧工程路径。
+ */
+async function collisionProject(root: string, directory: string, reversed: boolean): Promise<string> {
+  /** 当前碰撞矩阵使用的旧工程根。 */
+  const source = path.join(root, directory);
+  /** `foo!` 与 `foo` 归一为同一 base，显式 `foo-2` 必须优先保留。 */
+  const canonicalOrder = ['foo!', 'foo', 'foo-2'];
+  /** 文件创建与 MCP JSON 插入使用的当前顺序。 */
+  const names = reversed ? [...canonicalOrder].reverse() : canonicalOrder;
+  await fs.mkdir(path.join(source, '.claude/commands'), { recursive: true });
+  await fs.mkdir(path.join(source, '.claude/agents'), { recursive: true });
+  await fs.mkdir(path.join(source, '.claude/skills'), { recursive: true });
+  for (const name of names) {
+    await fs.writeFile(path.join(source, '.claude/commands', `${name}.md`), `---\ndescription: Command ${name}.\n---\nCommand body ${name}.\n`);
+    await fs.writeFile(path.join(source, '.claude/agents', `${name}.md`), `---\ndescription: Agent ${name}.\n---\nAgent body ${name}.\n`);
+    await fs.mkdir(path.join(source, '.claude/skills', name), { recursive: true });
+    await fs.writeFile(path.join(source, '.claude/skills', name, 'SKILL.md'), `---\ndescription: Skill ${name}.\n---\nSkill body ${name}.\n`);
+  }
+  /** MCP 对象额外加入大小写冲突，不受宿主文件系统大小写能力限制。 */
+  const mcpNames = reversed ? ['foo-2', 'foo', 'foo!', 'Foo'] : ['Foo', 'foo!', 'foo', 'foo-2'];
+  /** 每个旧 MCP 名称对应的可区分安全远程声明。 */
+  const mcpServers = Object.fromEntries(mcpNames.map(name => [name, {
+    type: 'http',
+    url: `https://mcp.example.com/${name === 'foo!' ? 'bang' : name}`,
+  }]));
+  await fs.writeFile(path.join(source, '.mcp.json'), JSON.stringify({ mcpServers }));
+  return source;
+}
+
 afterEach(async () => {
   await Promise.all(roots.splice(0).map(root => fs.rm(root, { recursive: true, force: true })));
 });
@@ -20,6 +55,100 @@ describe('legacy Migration', () => {
     expect(() => parseGitHubSource('github:owner/repo#main\ntouch injected')).toThrow('branch is invalid');
     expect(() => parseGitHubSource('github:owner/repo#../../../../user')).toThrow('branch is invalid');
     expect(() => parseGitHubSource('https://github.com/owner/repo/tree/main/../../outside')).toThrow('must stay inside');
+  });
+
+  it('allocates collision-safe deterministic IDs per resource namespace without stealing explicit suffixes', async () => {
+    /** 两种发现/对象顺序共享的临时工作目录。 */
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'acplugin-migration-collision-test-'));
+    roots.push(root);
+    /** 正向创建和 MCP key 顺序的旧工程。 */
+    await collisionProject(root, 'source-forward', false);
+    /** 反向创建和 MCP key 顺序的语义相同旧工程。 */
+    await collisionProject(root, 'source-reverse', true);
+    /** 第一份完整碰撞矩阵迁移报告。 */
+    const first = await migrate({
+      cwd: root,
+      source: 'source-forward',
+      destination: 'output-forward',
+      name: 'collision-fixture',
+      description: 'Collision fixture.',
+    });
+    /** 第二份只改变发现/对象顺序的迁移报告。 */
+    const second = await migrate({
+      cwd: root,
+      source: 'source-reverse',
+      destination: 'output-reverse',
+      name: 'collision-fixture',
+      description: 'Collision fixture.',
+    });
+
+    expect(first.success, JSON.stringify(first.diagnostics)).toBe(true);
+    expect(second.success, JSON.stringify(second.diagnostics)).toBe(true);
+    /** kind 表示当前必须拥有独立 namespace 的规范资源类别。 */
+    for (const kind of ['command', 'skill', 'agent']) {
+      /** 当前类别最终分配且按报告顺序出现的 ID。 */
+      const ids = first.items.filter(item => item.kind === kind).map(item => item.id);
+      expect(ids).toEqual(['foo', 'foo-2', 'foo-3']);
+      expect(new Set(first.items.filter(item => item.kind === kind).map(item => item.destination)).size).toBe(3);
+    }
+    expect(first.items.filter(item => item.kind === 'mcp').map(item => item.id)).toEqual(['foo', 'foo-2', 'foo-3', 'foo-4']);
+    expect(new Set(first.items.filter(item => item.kind === 'mcp').map(item => item.destination)).size).toBe(4);
+    expect(first.items.find(item => item.kind === 'command' && item.id === 'foo')).toMatchObject({
+      source: '.claude/commands/foo!.md', destination: 'src/commands/foo.md', outcome: 'degraded',
+    });
+    expect(first.items.find(item => item.kind === 'command' && item.id === 'foo-2')).toMatchObject({
+      source: '.claude/commands/foo-2.md', destination: 'src/commands/foo-2.md',
+    });
+    expect(first.items.find(item => item.kind === 'command' && item.id === 'foo-3')).toMatchObject({
+      source: '.claude/commands/foo.md', destination: 'src/commands/foo-3.md', outcome: 'degraded',
+    });
+    expect(await fs.readFile(path.join(root, 'output-forward/src/commands/foo.md'), 'utf8')).toContain('Command body foo!.');
+    expect(await fs.readFile(path.join(root, 'output-forward/src/commands/foo-2.md'), 'utf8')).toContain('Command body foo-2.');
+    expect(await fs.readFile(path.join(root, 'output-forward/src/commands/foo-3.md'), 'utf8')).toContain('Command body foo.');
+    /** 两次提交后持久化的稳定报告字节。 */
+    const firstReport = await fs.readFile(path.join(root, 'output-forward/.acplugin-migration/report.json'), 'utf8');
+    /** 反向输入产生的稳定报告字节。 */
+    const secondReport = await fs.readFile(path.join(root, 'output-reverse/.acplugin-migration/report.json'), 'utf8');
+    expect(secondReport).toBe(firstReport);
+  });
+
+  it('allocates unique deterministic workspace directories for --all Marketplace migration', async () => {
+    /** workspace 目录冲突测试使用的临时工作目录。 */
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'acplugin-marketplace-collision-test-'));
+    roots.push(root);
+    /** 包含三个规范化后冲突名称的旧 Marketplace。 */
+    const marketplace = path.join(root, 'marketplace');
+    await fs.mkdir(path.join(marketplace, '.claude-plugin'), { recursive: true });
+    /** Marketplace 条目及稳定来源目录；显式 foo-2 必须保留自己的目录。 */
+    const plugins = [
+      { name: 'foo!', source: './plugins/a', description: 'Foo bang.' },
+      { name: 'foo', source: './plugins/b', description: 'Foo plain.' },
+      { name: 'foo-2', source: './plugins/c', description: 'Foo explicit.' },
+    ];
+    await fs.writeFile(path.join(marketplace, '.claude-plugin/marketplace.json'), JSON.stringify({
+      name: 'collision-marketplace',
+      plugins,
+    }));
+    /** plugin 表示当前需要具备至少一个真实资源的 Marketplace 成员。 */
+    for (const plugin of plugins) {
+      /** 当前 Marketplace 成员的最小旧 Skill 目录。 */
+      const pluginRoot = path.join(marketplace, plugin.source, 'skills/hello');
+      await fs.mkdir(pluginRoot, { recursive: true });
+      await fs.writeFile(path.join(pluginRoot, 'SKILL.md'), `---\ndescription: ${plugin.name}.\n---\n${plugin.name}.\n`);
+    }
+
+    /** 批量迁移产生的 workspace 报告。 */
+    const report = await migrate({ cwd: root, source: 'marketplace', destination: 'workspace', all: true });
+
+    expect(report.success, JSON.stringify(report.diagnostics)).toBe(true);
+    expect(report.projects).toEqual(['foo', 'foo-2', 'foo-3']);
+    expect(await fs.readFile(path.join(root, 'workspace/pnpm-workspace.yaml'), 'utf8')).toBe('packages:\n  - foo\n  - foo-2\n  - foo-3\n');
+    await fs.access(path.join(root, 'workspace/foo/src/skills/hello/SKILL.md'));
+    await fs.access(path.join(root, 'workspace/foo-2/src/skills/hello/SKILL.md'));
+    await fs.access(path.join(root, 'workspace/foo-3/src/skills/hello/SKILL.md'));
+    expect(await fs.readFile(path.join(root, 'workspace/foo/acplugin.config.ts'), 'utf8')).toContain('name: "foo"');
+    expect(await fs.readFile(path.join(root, 'workspace/foo-2/acplugin.config.ts'), 'utf8')).toContain('name: "foo-2"');
+    expect(await fs.readFile(path.join(root, 'workspace/foo-3/acplugin.config.ts'), 'utf8')).toContain('name: "foo-3"');
   });
 
   it('creates a canonical project and preserves unmapped resources in a sidecar', async () => {

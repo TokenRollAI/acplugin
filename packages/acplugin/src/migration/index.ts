@@ -154,6 +154,19 @@ const FIELD_OUTCOME_RANK: Readonly<Record<MigrationFieldOutcome, number>> = {
 };
 
 /**
+ * 按 UTF-16 code unit 比较迁移报告与生成输入，不依赖宿主 locale/ICU。
+ *
+ * @param left 左侧字符串。
+ * @param right 右侧字符串。
+ * @returns 与 Array.sort 约定一致的 -1、0 或 1。
+ */
+function compareCodeUnits(left: string, right: string): number {
+  if (left === right)
+    return 0;
+  return left < right ? -1 : 1;
+}
+
+/**
  * 记录一个已发现字段的脱敏迁移结论。
  *
  * @param fields 当前资源累计的字段结论。
@@ -224,6 +237,60 @@ function safeId(value: string): string {
   return id || 'migrated-item';
 }
 
+/** 尚未分配最终 ID 的单个迁移资源及其稳定来源身份。 */
+interface MigrationIdCandidate<T> {
+  /** 调用方需要与分配结果一起取回的原始资源。 */
+  readonly value: T;
+  /** 资源名称规范化后的首选 ID。 */
+  readonly baseId: string;
+  /** 不包含绝对根且能稳定打破同名冲突的逻辑来源路径。 */
+  readonly sourcePath: string;
+}
+
+/** 已获得唯一最终 ID 的迁移资源。 */
+interface AllocatedMigrationId<T> extends MigrationIdCandidate<T> {
+  /** 在当前资源类别 namespace 内唯一的最终 ID。 */
+  readonly id: string;
+}
+
+/**
+ * 为一个资源类别整体分配确定 ID，先保留显式 base 再选择未占用后缀。
+ *
+ * @param candidates 同一 Command、Skill、Agent、MCP 或 workspace namespace 的全部候选。
+ * @returns 按 base ID 和逻辑来源排序、且 ID 唯一的资源计划。
+ */
+function allocateMigrationIds<T>(candidates: readonly MigrationIdCandidate<T>[]): AllocatedMigrationId<T>[] {
+  /** 所有候选显式拥有的 base ID；冲突项不得抢占这些名称。 */
+  const reserved = new Set(candidates.map(candidate => candidate.baseId));
+  /** 已实际分配给前序候选的最终 ID。 */
+  const assigned = new Set<string>();
+  /** 每个 base 下一次尝试的数字后缀。 */
+  const nextSuffix = new Map<string, number>();
+  /** 与发现顺序无关的候选处理顺序。 */
+  const ordered = [...candidates].sort((left, right) =>
+    compareCodeUnits(left.baseId, right.baseId)
+    || compareCodeUnits(left.sourcePath, right.sourcePath));
+  /** 完成 winner/后缀选择后再按最终 ID 固定写入与报告顺序。 */
+  const allocated = ordered.map((candidate) => {
+    /** 当前候选优先使用的 base，冲突时再选择数字后缀。 */
+    let id = candidate.baseId;
+    if (assigned.has(id)) {
+      /** 从 `-2` 开始且会跨候选记忆的当前后缀。 */
+      let suffix = nextSuffix.get(candidate.baseId) ?? 2;
+      do {
+        id = `${candidate.baseId}-${suffix}`;
+        suffix += 1;
+      } while (reserved.has(id) || assigned.has(id));
+      nextSuffix.set(candidate.baseId, suffix);
+    }
+    assigned.add(id);
+    return { ...candidate, id };
+  });
+  return allocated.sort((left, right) =>
+    compareCodeUnits(left.id, right.id)
+    || compareCodeUnits(left.sourcePath, right.sourcePath));
+}
+
 /**
  * 判断来源文本是否采用支持的 GitHub URL、前缀或 owner/repo 简写。
  *
@@ -276,7 +343,7 @@ function sortFrontmatter(value: unknown): unknown {
   if (value !== null && typeof value === 'object') {
     return Object.fromEntries(Object.entries(value as Record<string, unknown>)
       .filter(entry => entry[1] !== undefined)
-      .sort(([left], [right]) => left.localeCompare(right, 'en'))
+      .sort(([left], [right]) => compareCodeUnits(left, right))
       .map(([key, child]) => [key, sortFrontmatter(child)]));
   }
   return value;
@@ -308,21 +375,20 @@ async function copyBytes(source: string, destination: string): Promise<void> {
  * 把旧 Skill 及全部辅助文件迁移为规范 Skill 目录。
  *
  * @param skill Legacy Scanner 读取的 Skill。
+ * @param id 已在 Skill namespace 中完成冲突消歧的最终 ID。
  * @param projectRoot 旧工程根目录。
  * @param outputRoot 新规范工程的阶段目录。
  * @param items 共享迁移报告条目数组。
  * @returns 可与其他资源并行等待的文件写入任务。
  */
-function migrateSkill(skill: Skill, projectRoot: string, outputRoot: string, items: MigrationItem[]): Promise<void>[] {
-  /** 由旧目录名转换出的规范 Skill ID。 */
-  const id = safeId(skill.dirName);
+function migrateSkill(skill: Skill, id: string, projectRoot: string, outputRoot: string, items: MigrationItem[]): Promise<void>[] {
   /** 当前 Skill 报告使用的稳定来源路径。 */
   const source = relative(projectRoot, skill.sourcePath);
   /** 当前 Skill 全部已发现字段的保真记录。 */
   const fields: MigrationFieldDraft[] = [];
-  reportField(fields, 'name', source, ID_PATTERN.test(skill.dirName) ? 'mapped' : 'degraded', ID_PATTERN.test(skill.dirName)
+  reportField(fields, 'name', source, ID_PATTERN.test(skill.dirName) && skill.dirName === id ? 'mapped' : 'degraded', ID_PATTERN.test(skill.dirName) && skill.dirName === id
     ? 'Directory identity maps directly to the canonical Skill ID.'
-    : 'Skill identity required lowercase kebab-case normalization.');
+    : 'Skill identity required lowercase kebab-case normalization or a deterministic collision suffix.');
   if (skill.frontmatter.name !== undefined) {
     reportField(fields, 'frontmatter.name', source, skill.frontmatter.name === id ? 'mapped' : 'degraded', skill.frontmatter.name === id
       ? 'Frontmatter identity agrees with the canonical directory identity.'
@@ -458,7 +524,7 @@ function reportUnknownFields(
   allowed: ReadonlySet<string>,
 ): void {
   /** field 表示当前需要进入人工迁移流程的旧字段。 */
-  for (const field of Object.keys(data).sort((left, right) => left.localeCompare(right, 'en'))) {
+  for (const field of Object.keys(data).sort(compareCodeUnits)) {
     if (!allowed.has(field))
       reportField(fields, field, source, 'unmapped', 'The legacy field has no canonical or verified Platform mapping.');
   }
@@ -468,21 +534,20 @@ function reportUnknownFields(
  * 把旧 Command Markdown 迁移为规范 Command，并转换参数占位符。
  *
  * @param command Legacy Scanner 读取的 Command。
+ * @param id 已在 Command namespace 中完成冲突消歧的最终 ID。
  * @param projectRoot 旧工程根目录。
  * @param outputRoot 新规范工程的阶段目录。
  * @param items 共享迁移报告条目数组。
  * @returns Command 文件写入任务。
  */
-function migrateCommand(command: Command, projectRoot: string, outputRoot: string, items: MigrationItem[]): Promise<void> {
-  /** 由旧文件名转换出的规范 Command ID。 */
-  const id = safeId(command.name);
+function migrateCommand(command: Command, id: string, projectRoot: string, outputRoot: string, items: MigrationItem[]): Promise<void> {
   /** 当前 Command 报告使用的稳定来源路径。 */
   const source = relative(projectRoot, command.sourcePath);
   /** 当前 Command 全部已发现字段的保真记录。 */
   const fields: MigrationFieldDraft[] = [];
-  reportField(fields, 'name', source, ID_PATTERN.test(command.name) ? 'mapped' : 'degraded', ID_PATTERN.test(command.name)
+  reportField(fields, 'name', source, ID_PATTERN.test(command.name) && command.name === id ? 'mapped' : 'degraded', ID_PATTERN.test(command.name) && command.name === id
     ? 'Filename identity maps directly to the canonical Command ID.'
-    : 'Command identity required lowercase kebab-case normalization.');
+    : 'Command identity required lowercase kebab-case normalization or a deterministic collision suffix.');
   /** 解析 Frontmatter 后保留的 Command 正文。 */
   let body = command.content;
   /** 优先读取旧描述，否则使用明确的迁移回退值。 */
@@ -621,21 +686,20 @@ function capabilitiesFromTools(tools: readonly string[]): AgentCapability[] {
  * 把旧 Agent Markdown 迁移为规范 Agent，并泛化平台模型名称。
  *
  * @param agent Legacy Scanner 读取的 Agent。
+ * @param id 已在 Agent namespace 中完成冲突消歧的最终 ID。
  * @param projectRoot 旧工程根目录。
  * @param outputRoot 新规范工程的阶段目录。
  * @param items 共享迁移报告条目数组。
  * @returns Agent 文件写入任务。
  */
-function migrateAgent(agent: Agent, projectRoot: string, outputRoot: string, items: MigrationItem[]): Promise<void> {
-  /** 由旧文件名转换出的规范 Agent ID。 */
-  const id = safeId(agent.fileName);
+function migrateAgent(agent: Agent, id: string, projectRoot: string, outputRoot: string, items: MigrationItem[]): Promise<void> {
   /** 当前 Agent 报告使用的稳定来源路径。 */
   const source = relative(projectRoot, agent.sourcePath);
   /** 当前 Agent 全部已发现字段的保真记录。 */
   const fields: MigrationFieldDraft[] = [];
-  reportField(fields, 'name', source, ID_PATTERN.test(agent.fileName) ? 'mapped' : 'degraded', ID_PATTERN.test(agent.fileName)
+  reportField(fields, 'name', source, ID_PATTERN.test(agent.fileName) && agent.fileName === id ? 'mapped' : 'degraded', ID_PATTERN.test(agent.fileName) && agent.fileName === id
     ? 'Filename identity maps directly to the canonical Agent ID.'
-    : 'Agent identity required lowercase kebab-case normalization.');
+    : 'Agent identity required lowercase kebab-case normalization or a deterministic collision suffix.');
   if (agent.frontmatter.name !== undefined) {
     reportField(fields, 'frontmatter.name', source, agent.frontmatter.name === id ? 'mapped' : 'degraded', agent.frontmatter.name === id
       ? 'Frontmatter identity agrees with the canonical filename identity.'
@@ -851,7 +915,7 @@ function hookReferenceCandidates(hooks: Hooks): string[] {
       }
     }
   }
-  return [...references].sort((a, b) => a.localeCompare(b, 'en'));
+  return [...references].sort(compareCodeUnits);
 }
 
 /**
@@ -906,7 +970,7 @@ async function copyHookReference(
   if (stat.isDirectory()) {
     /** 按名称稳定递归的目录项。 */
     const entries = await fs.readdir(source, { withFileTypes: true });
-    for (const entry of entries.sort((a, b) => a.name.localeCompare(b.name, 'en')))
+    for (const entry of entries.sort((a, b) => compareCodeUnits(a.name, b.name)))
       await copyHookReference(sourceRoot, path.join(relativePath, entry.name), outputRoot, items);
     return;
   }
@@ -1167,7 +1231,7 @@ async function metadataFor(scan: ScanResult, options: MigrationOptions, items: M
       }
     }
     /** key 表示旧 author 中当前无法识别的额外字段。 */
-    for (const key of Object.keys(authorRecord).sort((left, right) => left.localeCompare(right, 'en'))) {
+    for (const key of Object.keys(authorRecord).sort(compareCodeUnits)) {
       if (!['name', 'email', 'url'].includes(key))
         reportField(fields, `author.${key}`, source, 'unmapped', 'Unknown author field has no canonical mapping.');
     }
@@ -1228,7 +1292,7 @@ async function metadataFor(scan: ScanResult, options: MigrationOptions, items: M
   if (plugin?.meta.apps !== undefined)
     reportField(fields, 'apps', source, 'unmapped', 'Legacy apps are outside the acplugin 1.0 component contract.');
   /** field 表示当前没有统一元数据或安全自动映射的旧 interface 字段。 */
-  for (const field of Object.keys(pluginInterface ?? {}).sort((left, right) => left.localeCompare(right, 'en'))) {
+  for (const field of Object.keys(pluginInterface ?? {}).sort(compareCodeUnits)) {
     if (!['displayName', 'shortDescription', 'longDescription', 'developerName', 'websiteURL'].includes(field))
       reportField(fields, `interface.${field}`, source, 'unmapped', 'The Marketplace interface field requires explicit Platform configuration.');
   }
@@ -1347,14 +1411,32 @@ async function writeCanonicalProject(
   const metadata = await metadataFor(scan, options, items);
   // 即使旧来源只有未映射资源，也要保留合法的空 src 根以通过最终 Core 空状态校验。
   await fs.mkdir(path.join(outputRoot, 'src'), { recursive: true });
+  /** 先整体分配 Skill ID，避免规范化冲突覆盖显式 ID 或依赖扫描顺序。 */
+  const skills = allocateMigrationIds(scan.skills.map(skill => ({
+    value: skill,
+    baseId: safeId(skill.dirName),
+    sourcePath: relative(scan.rootDir, skill.sourcePath),
+  })));
+  /** Command 使用独立 namespace，不与 Skill/Agent 的同名资源冲突。 */
+  const commands = allocateMigrationIds(scan.commands.map(command => ({
+    value: command,
+    baseId: safeId(command.name),
+    sourcePath: relative(scan.rootDir, command.sourcePath),
+  })));
+  /** Agent 使用独立 namespace，并在报告冻结前确定最终 destination。 */
+  const agents = allocateMigrationIds(scan.agents.map(agent => ({
+    value: agent,
+    baseId: safeId(agent.fileName),
+    sourcePath: relative(scan.rootDir, agent.sourcePath),
+  })));
   /** Skills、Commands 与 Agents 的并行写入任务。 */
   const writes: Promise<void>[] = [];
-  for (const skill of scan.skills)
-    writes.push(...migrateSkill(skill, scan.rootDir, outputRoot, items));
-  for (const command of scan.commands)
-    writes.push(migrateCommand(command, scan.rootDir, outputRoot, items));
-  for (const agent of scan.agents)
-    writes.push(migrateAgent(agent, scan.rootDir, outputRoot, items));
+  for (const skill of skills)
+    writes.push(...migrateSkill(skill.value, skill.id, scan.rootDir, outputRoot, items));
+  for (const command of commands)
+    writes.push(migrateCommand(command.value, command.id, scan.rootDir, outputRoot, items));
+  for (const agent of agents)
+    writes.push(migrateAgent(agent.value, agent.id, scan.rootDir, outputRoot, items));
   await Promise.all(writes);
 
   for (const [index, instruction] of scan.instructions.entries()) {
@@ -1370,9 +1452,19 @@ async function writeCanonicalProject(
 
   /** 是否至少自动迁移了一个安全远程 MCP，并需要启用官方 Extension。 */
   let usesMcp = false;
-  for (const server of scan.mcp?.servers ?? []) {
-    /** 由旧 Server 名称转换出的规范 MCP ID。 */
-    const id = safeId(server.name);
+  /** 同一配置文件中的 MCP key 使用名称补充逻辑来源，确保排序和冲突消歧稳定。 */
+  const mcpSourcePath = scan.mcp === null ? undefined : relative(scan.rootDir, scan.mcp?.sourcePath ?? scan.rootDir);
+  /** MCP 使用自己的 namespace，显式 `foo-2` 不会被重复 `foo` 抢占。 */
+  const servers = allocateMigrationIds((scan.mcp?.servers ?? []).map(server => ({
+    value: server,
+    baseId: safeId(server.name),
+    sourcePath: `${mcpSourcePath ?? '.'}\0${server.name}`,
+  })));
+  for (const allocated of servers) {
+    /** 当前已完成确定性 ID 分配的 Legacy MCP Server。 */
+    const server = allocated.value;
+    /** 当前 MCP namespace 中唯一的最终 ID。 */
+    const id = allocated.id;
     /** 满足安全自动迁移条件时生成的类型化描述源码。 */
     const source = remoteMcpSource(server);
     /** MCP 字段报告共同使用的旧配置相对路径。 */
@@ -1383,12 +1475,12 @@ async function writeCanonicalProject(
       await copyText(path.join(outputRoot, destination), source);
       /** 安全远程 MCP 的全部声明字段。 */
       const fields: MigrationFieldDraft[] = [];
-      reportField(fields, 'name', sourcePath, ID_PATTERN.test(server.name) ? 'mapped' : 'degraded', ID_PATTERN.test(server.name)
+      reportField(fields, 'name', sourcePath, ID_PATTERN.test(server.name) && server.name === id ? 'mapped' : 'degraded', ID_PATTERN.test(server.name) && server.name === id
         ? 'Server key maps directly to the canonical MCP ID.'
-        : 'Server identity required lowercase kebab-case normalization.');
+        : 'Server identity required lowercase kebab-case normalization or a deterministic collision suffix.');
       reportField(fields, 'transport', sourcePath, 'mapped', 'Remote HTTP transport maps to the canonical MCP descriptor.');
       reportField(fields, 'url', sourcePath, 'mapped', 'Credential-free HTTPS URL maps to the canonical MCP descriptor.');
-      for (const name of Object.keys(server.headers ?? {}).sort((left, right) => left.localeCompare(right, 'en'))) {
+      for (const name of Object.keys(server.headers ?? {}).sort(compareCodeUnits)) {
         reportField(fields, `headers.${name}`, sourcePath, 'mapped', name.toLowerCase() === 'authorization'
           ? 'Environment-only Authorization maps to canonical bearer auth without reading the secret.'
           : 'Environment-only header maps without reading the secret value.');
@@ -1400,17 +1492,17 @@ async function writeCanonicalProject(
       const destination = await unmapped(outputRoot, 'mcp', `${id}.json`, stableJson({ [server.name]: redactedMcpServer(server) }));
       /** 无法自动迁移的 MCP 仍逐个报告实际存在字段，且不复制任何值。 */
       const fields: MigrationFieldDraft[] = [];
-      reportField(fields, 'name', sourcePath, ID_PATTERN.test(server.name) ? 'mapped' : 'degraded', ID_PATTERN.test(server.name)
+      reportField(fields, 'name', sourcePath, ID_PATTERN.test(server.name) && server.name === id ? 'mapped' : 'degraded', ID_PATTERN.test(server.name) && server.name === id
         ? 'Server key maps to the migration record identity.'
-        : 'Server identity required lowercase kebab-case normalization.');
+        : 'Server identity required lowercase kebab-case normalization or a deterministic collision suffix.');
       for (const field of ['command', 'args', 'type', 'url'] as const) {
         if (server[field] !== undefined) {
           reportField(fields, field, sourcePath, 'unmapped', 'This MCP field requires a complete canonical implementation or a supported safe remote declaration.');
         }
       }
-      for (const name of Object.keys(server.env ?? {}).sort((left, right) => left.localeCompare(right, 'en')))
+      for (const name of Object.keys(server.env ?? {}).sort(compareCodeUnits))
         reportField(fields, `env.${name}`, sourcePath, 'unmapped', 'Local MCP environment mapping is preserved only in the redacted sidecar.');
-      for (const name of Object.keys(server.headers ?? {}).sort((left, right) => left.localeCompare(right, 'en')))
+      for (const name of Object.keys(server.headers ?? {}).sort(compareCodeUnits))
         reportField(fields, `headers.${name}`, sourcePath, 'unmapped', 'Unsafe or literal MCP header is preserved only as a redacted field name.');
       items.push(migrationItem({ kind: 'mcp', id, source: sourcePath, destination }, fields));
     }
@@ -1422,7 +1514,7 @@ async function writeCanonicalProject(
     /** Legacy Scanner 保留的 Hooks 配置精确来源路径。 */
     const source = scan.hooksSourcePath === undefined ? '.' : relative(scan.rootDir, scan.hooksSourcePath);
     /** 每个旧事件分别进入字段报告，避免聚合配置掩盖丢失范围。 */
-    const fields = Object.keys(scan.hooks).sort((left, right) => left.localeCompare(right, 'en')).map<MigrationFieldDraft>(event => ({
+    const fields = Object.keys(scan.hooks).sort(compareCodeUnits).map<MigrationFieldDraft>(event => ({
       field: `event:${event}`, source, destination, outcome: 'unmapped',
       reason: 'Raw legacy Hook event requires manual typed handler migration.',
     }));
@@ -1589,14 +1681,22 @@ export async function migrate(options: MigrationOptions): Promise<MigrationRepor
         if (selected.length === 0)
           throw new Error('Marketplace migration requires --plugin <name> or --all.');
         if (options.all) {
+          /** 所有 workspace 成员先全局预留 base，避免目录覆盖和后缀抢占。 */
+          const workspaceProjects = allocateMigrationIds(selected.map(plugin => ({
+            value: plugin,
+            baseId: safeId(plugin.meta.name),
+            sourcePath: relative(sourceRoot, plugin.rootDir),
+          })));
           // 只有批量迁移创建 workspace；每个成员仍是带独立配置的单 Plugin 工程。
-          for (const plugin of selected) {
-            /** Marketplace 工作区成员使用的规范目录 ID。 */
-            const id = safeId(plugin.meta.name);
+          for (const allocated of workspaceProjects) {
+            /** 当前已完成全局目录 ID 分配的 Marketplace Plugin。 */
+            const plugin = allocated.value;
+            /** Marketplace 工作区成员使用的唯一规范目录 ID。 */
+            const id = allocated.id;
             /** 当前成员在迁移阶段目录中的根路径。 */
             const projectRoot = path.join(stage, id);
             /** 当前成员生成和重新扫描的结果。 */
-            const result = await writeCanonicalProject(plugin, projectRoot, options);
+            const result = await writeCanonicalProject(plugin, projectRoot, { ...options, name: id });
             items.push(...result.items.map((item) => {
               /** Workspace 成员前缀必须同时应用到资源与每个字段的目标路径。 */
               const destination = item.destination ? `${id}/${item.destination}` : undefined;
