@@ -5,7 +5,7 @@
   "type": "module",
   "engines": { "node": ">=20" },
   "scripts": {
-    "pretest": "pnpm --filter @acplugin/core run build && pnpm --filter @tokenroll/acplugin run build && pnpm --filter \"@tokenroll/acplugin-platform-*\" run build && pnpm --filter \"@tokenroll/acplugin-extension-*\" run build",
+    "pretest": "pnpm --filter @acplugin/core run build && pnpm --filter \"@tokenroll/acplugin-platform-*\" run build && pnpm --filter \"@tokenroll/acplugin-extension-*\" run build && pnpm --filter @tokenroll/acplugin run build",
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc -p tsconfig.json"

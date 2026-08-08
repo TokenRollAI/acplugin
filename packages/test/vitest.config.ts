@@ -11,7 +11,7 @@ function workspaceSource(path: string): string {
   return fileURLToPath(new URL(path, import.meta.url));
 }
 
-// 集成测试直接 Alias 到工作区源码；pretest 仍会构建 CLI 与公开 Extension 以覆盖真实产物路径。
+// 集成测试直接 Alias 到工作区源码；pretest 仍会按依赖顺序构建全部正式包，以覆盖真实产物路径。
 export default defineConfig({
   test: {
     environment: 'node',
