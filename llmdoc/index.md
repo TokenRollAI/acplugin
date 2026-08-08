@@ -1,6 +1,6 @@
-# acplugin documentation
+# ACPlugin documentation
 
-acplugin is a canonical AI Plugin framework and CLI. Authors write Commands, Skills, Agents, and optional Extension sources once, then build Platform-owned deliveries for Claude Code, Codex, Cursor, Antigravity, OpenCode, and Pi.
+ACPlugin is a canonical AI Plugin framework and CLI. Authors write Commands, Skills, Agents, and optional Extension sources once, then build Platform-owned deliveries for Claude Code, Codex, Cursor, Antigravity, OpenCode, and Pi.
 
 关键稳定文档同时维护英文基准与中文对照；行为变化需要同步更新两种语言。
 
@@ -10,7 +10,7 @@ acplugin is a canonical AI Plugin framework and CLI. Authors write Commands, Ski
 
 ## Guides
 
-- [Using acplugin](guides/usage.md) · [使用 acplugin](guides/usage.zh-CN.md) — scaffold, author, validate, build, and migrate.
+- [Using ACPlugin](guides/usage.md) · [使用 ACPlugin](guides/usage.zh-CN.md) — scaffold, author, validate, build, and migrate.
 - [按 Package 代码导览](guides/package-code-tour.zh-CN.md) — 每个 workspace package 的职责、架构、数据流、实现伪代码与修改入口。
 - [Release guide](guides/release.md) · [手动发布指南](guides/release.zh-CN.md) — independent public-package verification and fully manual publishing.
 - [中文代码注释规范](guides/commenting.zh-CN.md) — 中文声明注释、关键逻辑注释与自动守卫规则。

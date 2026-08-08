@@ -94,3 +94,9 @@ Extension build context 以 `addWatchFile()` 作为唯一依赖登记边界。�
 `packages/acplugin/src/index.ts` 暴露公开门面；`project-config.ts` 使用 Jiti 重新加载受信任的 TypeScript 配置和描述文件，`run-project.ts` 把解析后的工程连接到 Core。嵌套配置对象会在进入生命周期前完成运行时 Schema 检查。`cli.ts` 负责命令、JSON/文本输出纪律、退出码、监听事件合并和 Migration 延迟导入。稳定诊断会隐藏外部异常、本机绝对路径和可识别的凭据形式。
 
 普通公开门面和 CLI 启动过程不会导入 `migration/`。主包 tarball 不包含私有包导入、官方集成 manifest 依赖或指向集成的正常 eager 边。Migration lazy chunk 是隔离的例外：它内联生成工程自验证所需的 Claude Code Platform 与 MCP 实现。`scripts/verify-release.mjs` 会在外部消费者中验证 eager 边界、九个公开 package manifest、peer rewrite，以及经同一主包 peer 实例产生的私有 Symbol 品牌互操作。
+
+## 仓库内文档消费者
+
+`packages/docs/` 是私有 VitePress workspace。TypeDoc 只扫描九个公开 package 的根公开入口，把 Markdown 与 API sidebar 生成到 ignored 目录；VitePress 随后构建按任务组织的手写文档，不读取远程内容、不注入时间，也不执行部署副作用。
+
+`packages/playground/` 是私有的真实消费者，显式导入主包、Claude Code/Codex Platform 和 Hooks Extension。它覆盖 Components、Skill auxiliary、Hooks、Public 文件、兼容性传播与受管输出。其 llmdoc v3 内容仅为模板 smoke；runtime 状态、增量更新/缓存、Schema、Migration 和 MCP 行为仍是非目标。两个私有 workspace 都不会成为公开包依赖，也不进入发行 tarball。

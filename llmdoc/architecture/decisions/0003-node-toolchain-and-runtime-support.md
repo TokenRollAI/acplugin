@@ -2,11 +2,11 @@
 
 - Status: Accepted
 - Date: 2026-08-08
-- Applies to: acplugin 1.0
+- Applies to: ACPlugin 1.0
 
 ## Context
 
-The repository build tool and the published packages have different Node.js constraints. tsdown 0.22.14 requires `^22.18.0 || >=24.11.0`, while acplugin intends to keep a supported Node 20 runtime. The previous Commander 15 dependency prevented that intent because it requires Node 22.12 or newer. Other direct runtime dependencies also require precise minor ranges rather than the broad `>=20` declaration.
+The repository build tool and the published packages have different Node.js constraints. tsdown 0.22.14 requires `^22.18.0 || >=24.11.0`, while ACPlugin intends to keep a supported Node 20 runtime. The previous Commander 15 dependency prevented that intent because it requires Node 22.12 or newer. Other direct runtime dependencies also require precise minor ranges rather than the broad `>=20` declaration.
 
 ## Decision
 

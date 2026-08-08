@@ -1,6 +1,6 @@
 # Domain glossary
 
-These terms distinguish related outcomes and ordering rules in the acplugin lifecycle.
+These terms distinguish related outcomes and ordering rules in the ACPlugin lifecycle.
 
 | Term | Definition |
 |---|---|

@@ -2,7 +2,7 @@
 
 - 状态：已接受
 - 日期：2026-08-08
-- 适用范围：acplugin 1.0 package API
+- 适用范围：ACPlugin 1.0 package API
 
 ## 背景
 

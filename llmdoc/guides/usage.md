@@ -1,8 +1,8 @@
-# Using acplugin
+# Using ACPlugin
 
 > [中文对照](usage.zh-CN.md)
 
-acplugin projects author one canonical plugin and compile Platform-owned deliveries for Claude Code, Codex, Cursor, Antigravity, OpenCode, and Pi. Node.js `^20.19.0 || ^22.13.0 || >=23.5.0` and pnpm are required.
+ACPlugin projects author one canonical plugin and compile Platform-owned deliveries for Claude Code, Codex, Cursor, Antigravity, OpenCode, and Pi. Node.js `^20.19.0 || ^22.13.0 || >=23.5.0` and pnpm are required.
 
 ## Create a project
 

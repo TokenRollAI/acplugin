@@ -2,7 +2,7 @@
 
 > [中文对照](conversion-matrix.zh-CN.md)
 
-This matrix describes canonical acplugin 1.0 builds. Tolerant conversion code below `packages/acplugin/src/migration/legacy/` belongs only to Migration and is not another build path.
+This matrix describes canonical ACPlugin 1.0 builds. Tolerant conversion code below `packages/acplugin/src/migration/legacy/` belongs only to Migration and is not another build path.
 
 ## Delivery and Components
 
@@ -15,7 +15,7 @@ This matrix describes canonical acplugin 1.0 builds. Tolerant conversion code be
 | Public files | Plugin-root copy | Plugin-root copy | Plugin-root copy | Plugin-root copy | Workspace-root copy | Package-root copy |
 | Separate Marketplace distribution | Optional | Optional | Not generated | Not generated | Not applicable | Not applicable |
 
-`native` means the Platform has an equivalent installable resource. `transform` means acplugin emits a different native resource while preserving the workflow intent. `degraded` means an important runtime guarantee cannot be preserved. Strict mode rejects any degraded or unsupported result; use `--no-strict` only after reviewing the structured compatibility report.
+`native` means the Platform has an equivalent installable resource. `transform` means ACPlugin emits a different native resource while preserving the workflow intent. `degraded` means an important runtime guarantee cannot be preserved. Strict mode rejects any degraded or unsupported result; use `--no-strict` only after reviewing the structured compatibility report.
 
 OpenCode is intentionally a workspace overlay and does not receive a fabricated generic `package.json`. Pi is a real npm package and its manifest must not leak workspace/private fields. Antigravity emits only Manifest fields confirmed by its public contract.
 

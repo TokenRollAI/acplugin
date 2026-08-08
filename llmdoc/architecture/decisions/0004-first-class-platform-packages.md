@@ -2,7 +2,7 @@
 
 - Status: accepted
 - Date: 2026-08-08
-- Scope: acplugin 1.0 package API
+- Scope: ACPlugin 1.0 package API
 
 ## Context
 

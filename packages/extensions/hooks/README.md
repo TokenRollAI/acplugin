@@ -63,7 +63,7 @@ export default defineHook({
 });
 ```
 
-acplugin bundles each implementation once as a platform-neutral Node 20 ESM `hooks/<id>/handler.mjs`. Each Adapter emits an adjacent `wire.mjs` that owns its native stdin schema, camelCase conversion, runtime root/data environment mapping, and stdout mapping. The shared Handler validates event-specific results, keeps stdin/stdout within 1 MiB, and emits only stable error codes. Third-party code included in a Handler receives a deterministic `THIRD_PARTY_LICENSES.txt`.
+ACPlugin bundles each implementation once as a platform-neutral Node 20 ESM `hooks/<id>/handler.mjs`. Each Adapter emits an adjacent `wire.mjs` that owns its native stdin schema, camelCase conversion, runtime root/data environment mapping, and stdout mapping. The shared Handler validates event-specific results, keeps stdin/stdout within 1 MiB, and emits only stable error codes. Third-party code included in a Handler receives a deterministic `THIRD_PARTY_LICENSES.txt`.
 
 `作者不能声明原始 shell、绝对 executable、HTTP、prompt、agent 或 MCP-tool Handler；平台 wire 协议完全由 Adapter 管理。`
 

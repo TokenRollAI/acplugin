@@ -4,7 +4,7 @@
 
 ## Identity
 
-acplugin is a canonical AI Plugin framework and CLI. Authors maintain one framework-owned source layout and compile Platform-owned deliveries for Claude Code, Codex, Cursor, Antigravity, OpenCode, and Pi.
+ACPlugin is a canonical AI Plugin framework and CLI. Authors maintain one framework-owned source layout and compile Platform-owned deliveries for Claude Code, Codex, Cursor, Antigravity, OpenCode, and Pi.
 
 The independently versioned public packages are:
 
@@ -18,7 +18,7 @@ The independently versioned public packages are:
 - `@tokenroll/acplugin-extension-hooks`
 - `@tokenroll/acplugin-extension-mcp`
 
-Core and the integration-test workspace are private packages. The main package bundles Core, while every official Platform and Extension imports the public SDK from `@tokenroll/acplugin` through a peer dependency. Consumers never depend on `@acplugin/*`.
+Core, the integration-test workspace, Docs, and Playground are private packages. The main package bundles Core, while every official Platform and Extension imports the public SDK from `@tokenroll/acplugin` through a peer dependency. Docs and Playground are repository-only consumers and never enter public tarballs. Consumers never depend on `@acplugin/*`.
 
 ## Authoring boundary
 
@@ -36,10 +36,11 @@ Instructions are intentionally outside the installable Plugin boundary. Hooks an
 - tsdown for package bundles/declarations/package validation
 - Rolldown for local Hook/MCP executable bundles
 - Vitest for private repository tests
+- VitePress 1.6 and TypeDoc 0.28 for the private documentation workspace
 
-The TypeScript 7 compiler is installed across workspaces through the cataloged `@typescript/native` alias, so every package `tsc` script uses 7.x. The root keeps the official `@typescript/typescript6` compatibility API under the `typescript` name only for tools such as typescript-eslint and the comment AST checker, because TypeScript 7 no longer exposes the legacy JavaScript compiler API. Vitest, tsdown, Rolldown, and Node types are also shared through the catalog; package-specific runtime and lint dependencies stay in the package that owns them.
+The TypeScript 7 compiler is installed across workspaces through the cataloged `@typescript/native` alias, so every package `tsc` script uses 7.x. The root keeps the official `@typescript/typescript6` compatibility API under the `typescript` name only for tools such as typescript-eslint and the comment AST checker, because TypeScript 7 no longer exposes the legacy JavaScript compiler API. TypeDoc uses the same TypeScript 6 compatibility family inside `@acplugin/docs`; production package typechecking remains on TypeScript 7. Vitest, tsdown, Rolldown, and Node types are also shared through the catalog; package-specific runtime and lint dependencies stay in the package that owns them.
 
-The CLI entry is `packages/acplugin/src/cli.ts`; the facade is `packages/acplugin/src/index.ts`, and `packages/acplugin/src/project-config.ts` loads trusted project configuration. Official integration factories live only in their own packages.
+The CLI entry is `packages/acplugin/src/cli.ts`; the facade is `packages/acplugin/src/index.ts`, and `packages/acplugin/src/project-config.ts` loads trusted project configuration. Official integration factories live only in their own packages. `packages/docs` builds the VitePress/manual and generated API surface, while `packages/playground` exercises the published authoring boundary as an llmdoc v3 themed template smoke.
 
 ## Migration boundary
 

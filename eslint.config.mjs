@@ -3,7 +3,17 @@ import tseslint from 'typescript-eslint';
 import stylistic from '@stylistic/eslint-plugin';
 
 export default tseslint.config(
-  { ignores: ['**/dist', '**/node_modules', 'llmdoc', 'coverage', '.llmdoc-tmp'] },
+  {
+    ignores: [
+      '**/dist',
+      '**/node_modules',
+      'llmdoc',
+      'coverage',
+      '.llmdoc-tmp',
+      'packages/docs/api',
+      'packages/docs/.vitepress/cache',
+    ],
+  },
   js.configs.recommended,
   ...tseslint.configs.recommended,
   // Formatting via ESLint Stylistic, matched to the existing code style.

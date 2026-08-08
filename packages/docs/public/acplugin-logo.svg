@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 375 112" role="img" aria-labelledby="title description">
+  <title id="title">ACPlugin</title>
+  <desc id="description">ACPlugin wordmark with a banana-shaped letter C.</desc>
+  <g fill="none" fill-rule="evenodd">
+    <text x="8" y="83" fill="#20221b" font-family="Inter, Arial, sans-serif" font-size="72" font-weight="800" letter-spacing="-4">A</text>
+    <path d="M121 38C106 29 84 37 81 55c-3 18 14 29 36 20" stroke="#f6c915" stroke-linecap="round" stroke-width="13"/>
+    <path d="M121 38l5-5" stroke="#5c4510" stroke-linecap="round" stroke-width="5"/>
+    <path d="M117 75l6 4" stroke="#5c4510" stroke-linecap="round" stroke-width="5"/>
+    <text x="134" y="83" fill="#20221b" font-family="Inter, Arial, sans-serif" font-size="72" font-weight="800" letter-spacing="-4">Plugin</text>
+  </g>
+</svg>

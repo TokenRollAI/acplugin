@@ -2,7 +2,7 @@
 
 ## Task
 
-- 审查 acplugin 当前转换实现，并用 2026-07-29 的官方资料确认 Claude Code、Codex、Cursor、OpenCode、Gemini CLI 与 Antigravity 的最新扩展格式。
+- 审查 ACPlugin 当前转换实现，并用 2026-07-29 的官方资料确认 Claude Code、Codex、Cursor、OpenCode、Gemini CLI 与 Antigravity 的最新扩展格式。
 - 对照真实 marketplace、现有测试和并行工作树改动，区分已确认缺口、未提交修正与仍需验证的判断。
 
 ## Expected vs Actual

@@ -1,8 +1,8 @@
-# 使用 acplugin
+# 使用 ACPlugin
 
 > [English version](usage.md)
 
-acplugin 工程只创作一份规范 Plugin，然后为 Claude Code、Codex、Cursor、Antigravity、OpenCode 和 Pi 编译由各 Platform 拥有的交付产物。运行环境需要 Node.js `^20.19.0 || ^22.13.0 || >=23.5.0` 以及 pnpm。
+ACPlugin 工程只创作一份规范 Plugin，然后为 Claude Code、Codex、Cursor、Antigravity、OpenCode 和 Pi 编译由各 Platform 拥有的交付产物。运行环境需要 Node.js `^20.19.0 || ^22.13.0 || >=23.5.0` 以及 pnpm。
 
 ## 创建工程
 
@@ -44,7 +44,7 @@ export default defineConfig({
 });
 ```
 
-acplugin 不提供 Instructions Component。只有启用对应官方 Extension 后，工程才允许存在 Hooks 或 MCP 目录。
+ACPlugin 不提供 Instructions Component。只有启用对应官方 Extension 后，工程才允许存在 Hooks 或 MCP 目录。
 
 TypeScript 配置以及已启用的 Hook/MCP 描述文件都是受信任、可执行的项目代码，应当像构建脚本一样接受 review。Legacy Migration 来源会作为不可信数据扫描，不会作为描述文件执行。
 

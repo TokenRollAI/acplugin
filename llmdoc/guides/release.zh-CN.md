@@ -14,13 +14,13 @@
 - `@tokenroll/acplugin-extension-hooks`
 - `@tokenroll/acplugin-extension-mcp`
 
-Core 与测试工作区是私有包，不能发布，也不能作为运行时依赖出现在 tarball 中。所有 npm 发布、Registry 检查、Git Tag 和 GitHub Release 均由获得授权的维护者手工执行。仓库没有自动发布工作流。
+Core、测试工作区、Docs 和 Playground 是私有包，不能发布，也不能作为运行时依赖出现在 tarball 中。所有 npm 发布、Registry 检查、Git Tag 和 GitHub Release 均由获得授权的维护者手工执行。仓库没有自动发布工作流。
 
 仓库构建与发布工具要求 Node.js `^22.18.0 || >=24.11.0`，CI 固定使用 22.18.0；九个公开 package 当前都声明独立的运行时范围 `^20.19.0 || ^22.13.0 || >=23.5.0`。
 
 ## 仓库工作流
 
-`Check` 在 Pull Request 创建时自动执行，并且只运行 lint 和 typecheck。
+`Check` 在 Pull Request 创建时自动执行：一个 Job 运行 lint/typecheck，另一个独立 Job 运行 `docs:check`，重新生成 API 页面、检查 VitePress 链接/结构，并验证及构建真实 Playground。
 
 `Verify` 仅能手工触发，并使用只读仓库权限。它在 Node 22.18 上从同一 Revision 构建和验证九个 tarball，上传这组精确 Artifact，再在干净的 Node 20.19 工程中消费同一组文件；不会发布或创建 Release 引用。同一 Revision 一起验证不代表这些 package 属于固定版本组。
 
@@ -38,6 +38,7 @@ Core 与测试工作区是私有包，不能发布，也不能作为运行时依
    ```bash
    pnpm install --frozen-lockfile
    pnpm run check
+   pnpm run docs:check
    pnpm run release:verify
    ```
 

@@ -1,6 +1,6 @@
-# acplugin 按 Package 代码导览
+# ACPlugin 按 Package 代码导览
 
-本文面向第一次进入 acplugin 1.0 代码库的维护者，按 workspace package 解释内容、架构、数据流和实现逻辑。它不是 API 规范的替代品；需要判断 MUST/MUST NOT 时，仍以正式规范、ADR 和源码为准。
+本文面向第一次进入 ACPlugin 1.0 代码库的维护者，按 workspace package 解释内容、架构、数据流和实现逻辑。它不是 API 规范的替代品；需要判断 MUST/MUST NOT 时，仍以正式规范、ADR 和源码为准。
 
 建议先用 15 分钟读完“全局心智模型”和 `@acplugin/core`，再按当前任务跳到对应 package。代码链接指向主要入口，不要求从目录第一行顺序阅读。
 
@@ -19,6 +19,8 @@
 | `packages/extensions/hooks` | `@tokenroll/acplugin-extension-hooks` | 公开 | Hook 作者协议、单次 Bundle、安全 Runner、六平台 Adapter |
 | `packages/extensions/mcp` | `@tokenroll/acplugin-extension-mcp` | 公开 | HTTP/stdio MCP 作者协议、stdio Bundle/smoke、六平台 Adapter |
 | `packages/test` | `@acplugin/test` | 私有 | 跨包、CLI、Migration、架构和发布边界集成测试 |
+| `packages/docs` | `@acplugin/docs` | 私有 | VitePress 手写文档、九公开包 TypeDoc API 与导航生成 |
+| `packages/playground` | `@acplugin/playground` | 私有 | llmdoc v3 主题真实消费工程与 packaging/template smoke |
 
 依赖方向是刻意收窄的：
 
@@ -33,12 +35,20 @@ flowchart TD
   TEST --> CORE
   TEST --> H
   TEST --> M
+  DOCS["@acplugin/docs"] -. 扫描公开根入口 .-> MAIN
+  DOCS -. 扫描公开根入口 .-> P1
+  DOCS -. 扫描公开根入口 .-> H
+  DOCS -. 扫描公开根入口 .-> M
+  PLAY["@acplugin/playground"] --> MAIN
+  PLAY --> P1
+  PLAY --> H
 ```
 
 - Core 不 import 任何具体 Platform、Hooks、MCP 或 Migration。
 - 六个官方 Platform 和两个 Extension 的生产源码都只从主包导入公开 SDK，并把主包保持为 peer dependency；它们不能依赖私有 Core 或另一个集成。
 - 主包通过 [tsdown 配置](../../packages/acplugin/tsdown.config.ts)只内联 Core。它没有官方集成 re-export、subpath 或 manifest 依赖，公开 tarball 运行时不出现 `@acplugin/*`。
 - 每个 Platform 默认导出并具名导出自身工厂；MCP 的 Rolldown 重入口还被拆成独立 `bundler.mjs`。
+- Docs 直接把九个公开 package 根目录作为 TypeDoc entry point，但不成为它们的运行时依赖；Playground 只通过公开包装配真实消费路径。
 
 Migration 会在主包构建时把自验证所需的 Claude Code Platform 与 MCP Extension 代码内联进 CLI 的惰性 chunk，但不会给主包 manifest 增加官方集成运行时依赖，也不会让正常 façade/CLI 启动主动加载 Migration。
 
@@ -744,7 +754,42 @@ release:verify（Vitest 之外）:
 
 选择测试位置的原则：如果错误只在一个 Registry 或转换器内发生，放所属 package；如果需要 façade、CLI、多个包、真实 bundle/tarball 或事务树共同出现，放 `packages/test`。
 
-## 15. 快速定位：我要改什么，先看哪里
+## 15. `@acplugin/docs` 与 `@acplugin/playground`：仓库内消费层
+
+### 15.1 Docs 的内容、架构与数据流
+
+- [typedoc.json](../../packages/docs/typedoc.json)：使用 packages strategy，显式扫描九个公开 package 的 `src/index.ts`，排除 private/protected/internal API，并把 warning 当作失败。
+- [.vitepress/config.mts](../../packages/docs/.vitepress/config.mts)：定义 Guide、Config、Platforms、Extensions、Ecosystem、Playground、Resources 和自动 API sidebar；使用本地搜索与默认主题。
+- 手写 Markdown 按用户任务组织，TypeDoc API 输出到 ignored 的 `packages/docs/api/`；两者由 VitePress 在 build 时合并。
+- [verify-docs.mjs](../../scripts/verify-docs.mjs)：逐包验证根页和代表 API，拒绝私有 package 页面及本机绝对路径泄漏。
+
+```text
+nine public src/index.ts
+→ TypeDoc + markdown theme
+→ ignored api/*.md + typedoc-sidebar.json
+→ VitePress manual + generated API
+→ dead-link/local-search/static build
+→ verify public/private package boundary
+```
+
+TypeDoc 因旧 Compiler API 兼容性在此 workspace 使用 TypeScript 6；正式源码 typecheck 和 Playground 仍使用 catalog 的 TypeScript 7。生成物可重建且不提交，也不能成为 release tarball 输入。
+
+### 15.2 Playground 的内容、架构与数据流
+
+[acplugin.config.ts](../../packages/playground/acplugin.config.ts)显式装配主包、Claude Code、Codex 和 Hooks。工程包含四个 Command、一个带四个 auxiliary reference 的 llmdoc Skill、三个 Agent、三个 no-op Hook，以及 runtime/schema/upgrade 边界和四个 Public 模板。
+
+```text
+canonical llmdoc-v3-themed authoring files
+→ real public package imports
+→ acplugin validate --json
+→ exact Codex degradation whitelist
+→ verify Skill auxiliary / Hook wire / Public artifacts
+→ real managed build for Claude Code + Codex
+```
+
+配置使用 `strict: false` 只接受 Codex Agent fallback 及其依赖传播；[verify-playground.mjs](../../scripts/verify-playground.mjs)按结构化 subject/capability 精确列出允许降级，并拒绝其他诊断和所有 unsupported。Playground 只验证 packaging/template 边界，不实现 llmdoc runtime、增量更新、缓存、Schema、Migration 或 MCP。
+
+## 16. 快速定位：我要改什么，先看哪里
 
 | 任务 | 第一落点 | 通常需要同步检查 |
 | --- | --- | --- |
@@ -759,8 +804,10 @@ release:verify（Vitest 之外）:
 | 修改 Hook 作者语义 | Hooks `types.ts`/`discovery.ts` | runner、wire、六平台 Adapter |
 | 修改 MCP transport/auth | MCP `types.ts`/`discovery.ts` | bundler smoke、所有 Adapter、Secret 测试 |
 | 修改发布边界 | package manifest、tsdown、verify script | publint、ATTW、tarball consumer、ESM import graph |
+| 修改文档信息架构或公共 API 页面 | `packages/docs`、公开源码 JSDoc | TypeDoc generation、VitePress dead link、`verify-docs` |
+| 修改 Playground 模板或允许的兼容性 | `packages/playground` | typecheck、结构化 degradation 白名单、两平台真实 build |
 
-## 16. 推荐阅读顺序
+## 17. 推荐阅读顺序
 
 第一次完整上手可按以下顺序：
 
@@ -772,5 +819,6 @@ release:verify（Vitest 之外）:
 6. 再读 Codex，理解 fallback、兼容性和复杂 Validator。
 7. 最后读 Hooks/MCP 的 `types → discovery → bundler → adapters`，理解横向能力如何不侵入 Platform。
 8. 用 `packages/test` 中对应集成测试反向验证自己的理解。
+9. 最后从 `packages/docs` 看公共叙事与 API，从 `packages/playground` 看最小真实消费闭环。
 
 本仓库的核心判断口诀是：**谁拥有数据、谁能读取来源、谁负责最终验证、失败时旧输出是否仍完整。** 遇到新需求时先回答这四个问题，通常就能找到正确 package 和正确抽象层。

@@ -14,13 +14,13 @@ The repository has nine independently versioned public packages:
 - `@tokenroll/acplugin-extension-hooks`
 - `@tokenroll/acplugin-extension-mcp`
 
-Core and the test workspace are private and must not be published or appear as packed runtime dependencies. Every npm publication, Registry check, Git tag, and GitHub Release is performed manually by an authorized maintainer. The repository has no automated publication workflow.
+Core, the test workspace, Docs, and Playground are private and must not be published or appear as packed runtime dependencies. Every npm publication, Registry check, Git tag, and GitHub Release is performed manually by an authorized maintainer. The repository has no automated publication workflow.
 
 Repository build and release tooling requires Node.js `^22.18.0 || >=24.11.0`; CI uses 22.18.0. All nine public packages currently declare the separate runtime range `^20.19.0 || ^22.13.0 || >=23.5.0`.
 
 ## Repository workflows
 
-`Check` runs automatically for pull requests and performs only lint and typecheck.
+`Check` runs automatically for pull requests. One job performs lint and typecheck; an independent job runs `docs:check`, which rebuilds generated API pages, checks VitePress links/structure, and validates/builds the real Playground.
 
 `Verify` is manually dispatched with read-only repository permissions. It builds and validates all nine tarballs from one revision on Node 22.18, uploads that exact artifact set, then consumes it in a clean Node 20.19 project. It never publishes or creates release references. Verifying one revision together does not make the packages a fixed version cohort.
 
@@ -38,6 +38,7 @@ The repository setting **Actions → General → Workflow permissions → Allow 
    ```bash
    pnpm install --frozen-lockfile
    pnpm run check
+   pnpm run docs:check
    pnpm run release:verify
    ```
 

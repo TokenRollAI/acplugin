@@ -1,11 +1,11 @@
-# acplugin 项目规范
+# ACPlugin 项目规范
 
 ## 项目定位
 
-acplugin 是统一的 AI Plugin 框架和 CLI。作者通过规范化工程书写 Commands、Skills、Agents，以及可选 Hooks/MCP；`init` 默认生成显式安装 Claude Code 与 Codex Platform 的工程，使用者也可安装 Cursor、Antigravity、OpenCode、Pi 或任意第三方 Platform。
+ACPlugin 是统一的 AI Plugin 框架和 CLI。作者通过规范化工程书写 Commands、Skills、Agents，以及可选 Hooks/MCP；`init` 默认生成显式安装 Claude Code 与 Codex Platform 的工程，使用者也可安装 Cursor、Antigravity、OpenCode、Pi 或任意第三方 Platform。
 
 - 公开包：`@tokenroll/acplugin`、六个 `@tokenroll/acplugin-platform-*`、`@tokenroll/acplugin-extension-hooks`、`@tokenroll/acplugin-extension-mcp`
-- 私有包：Core、内部 Test workspace
+- 私有包：Core、内部 Test、Docs、Playground workspace
 - 不提供 Instructions Component
 - 旧 Claude 工程/Plugin 的导入仅属于隔离的 Migration 子系统
 
@@ -17,6 +17,7 @@ acplugin 是统一的 AI Plugin 框架和 CLI。作者通过规范化工程书�
 - Vitest 只用于仓库内部测试
 - Commander.js + `@inquirer/prompts` 负责 CLI/TUI
 - Rolldown 只用于 Hooks/MCP 本地可执行内容 bundle
+- VitePress 1.6 + TypeDoc 0.28 负责私有 Docs；TypeDoc 使用 TypeScript 6 Compiler API 兼容层
 
 ## Monorepo
 
@@ -34,7 +35,9 @@ packages/
 ├── extensions/             # 两个正式公开横向 Extension 包
 │   ├── hooks/
 │   └── mcp/
-└── test/                   # 私有跨包 Vitest 集成测试
+├── test/                   # 私有跨包 Vitest 集成测试
+├── docs/                   # 私有 VitePress/TypeDoc 文档工程
+└── playground/             # 私有 llmdoc v3 主题真实消费模板
 ```
 
 `@tokenroll/acplugin` 构建时必须 bundle Core，但不得 bundle 或重新导出官方 Platform/Extension。六个官方 Platform 与 Hooks/MCP Extension 都只能从主包公开 SDK 导入契约，并通过 `workspace:^` peer 开发边连接主包；pack 后必须变为正常 `^x.y.z`。任何公开 tarball 的运行时依赖都不得出现 `@acplugin/*`。
@@ -110,13 +113,14 @@ Migration 位于 `packages/acplugin/src/migration/`，CLI 使用动态 import。
 - Core 单元测试：`packages/core/test/`
 - 跨包集成：`packages/test/test/`
 - Migration 集成：`packages/test/test/migration.test.ts`
-- 根 workspace 与各 Package 统一使用 catalog 中的 `@typescript/native` 执行 TypeScript 7 编译和类型检查；只有依赖旧 Compiler API 的 Lint/注释工具使用根目录 `@typescript/typescript6` 兼容别名。
+- 根 workspace 与各正式 Package 统一使用 catalog 中的 `@typescript/native` 执行 TypeScript 7 编译和类型检查；依赖旧 Compiler API 的 Lint/注释工具及 TypeDoc 使用 `@typescript/typescript6` 兼容别名。
 
 ```bash
 pnpm run lint
 pnpm run typecheck
 pnpm run test
 pnpm run build
+pnpm run docs:check
 pnpm run release:verify
 ```
 
@@ -125,7 +129,7 @@ pnpm run release:verify
 ## 发行
 
 - 九个公开包由 Changesets 独立版本化；兼容性由 lifecycle `apiVersion` 和主包 peer range 表达，不使用 fixed group。
-- `Check` Workflow 在 PR 上自动执行 lint 和 typecheck。
+- `Check` Workflow 在 PR 上自动执行 lint/typecheck，并通过独立 Job 执行 `docs:check`。
 - `Patch` Workflow 只能手工触发；从默认分支选择目标分支，在写版本前确认至少一个有效 Changeset 会升级公开包，再消费 Changesets、生成 changelog、升级各自声明的公开包版本，并创建回到该目标分支的版本 PR。
 - 所有版本均由维护者从已验证 tarball 手工发布；仓库不得添加 Tag/npm 自动发布 Workflow。
 - 每个变更的公开包都要验证 Registry 精确版本；依赖新的主包 peer range 时先发布主包，再发布对应 Platform/Extension。

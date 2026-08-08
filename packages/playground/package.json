@@ -1,0 +1,22 @@
+{
+  "name": "@acplugin/playground",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": "^20.19.0 || ^22.13.0 || >=23.5.0"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json",
+    "validate": "acplugin validate",
+    "build": "acplugin build"
+  },
+  "devDependencies": {
+    "@tokenroll/acplugin": "workspace:^",
+    "@tokenroll/acplugin-extension-hooks": "workspace:^",
+    "@tokenroll/acplugin-platform-claude-code": "workspace:^",
+    "@tokenroll/acplugin-platform-codex": "workspace:^",
+    "@types/node": "catalog:",
+    "@typescript/native": "catalog:"
+  }
+}

@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-labelledby="title description">
+  <title id="title">ACPlugin banana C</title>
+  <desc id="description">A banana-shaped letter C on a dark rounded square.</desc>
+  <defs>
+    <linearGradient id="panel" x1="16" x2="112" y1="8" y2="120" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#292b22"/>
+      <stop offset="1" stop-color="#11120e"/>
+    </linearGradient>
+  </defs>
+  <rect width="112" height="112" x="8" y="8" fill="url(#panel)" rx="30"/>
+  <path d="M91 35C72 24 45 35 41 59c-4 24 18 42 45 29" fill="none" stroke="#ffda35" stroke-linecap="round" stroke-width="16"/>
+  <path d="M91 35l7-7" stroke="#cf9e00" stroke-linecap="round" stroke-width="7"/>
+  <path d="M86 88l8 5" stroke="#cf9e00" stroke-linecap="round" stroke-width="7"/>
+  <circle cx="55" cy="42" r="2.2" fill="#9b6b00"/>
+  <circle cx="45" cy="61" r="1.8" fill="#9b6b00"/>
+  <circle cx="61" cy="86" r="2" fill="#9b6b00"/>
+</svg>

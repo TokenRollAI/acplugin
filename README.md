@@ -1,8 +1,8 @@
-# acplugin
+# ACPlugin
 
 [中文文档](./README.zh-CN.md)
 
-acplugin is a canonical AI plugin framework and CLI. You author Commands, Skills, Agents, optional Hooks, and optional MCP servers once; acplugin builds Platform-owned deliveries for Claude Code, Codex, Cursor, Antigravity, OpenCode, and Pi.
+ACPlugin is a canonical AI plugin framework and CLI. You author Commands, Skills, Agents, optional Hooks, and optional MCP servers once; ACPlugin builds Platform-owned deliveries for Claude Code, Codex, Cursor, Antigravity, OpenCode, and Pi.
 
 This is not a Claude-project converter. The canonical project is the source of truth, and each Platform owns its final manifest, paths, compatibility decisions, and deterministic serialization. Legacy Claude projects and plugins are handled separately by `acplugin migrate`.
 
@@ -71,7 +71,7 @@ my-plugin/
 
 IDs and directory names use lowercase kebab-case. Markdown Components require YAML Frontmatter and a non-empty body. Symlinks and paths escaping the project are rejected.
 
-acplugin deliberately has no Instructions Component. Repository-wide instructions are host/project configuration, not an installable plugin capability.
+ACPlugin deliberately has no Instructions Component. Repository-wide instructions are host/project configuration, not an installable plugin capability.
 
 ## Configuration
 
@@ -246,7 +246,7 @@ FileChanged, WorktreeCreate, WorktreeRemove, Elicitation, ElicitationResult
 
 Declare one with `event: { platform: 'claude-code', name: 'Setup' }`; a bare `'Setup'` string is rejected.
 
-acplugin bundles each handler once as platform-neutral Node 20 ESM. Every Platform Adapter contributes a verified static or runtime integration and an adjacent `wire.mjs` for native input validation, recursive camelCase conversion, and output mapping; the shared Handler owns bounded JSON I/O, semantic result validation, safe failures, and deterministic third-party license notices. Meaningful matchers ignored by the selected host are reported per Hook as `degraded`; unsupported events generate no fake runtime.
+ACPlugin bundles each handler once as platform-neutral Node 20 ESM. Every Platform Adapter contributes a verified static or runtime integration and an adjacent `wire.mjs` for native input validation, recursive camelCase conversion, and output mapping; the shared Handler owns bounded JSON I/O, semantic result validation, safe failures, and deterministic third-party license notices. Meaningful matchers ignored by the selected host are reported per Hook as `degraded`; unsupported events generate no fake runtime.
 
 ## MCP Extension
 
@@ -295,7 +295,7 @@ export default defineMcpServer({
 });
 ```
 
-For local MCP, you provide a complete stdio MCP implementation in `server.ts`; acplugin bundles it for Node 20 ESM. Both development and production builds reject unresolved runtime dynamic imports, start the bundle with only declared literal environment values, and require a bounded `initialize → initialized → tools/list` smoke test to pass. No mode branch or cache bypasses this protocol check. Referenced secret values are never read. For HTTP MCP, you declare the remote endpoint and auth/header references—there is no local server implementation to provide. Production HTTP endpoints require HTTPS; development permits loopback HTTP.
+For local MCP, you provide a complete stdio MCP implementation in `server.ts`; ACPlugin bundles it for Node 20 ESM. Both development and production builds reject unresolved runtime dynamic imports, start the bundle with only declared literal environment values, and require a bounded `initialize → initialized → tools/list` smoke test to pass. No mode branch or cache bypasses this protocol check. Referenced secret values are never read. For HTTP MCP, you declare the remote endpoint and auth/header references—there is no local server implementation to provide. Production HTTP endpoints require HTTPS; development permits loopback HTTP.
 
 Claude Code, Codex, and OpenCode support both remote HTTP and bundled local stdio. Cursor and Antigravity support remote HTTP only; Pi reports MCP unsupported. See the [complete compatibility matrix](./llmdoc/reference/conversion-matrix.md).
 
@@ -355,6 +355,21 @@ Supported sources include local Claude projects, single plugins, marketplaces, a
 
 Use `--dry-run` for scan/map/validation without destination writes and `--strict` to fail on any degraded or unmapped item.
 
+## Documentation and playground
+
+The repository includes two private, repository-only workspaces beside the publishable packages:
+
+- `packages/docs` is a VitePress site with task-oriented Guide, Config, Platform, Extension, Ecosystem, Playground, and Resource sections. TypeDoc regenerates API pages and the sidebar for all nine public package root entries before every docs dev/build.
+- `packages/playground` is a real Claude Code/Codex/Hooks consumer modeled on llmdoc v3. It validates canonical Commands, a Skill with auxiliary references, Agents, no-op Hooks, and Public files. It is a packaging/template smoke, not an llmdoc runtime or conformance suite.
+
+```bash
+pnpm run docs:dev       # generate API pages, then start VitePress
+pnpm run docs:build     # generate API pages and build the static site
+pnpm run docs:check     # docs structure/build plus the real playground checks
+```
+
+Generated API Markdown/sidebar, VitePress cache/output, and Playground `dist` are reproducible and ignored by Git.
+
 ## Packages and repository development
 
 Public packages:
@@ -369,17 +384,18 @@ Public packages:
 - `@tokenroll/acplugin-extension-hooks`
 - `@tokenroll/acplugin-extension-mcp`
 
-The official integrations use the same public lifecycle SDK available to third-party packages and declare the main package as a peer dependency. Only Core and the Vitest integration workspace remain private; Core is bundled into the main package and no public runtime manifest contains `@acplugin/*`.
+The official integrations use the same public lifecycle SDK available to third-party packages and declare the main package as a peer dependency. Core, the Vitest integration workspace, Docs, and Playground remain private; Core is bundled into the main package and no public runtime manifest contains `@acplugin/*`.
 
 ```bash
 pnpm install
 pnpm run check
+pnpm run docs:check
 pnpm run release:verify
 ```
 
 `release:verify` creates all nine public tarballs from one revision, inspects their files/manifests and type resolution, verifies peer rewriting and brand interoperability, and installs a six-Platform/two-Extension scaffold into a clean external consumer. It performs no npm publication.
 
-Pull requests automatically run lint and typecheck. The manually dispatched `Patch` workflow accepts a target branch containing at least one effective Changeset that bumps a public package, consumes its Changesets to bump versions and generate changelogs, and opens a version PR back to that branch.
+Pull requests automatically run lint/typecheck and an independent Docs/Playground quality gate. The manually dispatched `Patch` workflow accepts a target branch containing at least one effective Changeset that bumps a public package, consumes its Changesets to bump versions and generate changelogs, and opens a version PR back to that branch.
 
 Every package is versioned independently and only changed packages are published. If a new integration release requires a newly published main-package peer range, publish and verify that main-package version first; otherwise unrelated integrations have no prescribed order. Each exact Registry version, package-specific tag, and GitHub Release is handled manually. The repository contains no automated publication workflow.
 

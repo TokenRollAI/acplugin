@@ -1,8 +1,8 @@
-# acplugin
+# ACPlugin
 
 [English](./README.md)
 
-acplugin 是一个统一的 AI Plugin 框架和 CLI。开发者只维护一套 Commands、Skills、Agents，以及可选的 Hooks/MCP 源码，acplugin 将其构建为 Claude Code、Codex、Cursor、Antigravity、OpenCode 和 Pi 各自拥有的交付产物。
+ACPlugin 是一个统一的 AI Plugin 框架和 CLI。开发者只维护一套 Commands、Skills、Agents，以及可选的 Hooks/MCP 源码，ACPlugin 将其构建为 Claude Code、Codex、Cursor、Antigravity、OpenCode 和 Pi 各自拥有的交付产物。
 
 它不再以 Claude 工程为默认输入进行“格式转换”。规范化工程才是唯一事实来源，每个 Platform 负责最终 Manifest、路径、兼容性判断和确定性序列化。旧 Claude 工程/Plugin 的导入由隔离的 `acplugin migrate` 负责。
 
@@ -71,7 +71,7 @@ my-plugin/
 
 ID 和目录名使用小写 kebab-case。Markdown Component 必须包含 YAML Frontmatter 和非空正文。符号链接、逃逸工程根目录的路径会被拒绝。
 
-acplugin 不提供 Instructions Component。仓库级 Instructions 属于宿主/工程配置，而不是可安装 Plugin 的能力边界。
+ACPlugin 不提供 Instructions Component。仓库级 Instructions 属于宿主/工程配置，而不是可安装 Plugin 的能力边界。
 
 ## 配置
 
@@ -244,7 +244,7 @@ FileChanged, WorktreeCreate, WorktreeRemove, Elicitation, ElicitationResult
 
 使用 `event: { platform: 'claude-code', name: 'Setup' }` 声明；裸字符串 `'Setup'` 会被拒绝。
 
-acplugin 把每个实现只 bundle 一次，生成平台中立的 Node 20 ESM Handler；每个 Platform Adapter 贡献经过验证的静态或运行时集成，以及相邻的 `wire.mjs`，负责原生输入校验、递归 camelCase 转换和输出映射。共享 Handler 负责有界 JSON I/O、语义结果校验、安全错误和确定性的第三方许可证产物。宿主忽略的 meaningful matcher 会按具体 Hook 报告 `degraded`；不支持的事件不会生成伪运行时。
+ACPlugin 把每个实现只 bundle 一次，生成平台中立的 Node 20 ESM Handler；每个 Platform Adapter 贡献经过验证的静态或运行时集成，以及相邻的 `wire.mjs`，负责原生输入校验、递归 camelCase 转换和输出映射。共享 Handler 负责有界 JSON I/O、语义结果校验、安全错误和确定性的第三方许可证产物。宿主忽略的 meaningful matcher 会按具体 Hook 报告 `degraded`；不支持的事件不会生成伪运行时。
 
 ## MCP Extension
 
@@ -293,7 +293,7 @@ export default defineMcpServer({
 });
 ```
 
-本地 MCP 需要由作者提供完整的 stdio MCP 实现，acplugin 将其 bundle 为 Node 20 ESM。development 与 production 构建都会拒绝无法静态解析的运行时 dynamic import，只把声明的公开字面量环境值传给探测进程，并要求在超时和输出上限内完成 `initialize → initialized → tools/list` 协议 smoke；不会通过 mode 分支或缓存跳过该检查，任何 Secret 引用值也不会被读取。HTTP MCP 只需要声明远程 endpoint、认证和 Header 引用。生产 HTTP 必须使用 HTTPS，开发模式仅允许 loopback HTTP。
+本地 MCP 需要由作者提供完整的 stdio MCP 实现，ACPlugin 将其 bundle 为 Node 20 ESM。development 与 production 构建都会拒绝无法静态解析的运行时 dynamic import，只把声明的公开字面量环境值传给探测进程，并要求在超时和输出上限内完成 `initialize → initialized → tools/list` 协议 smoke；不会通过 mode 分支或缓存跳过该检查，任何 Secret 引用值也不会被读取。HTTP MCP 只需要声明远程 endpoint、认证和 Header 引用。生产 HTTP 必须使用 HTTPS，开发模式仅允许 loopback HTTP。
 
 Claude Code、Codex 和 OpenCode 同时支持远程 HTTP 与 Bundle 后的本地 stdio；Cursor 与 Antigravity 只支持远程 HTTP；Pi 会报告 MCP 不支持。详见[完整兼容矩阵](./llmdoc/reference/conversion-matrix.zh-CN.md)。
 
@@ -351,6 +351,21 @@ acplugin migrate owner/repository ./new-workspace --all
 
 `--dry-run` 不写目标目录；`--strict` 在出现 degraded/unmapped 时失败。
 
+## 文档工程与 Playground
+
+除公开包外，仓库还包含两个仅供仓库使用的私有 workspace：
+
+- `packages/docs` 是 VitePress 文档站，按 Guide、Config、Platform、Extension、Ecosystem、Playground 和 Resources 组织内容。每次启动或构建文档前，TypeDoc 都会为九个公开 package 根入口重新生成 API 页面和 sidebar。
+- `packages/playground` 是一个以 llmdoc v3 为主题、真实构建 Claude Code/Codex/Hooks 的消费工程。它验证规范 Commands、带辅助引用的 Skill、Agents、no-op Hooks 和 Public 文件；定位是 packaging/template smoke，不是 llmdoc runtime 或 conformance suite。
+
+```bash
+pnpm run docs:dev       # 生成 API 页面并启动 VitePress
+pnpm run docs:build     # 生成 API 页面并构建静态站点
+pnpm run docs:check     # 检查文档结构/构建和真实 Playground
+```
+
+自动生成的 API Markdown/sidebar、VitePress cache/产物和 Playground `dist` 都可重建，并由 Git 忽略。
+
 ## 包与仓库开发
 
 公开包：
@@ -365,17 +380,18 @@ acplugin migrate owner/repository ./new-workspace --all
 - `@tokenroll/acplugin-extension-hooks`
 - `@tokenroll/acplugin-extension-mcp`
 
-官方集成使用与第三方 package 相同的公开 lifecycle SDK，并把主包声明为 peer dependency。只有 Core 和 Vitest Test workspace 保持私有；Core 会内联进主包，任何公开运行时清单都不得包含 `@acplugin/*`。
+官方集成使用与第三方 package 相同的公开 lifecycle SDK，并把主包声明为 peer dependency。Core、Vitest Test workspace、Docs 和 Playground 保持私有；Core 会内联进主包，任何公开运行时清单都不得包含 `@acplugin/*`。
 
 ```bash
 pnpm install
 pnpm run check
+pnpm run docs:check
 pnpm run release:verify
 ```
 
 `release:verify` 会从同一 Revision 创建九个公开 tarball，检查 Manifest、文件列表、类型解析、peer rewrite 和品牌互操作，并在 monorepo 外的干净消费者中构建六 Platform/两 Extension 脚手架；不会发布 npm。
 
-PR 会自动执行 lint 和 typecheck。手工触发的 `Patch` Workflow 接收一个至少包含一份会升级公开包的有效 Changeset 的目标分支，消费 Changesets 以升级版本并生成 changelog，随后创建一个合并回该目标分支的版本 PR。
+PR 会自动执行 lint/typecheck，并通过独立的 Docs/Playground 质量门。手工触发的 `Patch` Workflow 接收一个至少包含一份会升级公开包的有效 Changeset 的目标分支，消费 Changesets 以升级版本并生成 changelog，随后创建一个合并回该目标分支的版本 PR。
 
 九个公开 package 独立版本化，只发布发生版本变化的 package。如果新的集成版本要求尚未发布的主包 peer range，先发布并验证该主包版本；除此之外，各集成之间没有固定顺序。每个 Registry 精确版本、package 对应的 Tag 和 GitHub Release 都由维护者手工处理；仓库不包含自动发布 Workflow。
 

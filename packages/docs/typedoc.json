@@ -1,0 +1,43 @@
+{
+  "$schema": "https://typedoc.org/schema.json",
+  "entryPoints": [
+    "../acplugin",
+    "../platforms/claude-code",
+    "../platforms/codex",
+    "../platforms/cursor",
+    "../platforms/antigravity",
+    "../platforms/opencode",
+    "../platforms/pi",
+    "../extensions/hooks",
+    "../extensions/mcp"
+  ],
+  "entryPointStrategy": "packages",
+  "packageOptions": {
+    "entryPoints": ["src/index.ts"],
+    "excludePrivate": true,
+    "excludeProtected": true,
+    "excludeInternal": true,
+    "excludeExternals": false,
+    "validation": {
+      "notExported": false,
+      "invalidLink": true,
+      "notDocumented": false
+    }
+  },
+  "plugin": [
+    "typedoc-plugin-markdown",
+    "typedoc-vitepress-theme"
+  ],
+  "theme": "markdown",
+  "out": "api",
+  "docsRoot": ".",
+  "readme": "none",
+  "cleanOutputDir": true,
+  "hideGenerator": true,
+  "githubPages": false,
+  "treatWarningsAsErrors": true,
+  "sidebar": {
+    "pretty": true,
+    "collapsed": true
+  }
+}

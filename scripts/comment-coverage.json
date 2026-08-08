@@ -44,6 +44,12 @@
     "packages/core/test/scanner.test.ts",
     "packages/core/test/transaction.test.ts",
     "packages/core/tsdown.config.ts",
+    "packages/docs/.vitepress/config.mts",
+    "packages/docs/.vitepress/theme/index.ts",
+    "packages/playground/acplugin.config.ts",
+    "packages/playground/src/hooks/pre-compact/hook.ts",
+    "packages/playground/src/hooks/session-start/hook.ts",
+    "packages/playground/src/hooks/stop/hook.ts",
     "packages/test/test/architecture.test.ts",
     "packages/test/test/build.test.ts",
     "packages/test/test/cli.test.ts",
@@ -132,6 +138,8 @@
     "packages/extensions/mcp/test/mcp.test.ts",
     "packages/extensions/mcp/tsdown.config.ts",
     "scripts/check-comments.mjs",
+    "scripts/verify-docs.mjs",
+    "scripts/verify-playground.mjs",
     "scripts/verify-release.mjs"
   ]
 }

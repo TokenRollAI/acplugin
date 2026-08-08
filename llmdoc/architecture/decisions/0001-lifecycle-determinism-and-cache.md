@@ -2,7 +2,7 @@
 
 - Status: Accepted
 - Date: 2026-08-08
-- Applies to: acplugin 1.0
+- Applies to: ACPlugin 1.0
 
 ## Context
 
@@ -19,7 +19,7 @@ The 1.0 specification mentioned a dev cache without defining serializable Extens
 3. `BuildStartContext.environment` and `BuildEndContext.environment` remain public lifecycle capabilities. Core captures one frozen snapshot for the invocation.
 4. The captured environment snapshot is a deterministic input. Core and built-in implementations must not introduce undeclared time, randomness, paths, or Secret-value reads into artifacts or reports. Trusted project/config/Extension code remains responsible for any ambient state it intentionally observes.
 5. Report sanitization removes structured secret fields, recognized credential forms, project/runtime roots, and temporary paths. It does not enumerate arbitrary environment values and replace matching substrings.
-6. acplugin 1.0 does not implement a whole-execution or cross-run Core cache. The specification constrains a dev cache if one is implemented; it does not require one to exist.
+6. ACPlugin 1.0 does not implement a whole-execution or cross-run Core cache. The specification constrains a dev cache if one is implemented; it does not require one to exist.
 7. A future cache requires an explicit versioned fingerprint, serializable values, replayable owner-scoped effects, complete dependency discovery, corruption handling, and clean-build equivalence tests. Third-party implementations are uncacheable by default unless they opt in to that future contract.
 
 ## Consequences

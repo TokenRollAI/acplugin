@@ -5,3 +5,7 @@ dist/
 
 # llmdoc local temporary context cache (not project knowledge)
 .llmdoc-tmp/
+
+# Reproducible documentation outputs
+packages/docs/api/
+packages/docs/.vitepress/cache/

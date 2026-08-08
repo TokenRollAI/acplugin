@@ -9,6 +9,8 @@
   "updateInternalDependencies": "patch",
   "ignore": [
     "@acplugin/core",
+    "@acplugin/docs",
+    "@acplugin/playground",
     "@acplugin/test"
   ]
 }

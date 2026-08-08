@@ -2,7 +2,7 @@
 
 > [English version](conversion-matrix.md)
 
-本矩阵描述规范 acplugin 1.0 构建。`packages/acplugin/src/migration/legacy/` 下的容错转换代码只属于 Migration，不是另一条构建路径。
+本矩阵描述规范 ACPlugin 1.0 构建。`packages/acplugin/src/migration/legacy/` 下的容错转换代码只属于 Migration，不是另一条构建路径。
 
 ## 交付形态与 Component
 

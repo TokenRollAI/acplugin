@@ -2,7 +2,7 @@
 
 - 状态：已接受
 - 日期：2026-08-08
-- 适用版本：acplugin 1.0
+- 适用版本：ACPlugin 1.0
 
 ## 背景
 
@@ -19,7 +19,7 @@
 3. 保留 `BuildStartContext.environment` 与 `BuildEndContext.environment` 公共能力；Core 为一次调用捕获并冻结一份快照。
 4. 捕获的环境快照属于确定性输入。Core 与内置实现不得把未声明时间、随机、路径或 Secret 值读取引入 Artifact/报告；可信项目配置和第三方 Extension 对自己主动观察的机器状态负责。
 5. 报告脱敏处理结构化 secret 字段、可识别凭据形式、工程/运行根与临时路径；不得枚举任意环境值并替换同字子串。
-6. acplugin 1.0 不实现整条执行或 Core 跨运行缓存。规范只约束“若实现 dev cache”时的行为，不要求 1.0 必须存在缓存。
+6. ACPlugin 1.0 不实现整条执行或 Core 跨运行缓存。规范只约束“若实现 dev cache”时的行为，不要求 1.0 必须存在缓存。
 7. 未来缓存必须先定义版本化 fingerprint、可序列化值、可重放的 owner-scoped effects、完整依赖发现、损坏恢复和 clean-build 等价测试。第三方实现默认不可缓存，除非显式加入未来协议。
 
 ## 影响
