@@ -2,6 +2,7 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { parseDocument } from 'yaml';
 import { DiagnosticCollector } from './diagnostics.js';
+import { compareCodeUnits } from './serialization.js';
 import type { AcpluginPlatform, DiagnosticInput, JsonObject, JsonValue } from './contracts.js';
 import type {
   AgentCapability,
@@ -289,7 +290,7 @@ function stringArray(
 ): string[] {
   if (value === undefined)
     return [];
-  if (!Array.isArray(value) || value.some(item => typeof item !== 'string' || item === '')) {
+  if (!Array.isArray(value) || value.some(item => typeof item !== 'string' || item.trim() === '')) {
     diagnostics.error('FRONTMATTER_STRING_ARRAY', `${fieldPath.join('.')} must be an array of non-empty strings.`, {
       phase: 'discover', location: { path: sourcePath }, fieldPath,
     });
@@ -433,7 +434,7 @@ function normalizeJsonValue(
   }
   /** 按键名排序使相同语义的 YAML 字段顺序得到同一工程快照。 */
   const result: Record<string, JsonValue> = {};
-  for (const key of Object.keys(value).sort((left, right) => left.localeCompare(right, 'en'))) {
+  for (const key of Object.keys(value).sort(compareCodeUnits)) {
     /** 当前普通对象字段的未知原始值。 */
     const normalized = normalizeJsonValue((value as Record<string, unknown>)[key], [...fieldPath, key], sourcePath, diagnostics, ancestors);
     if (normalized === undefined) {
@@ -484,7 +485,7 @@ async function parsePlatforms(
   const configured = new Map<string, AcpluginPlatform>(config.platforms.map(item => [item.platform.id, item.platform]));
   /** 仅写入完成 Core 与 Platform 双层校验的专属字段。 */
   const result: Record<string, Readonly<JsonObject>> = {};
-  for (const id of Object.keys(data).sort((left, right) => left.localeCompare(right, 'en'))) {
+  for (const id of Object.keys(data).sort(compareCodeUnits)) {
     /** 当前 ID 对应且能够执行专属字段校验的 Platform。 */
     const platform = configured.get(id);
     if (!platform) {
@@ -549,7 +550,7 @@ async function parsePlatforms(
  */
 async function listDirectory(directory: string): Promise<import('node:fs').Dirent[]> {
   try {
-    return (await fs.readdir(directory, { withFileTypes: true })).sort((a, b) => a.name.localeCompare(b.name, 'en'));
+    return (await fs.readdir(directory, { withFileTypes: true })).sort((a, b) => compareCodeUnits(a.name, b.name));
   } catch /** error 保存当前操作捕获的异常，供本阶段转换或恢复。 */ (error) {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT')
       return [];
@@ -922,9 +923,14 @@ function finalizePublicFiles(
   /** 无目标冲突且可以安全交给 Artifact Registry 的文件。 */
   const result: PublicFile[] = [];
   for (const file of files) {
-    /** 所有目标统一为无开头斜杠的 POSIX 相对路径。 */
-    const targetPath = file.targetPath.split(path.sep).join('/').replace(/^\.\//, '');
-    if (targetPath === '' || path.posix.isAbsolute(targetPath) || targetPath.split('/').includes('..')) {
+    /** 先按两种平台语义拒绝绝对输入，避免规范化掩盖 Win32 drive/UNC。 */
+    const unsafe = file.targetPath.includes('\0')
+      || path.posix.isAbsolute(file.targetPath)
+      || path.win32.isAbsolute(file.targetPath)
+      || file.targetPath.split(/[\\/]/u).includes('..');
+    /** 所有安全目标统一为规范 POSIX 相对路径。 */
+    const targetPath = path.posix.normalize(file.targetPath.replaceAll('\\', '/')).replace(/^\.\//u, '');
+    if (unsafe || targetPath === '.' || path.posix.isAbsolute(targetPath) || targetPath.split('/').includes('..')) {
       diagnostics.error('PUBLIC_TARGET_INVALID', 'Public target must be a non-empty relative path.', {
         phase: 'discover', location: { path: relative(config.root, file.sourcePath) },
       });
@@ -947,7 +953,7 @@ function finalizePublicFiles(
     targets.set(key, normalized);
     result.push(normalized);
   }
-  return result.sort((left, right) => left.targetPath.localeCompare(right.targetPath, 'en'));
+  return result.sort((left, right) => compareCodeUnits(left.targetPath, right.targetPath));
 }
 
 /**
@@ -1044,10 +1050,8 @@ function validateGraph(components: readonly Component[], diagnostics: Diagnostic
     }
     visiting.add(node);
     stack.push(node);
-    for (const target of edges.get(node) ?? []) {
-      if (byKey.has(target))
-        visit(target);
-    }
+    for (const target of edges.get(node) ?? [])
+      visit(target);
     stack.pop();
     visiting.delete(node);
     visited.add(node);

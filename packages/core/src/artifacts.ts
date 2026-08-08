@@ -3,6 +3,7 @@ import { createReadStream } from 'node:fs';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { OutputPathRegistry } from './output-paths.js';
+import { compareCodeUnits } from './serialization.js';
 import type { Artifact, ArtifactInput, ArtifactMode } from './types.js';
 
 /** 单个精确文件来源及其必须保持无符号链接的信任根。 */
@@ -121,7 +122,7 @@ export class ArtifactRegistry {
    * @returns 不暴露内部 Map 顺序和可变性的只读列表。
    */
   get artifacts(): readonly Artifact[] {
-    return Object.freeze([...this.#artifacts.values()].sort((a, b) => a.path.localeCompare(b.path, 'en')));
+    return Object.freeze([...this.#artifacts.values()].sort((a, b) => compareCodeUnits(a.path, b.path)));
   }
 
   /**

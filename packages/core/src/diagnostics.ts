@@ -5,6 +5,7 @@ import type {
   MetadataDispositionEntry,
 } from './types.js';
 import type { PlatformId } from './contracts.js';
+import { compareCodeUnits } from './serialization.js';
 
 /** 兼容性等级从完整保留到完全不支持的稳定排序权重。 */
 const COMPATIBILITY_RANK = {
@@ -17,10 +18,9 @@ const COMPATIBILITY_RANK = {
 /** 应按凭据处理、不能保留原值的对象字段名。 */
 const SECRET_KEY_PATTERN = /(?:authorization|credential|password|secret|token|api[_-]?key|cookie)/i;
 
-/** 报告深度脱敏时可额外提供的工程边界和环境快照。 */
+/** 报告深度脱敏时可额外提供的工程路径边界。 */
 export interface ReportRedactionOptions {
   readonly roots?: readonly string[];
-  readonly environment?: Readonly<Record<string, string | undefined>>;
 }
 
 /** 描述一个 Component Subject 对其他 Subject 的依赖边。 */
@@ -30,34 +30,21 @@ export interface CompatibilityDependency {
 }
 
 /**
- * 对可选字符串执行稳定的英文区域排序比较。
+ * 对可选字符串执行不依赖 locale 的稳定 code-unit 比较。
  *
  * @param a 左侧可选字符串。
  * @param b 右侧可选字符串。
  * @returns 与 Array.sort 约定一致的比较结果。
  */
 function compareStrings(a: string | undefined, b: string | undefined): number {
-  return (a ?? '').localeCompare(b ?? '', 'en');
+  return compareCodeUnits(a ?? '', b ?? '');
 }
 
 /**
- * 收集需要从自由文本中移除的非空环境值，并优先替换较长值。
- *
- * @param environment 调用方显式提供的环境快照。
- * @returns 已去重、从长到短排列且不会误伤极短普通文本的环境值。
- */
-function environmentValues(environment: Readonly<Record<string, string | undefined>> | undefined): string[] {
-  /** 未提供环境时不猜测调用方边界，最终 serializer 会传入受保护的进程环境。 */
-  const source = environment ?? {};
-  return [...new Set(Object.values(source).filter((value): value is string => typeof value === 'string' && value.length >= 4))]
-    .sort((a, b) => b.length - a.length || compareStrings(a, b));
-}
-
-/**
- * 清理即将写入诊断和报告的自由文本，避免泄露凭据、环境值与本机路径。
+ * 清理即将写入诊断和报告的自由文本，避免泄露凭据与本机路径。
  *
  * @param value Platform、Extension 或底层异常提供的原始文本。
- * @param options 可选的工程根和环境快照。
+ * @param options 可选的工程路径边界。
  * @returns 去除敏感内容和控制空白后的单行文本。
  */
 export function sanitizeReportText(value: string, options: ReportRedactionOptions = {}): string {
@@ -70,8 +57,6 @@ export function sanitizeReportText(value: string, options: ReportRedactionOption
     if (root.length > 0)
       safe = safe.split(root).join('<path>');
   }
-  for (const environmentValue of environmentValues(options.environment))
-    safe = safe.split(environmentValue).join('<redacted-env>');
   return safe
     // 仅在字符串开头或非路径字符边界识别绝对路径，不能破坏 `assets/icon.png` 等协议相对路径。
     .replace(/(?<![A-Za-z0-9@._-])(?:[A-Za-z]:[\\/]|\/)(?:[^\s"'`:,]|:(?!\/\/))+/g, '<path>')
@@ -83,7 +68,7 @@ export function sanitizeReportText(value: string, options: ReportRedactionOption
  * 递归清理任意未知值，阻止配置对象、函数、字节和循环引用进入 JSON 报告。
  *
  * @param value 尚未建立报告信任边界的任意值。
- * @param options 路径和环境值脱敏选项。
+ * @param options 工程路径脱敏选项。
  * @param seen 当前递归路径已经访问的对象集合。
  * @returns 只包含安全 JSON 形态或稳定占位符的值。
  */
@@ -132,7 +117,7 @@ export function redactReportValue(
  * 复制源码位置并隐藏绝对路径，同时保留安全的工程相对路径。
  *
  * @param location 原始源码位置。
- * @param options 路径和环境值脱敏选项。
+ * @param options 工程路径脱敏选项。
  * @returns 可安全写入构建报告的位置；未提供位置时返回 undefined。
  */
 function safeLocation(
@@ -150,7 +135,7 @@ function safeLocation(
  * 对单条诊断执行完整的报告安全处理，并修正不符合规范的诊断码。
  *
  * @param diagnostic 尚未进入 Collector 的诊断。
- * @param options 路径和环境值脱敏选项。
+ * @param options 工程路径脱敏选项。
  * @returns 可安全持久化和展示的诊断副本。
  */
 function safeDiagnostic(diagnostic: Diagnostic, options: ReportRedactionOptions = {}): Diagnostic {
@@ -173,7 +158,7 @@ function safeDiagnostic(diagnostic: Diagnostic, options: ReportRedactionOptions 
  * 按 Platform、Extension、Owner、源码位置和内容对诊断进行确定性排序。
  *
  * @param diagnostics 任意收集顺序的诊断列表。
- * @param options 路径和环境值脱敏选项。
+ * @param options 工程路径脱敏选项。
  * @returns 不修改输入的稳定排序副本。
  */
 export function sortDiagnostics(
@@ -195,7 +180,7 @@ export function sortDiagnostics(
  * 清理兼容性条目中的自由文本，并按 Platform、Subject、能力与等级稳定排序。
  *
  * @param entries Platform 或 Adapter 产生的兼容性说明。
- * @param options 路径和环境值脱敏选项。
+ * @param options 工程路径脱敏选项。
  * @returns 可安全写入报告的排序副本。
  */
 export function sortCompatibility(
@@ -221,7 +206,7 @@ export function sortCompatibility(
  * 按 Platform、字段和处理结果稳定排序元数据去向。
  *
  * @param entries Platform 产生的元数据字段去向。
- * @param options 路径和环境值脱敏选项。
+ * @param options 工程路径脱敏选项。
  * @returns 完成文本清理的稳定排序副本。
  */
 export function sortMetadataDispositions(
@@ -243,13 +228,13 @@ export function sortMetadataDispositions(
 export class DiagnosticCollector implements DiagnosticCollectorLike {
   /** 按产生顺序保存的安全诊断，读取时再执行确定性排序。 */
   readonly #items: Diagnostic[] = [];
-  /** 当前运行需要从程序化 BuildResult 中隐藏的路径与环境值。 */
+  /** 当前运行需要从程序化 BuildResult 中隐藏的工程路径。 */
   readonly #redaction: ReportRedactionOptions;
 
   /**
    * 创建诊断 Collector，并固定当前运行的报告脱敏边界。
    *
-   * @param redaction 工程路径和环境快照。
+   * @param redaction 工程路径边界。
    */
   constructor(redaction: ReportRedactionOptions = {}) {
     this.#redaction = redaction;

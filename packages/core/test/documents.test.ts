@@ -78,6 +78,8 @@ describe('Document Registry', () => {
     expect(() => registry.patchDocument('extension:other', {
       document: 'manifest', path: ['config', 'hooks'], value: { enabled: false },
     })).toThrow('already owned');
+    /** 失败 patch 不得改写首个 owner 已提交的不可变字段。 */
+    expect(registry.getDocument('manifest')).toEqual({ config: { hooks: { enabled: true } } });
     expect(() => registry.patchDocument('extension:other', {
       document: 'manifest', path: ['config', 'unknown'], value: true,
     })).toThrow('does not declare');
@@ -112,7 +114,7 @@ describe('Document Registry', () => {
     /** 不冲突的 Extension Artifact 带有自己的 owner。 */
     const artifact = await registry.emitArtifact('extension:hooks', bytesArtifact('hooks/run.mjs', 'run'));
     expect(artifact.owner).toBe('extension:hooks');
-    expect(registry.artifacts.map(item => item.path)).toEqual(['hooks/run.mjs', 'README.md']);
+    expect(registry.artifacts.map(item => item.path)).toEqual(['README.md', 'hooks/run.mjs']);
   });
 
   it('preserves the explicit empty-document emission policy in frozen snapshots', () => {

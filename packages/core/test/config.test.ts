@@ -179,4 +179,52 @@ describe('final configuration schema', () => {
       'CONFIG_PATH_ESCAPE',
     ]));
   });
+
+  it('normalizes Public delivery targets without changing source-path semantics', () => {
+    /** 反斜杠来源仍由当前宿主解释，交付目标则统一为 POSIX。 */
+    const result = resolve({
+      name: 'portable-public',
+      version: '1.0.0',
+      description: 'Portable Public targets.',
+      public: { copy: [{ from: 'source\\logo.svg', to: 'assets\\logo.svg' }] },
+    });
+
+    expect(result.diagnostics).toEqual([]);
+    expect(result.config?.public.copy).toEqual([{ from: 'source\\logo.svg', to: 'assets/logo.svg' }]);
+  });
+
+  it.each([
+    ['Win32 drive target', 'C:\\outside\\logo.svg'],
+    ['Win32 slash drive target', 'C:/outside/logo.svg'],
+    ['UNC target', '\\\\server\\share\\logo.svg'],
+    ['POSIX absolute target', '/outside/logo.svg'],
+    ['backslash traversal target', 'assets\\..\\logo.svg'],
+    ['mixed traversal target', 'assets\\../logo.svg'],
+    ['NUL target', 'assets/\0/logo.svg'],
+  ])('rejects a non-portable Public %s', (_label, target) => {
+    /** 每种目标语法都必须在配置阶段得到相同稳定边界诊断。 */
+    const result = resolve({
+      name: 'invalid-public-target',
+      version: '1.0.0',
+      description: 'Invalid Public target.',
+      public: { copy: [{ from: 'logo.svg', to: target }] },
+    });
+
+    expect(result.diagnostics).toContainEqual(expect.objectContaining({
+      code: 'CONFIG_PUBLIC_RULE_ESCAPE',
+      fieldPath: ['public', 'copy', 0],
+    }));
+  });
+
+  it('rejects Win32 absolute Public sources even on a POSIX host', () => {
+    /** 来源使用宿主语义解析，但跨宿主绝对输入始终属于不可信配置。 */
+    const result = resolve({
+      name: 'invalid-public-source',
+      version: '1.0.0',
+      description: 'Invalid Public source.',
+      public: { copy: [{ from: 'C:\\outside\\logo.svg', to: 'assets/logo.svg' }] },
+    });
+
+    expect(result.diagnostics).toContainEqual(expect.objectContaining({ code: 'CONFIG_PUBLIC_RULE_ESCAPE' }));
+  });
 });

@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import {
+  compareCodeUnits,
   createBuildResult,
   DiagnosticCollector,
   internalPlatformId,
   redactReportValue,
   serializeBuildResult,
+  stableJson,
   type BuildResultInput,
 } from '../src/index.js';
 
@@ -96,18 +98,31 @@ function reportInput(reversed: boolean): BuildResultInput {
 }
 
 describe('stable BuildResult report', () => {
+  it('uses fixed UTF-16 code-unit order for Unicode strings and stable integer-shaped keys', () => {
+    /** 覆盖 ASCII、组合字符、预组合字符与代理对的乱序字符串。 */
+    const values = ['😀', 'é', 'z', 'e\u0301'];
+    expect(values.sort(compareCodeUnits)).toEqual(['e\u0301', 'z', 'é', '😀']);
+
+    /** 插入顺序不同但语义相同的对象；整数形 key 最终遵循 ECMAScript 固定顺序。 */
+    const first = { '😀': 6, '10': 2, 'é': 5, '2': 1, 'z': 4, 'e\u0301': 3 };
+    /** 与第一个对象字段相同但插入顺序不同的对照输入。 */
+    const second = { 'e\u0301': 3, 'z': 4, '2': 1, 'é': 5, '10': 2, '😀': 6 };
+    expect(stableJson(first)).toBe(stableJson(second));
+    expect(Object.keys(JSON.parse(stableJson(first)) as object)).toEqual(['2', '10', 'e\u0301', 'z', 'é', '😀']);
+  });
+
   it('produces byte-identical single-document JSON for different discovery orders', () => {
     /** 正向发现顺序产生的 JSON。 */
-    const first = serializeBuildResult(createBuildResult(reportInput(false)), { environment: {} });
+    const first = serializeBuildResult(createBuildResult(reportInput(false)));
     /** 反向发现顺序产生的 JSON。 */
-    const second = serializeBuildResult(createBuildResult(reportInput(true)), { environment: {} });
+    const second = serializeBuildResult(createBuildResult(reportInput(true)));
 
     expect(first).toBe(second);
     expect(first.endsWith('\n')).toBe(true);
     expect(JSON.parse(first)).toMatchObject({ schemaVersion: '1', command: 'inspect', success: true });
   });
 
-  it('contains no timestamp, absolute path, credential, environment value, or Artifact bytes', () => {
+  it('contains no timestamp, absolute path, credential, or Artifact bytes', () => {
     /** 以可疑 owner 和路径验证最终 serializer 的恶意报告。 */
     const result = createBuildResult({
       command: 'build',
@@ -135,8 +150,8 @@ describe('stable BuildResult report', () => {
       compatibility: [],
       metadata: [],
     });
-    /** 使用显式环境值执行深度脱敏后的 JSON。 */
-    const json = serializeBuildResult(result, { environment: { REPORT_TOKEN: 'report-secret' } });
+    /** 执行结构化凭据与路径脱敏后的 JSON。 */
+    const json = serializeBuildResult(result);
 
     expect(json).not.toContain('/Users/example');
     expect(json).not.toContain('report-secret');
@@ -145,38 +160,42 @@ describe('stable BuildResult report', () => {
     expect(json).toContain('<path>');
   });
 
-  it('redacts custom environment secrets from the programmatic BuildResult itself', () => {
-    /** 进入所有自由文本报告字段的自定义环境 Secret。 */
-    const secret = 'programmatic-secret-value';
-    /** 尚未经过 JSON serializer 的公开程序化构建结果。 */
-    const result = createBuildResult({
-      ...reportInput(false),
-      diagnostics: [{
-        code: 'SECRET_WARNING',
-        severity: 'warning',
-        message: `Diagnostic contains ${secret}.`,
-        phase: 'validate',
-        hint: `Do not expose ${secret}.`,
-      }],
-      compatibility: [{
-        platform: CODEX_PLATFORM,
-        subject: 'skill:secret',
-        capability: 'component',
-        level: 'degraded',
-        reason: `Compatibility contains ${secret}.`,
-      }],
-      metadata: [{
-        platform: CODEX_PLATFORM,
-        field: 'description',
-        disposition: 'omitted',
-        reason: `Metadata contains ${secret}.`,
-      }],
-    }, { environment: { CUSTOM_SECRET: secret } });
-    /** 直接 stringify 用于证明调用方无需经过 serializeBuildResult 才获得安全结果。 */
-    const programmaticJson = JSON.stringify(result);
+  it('preserves protocol identities and ordinary text that match environment values', () => {
+    /** REDACT-1 使用且需要在 finally 中恢复的环境变量。 */
+    const environment = {
+      ACPLUGIN_REDACT_PLATFORM: process.env.ACPLUGIN_REDACT_PLATFORM,
+      ACPLUGIN_REDACT_UNIT: process.env.ACPLUGIN_REDACT_UNIT,
+      ACPLUGIN_REDACT_VERSION: process.env.ACPLUGIN_REDACT_VERSION,
+    };
+    try {
+      process.env.ACPLUGIN_REDACT_PLATFORM = 'claude';
+      process.env.ACPLUGIN_REDACT_UNIT = 'plugin';
+      process.env.ACPLUGIN_REDACT_VERSION = '1.0.0';
+      /** 包含所有环境同字子串的公开程序化构建结果。 */
+      const result = createBuildResult({
+        ...reportInput(false),
+        diagnostics: [{
+          code: 'VERSION_NOTE',
+          severity: 'warning',
+          message: 'Version 1.0.0 builds the claude-code plugin.',
+          phase: 'validate',
+        }],
+      });
+      /** 最终 JSON 不得读取环境并改写合法协议字段。 */
+      const json = serializeBuildResult(result);
 
-    expect(programmaticJson).not.toContain(secret);
-    expect(programmaticJson).toContain('<redacted-env>');
+      expect(json).toContain('claude-code');
+      expect(json).toContain('plugin');
+      expect(json).toContain('1.0.0');
+      expect(json).not.toContain('<redacted-env>');
+    } finally {
+      for (const [name, value] of Object.entries(environment)) {
+        if (value === undefined)
+          delete process.env[name];
+        else
+          process.env[name] = value;
+      }
+    }
   });
 });
 
@@ -186,7 +205,7 @@ describe('arbitrary value redaction', () => {
     expect(redactReportValue('/private/project/extensions/bridge.txt')).toBe('<path>');
   });
 
-  it('removes secret fields, functions, bytes, cycles, temporary roots, and environment values', () => {
+  it('removes secret fields, functions, bytes, cycles, and temporary roots without guessing environment values', () => {
     /** 带循环、函数、字节和 Secret 的不可信任意对象。 */
     const unsafe: Record<string, unknown> = {
       apiToken: 'top-secret',
@@ -196,15 +215,12 @@ describe('arbitrary value redaction', () => {
     };
     unsafe.self = unsafe;
     /** 递归脱敏后的普通对象快照。 */
-    const safe = redactReportValue(unsafe, {
-      roots: ['/private/root'],
-      environment: { FIXTURE_SECRET: 'env-secret' },
-    });
+    const safe = redactReportValue(unsafe, { roots: ['/private/root'] });
     /** 稳定字符串形式便于断言原始敏感数据全部消失。 */
     const json = JSON.stringify(safe);
 
     expect(json).not.toContain('top-secret');
-    expect(json).not.toContain('env-secret');
+    expect(json).toContain('env-secret');
     expect(json).not.toContain('/private/root');
     expect(json).toContain('<redacted-credential>');
     expect(json).toContain('<redacted-bytes>');

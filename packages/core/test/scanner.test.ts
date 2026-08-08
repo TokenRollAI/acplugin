@@ -208,6 +208,28 @@ Return evidence-backed findings.
     ]));
   });
 
+  it('rejects string-array elements that are empty after trimming', async () => {
+    /** 依赖数组包含纯空白元素的临时规范工程。 */
+    const root = await temporaryProject();
+    await fs.mkdir(path.join(root, 'src/commands'), { recursive: true });
+    await fs.writeFile(path.join(root, 'src/commands/blank-requirement.md'), `---
+description: Reject a blank dependency.
+requires:
+  skills:
+    - '   '
+---
+Validate dependencies.
+`);
+    /** Scanner 应在通用 string-array 边界报告一致诊断。 */
+    const diagnostics = new DiagnosticCollector();
+    await scanProject(projectConfig(root), diagnostics);
+
+    expect(diagnostics.diagnostics).toContainEqual(expect.objectContaining({
+      code: 'FRONTMATTER_STRING_ARRAY',
+      fieldPath: ['requires', 'skills'],
+    }));
+  });
+
   it('requires configured platforms, delegates field validation, and rejects legacy extensions', async () => {
     /** Validator 会通过受限出口报告专属字段错误的 Codex Platform。 */
     const codex = testPlatform('codex', (context) => {
@@ -298,6 +320,64 @@ Deploy.
       expect.objectContaining({ code: 'MARKDOWN_UTF8_INVALID' }),
       expect.objectContaining({ code: 'PUBLIC_TARGET_COLLISION' }),
     ]));
+  });
+
+  it('normalizes backslash Public targets and detects mixed-separator collisions', async () => {
+    /** 两个不同来源映射到仅分隔符写法不同的同一交付目标。 */
+    const root = await temporaryProject();
+    await fs.mkdir(path.join(root, 'public/a'), { recursive: true });
+    await fs.mkdir(path.join(root, 'public/b'), { recursive: true });
+    await fs.writeFile(path.join(root, 'public/a/file.txt'), 'a');
+    await fs.writeFile(path.join(root, 'public/b/file.txt'), 'b');
+    /** 分隔符不同但语义目标相同的最终配置。 */
+    const config = projectConfig(root, {
+      public: {
+        copy: [
+          { from: 'a/file.txt', to: 'assets\\file.txt' },
+          { from: 'b/file.txt', to: 'assets/file.txt' },
+        ],
+      },
+    });
+
+    /** Config 已统一 target，Scanner 仍负责最终来源碰撞诊断。 */
+    expect(config.public.copy?.[0]?.to).toBe('assets/file.txt');
+    /** 混合分隔符碰撞的 Scanner 诊断。 */
+    const diagnostics = new DiagnosticCollector();
+    /** 只保留首个目标的规范工程。 */
+    const { project } = await scanProject(config, diagnostics);
+    expect(project.publicFiles.map(file => file.targetPath)).toEqual(['assets/file.txt']);
+    expect(diagnostics.diagnostics).toContainEqual(expect.objectContaining({ code: 'PUBLIC_TARGET_COLLISION' }));
+  });
+
+  it('defensively rejects absolute, NUL, and mixed traversal Public targets', async () => {
+    /** 构造绕过配置解析边界的 ResolvedConfig，验证 Scanner 自身仍不信任 target。 */
+    const root = await temporaryProject();
+    await fs.mkdir(path.join(root, 'public'), { recursive: true });
+    await fs.writeFile(path.join(root, 'public/file.txt'), 'public');
+    /** 先通过公开解析器取得其余字段合法的基础配置。 */
+    const base = projectConfig(root, { public: { copy: [{ from: 'file.txt', to: 'safe/file.txt' }] } });
+    /** 模拟绕过配置阶段后直接传入 Core 的不可信 target 集合。 */
+    const config = {
+      ...base,
+      public: {
+        ...base.public,
+        copy: [
+          { from: 'file.txt', to: 'C:\\outside\\file.txt' },
+          { from: 'file.txt', to: 'C:/outside/file.txt' },
+          { from: 'file.txt', to: '\\\\server\\share\\file.txt' },
+          { from: 'file.txt', to: '/outside/file.txt' },
+          { from: 'file.txt', to: 'safe\\../file.txt' },
+          { from: 'file.txt', to: 'safe/\0/file.txt' },
+        ],
+      },
+    };
+
+    /** Scanner 自身产生的第二层路径边界诊断。 */
+    const diagnostics = new DiagnosticCollector();
+    /** 所有不可信 Public 目标都被排除后的规范工程。 */
+    const { project } = await scanProject(config, diagnostics);
+    expect(project.publicFiles).toEqual([]);
+    expect(diagnostics.diagnostics.filter(diagnostic => diagnostic.code === 'PUBLIC_TARGET_INVALID')).toHaveLength(6);
   });
 
   it('does not follow a configured source directory symlink', async () => {

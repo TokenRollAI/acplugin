@@ -1,5 +1,6 @@
 import { ArtifactRegistry, type ArtifactSourcePolicies } from './artifacts.js';
 import { normalizeOutputPath } from './output-paths.js';
+import { compareCodeUnits } from './serialization.js';
 import type { DeliveryUnit, DeliveryUnitInput, PlatformId } from './contracts.js';
 import type { Artifact } from './types.js';
 
@@ -94,8 +95,8 @@ export class DeliveryUnitRegistry {
   /** @returns 按 Platform 与单元 ID 稳定排序的不可变单元快照。 */
   snapshot(): readonly DeliveryUnit[] {
     return Object.freeze([...this.#units.values()].sort((left, right) =>
-      left.platform.localeCompare(right.platform, 'en')
-      || left.id.localeCompare(right.id, 'en')));
+      compareCodeUnits(left.platform, right.platform)
+      || compareCodeUnits(left.id, right.id)));
   }
 
   /**

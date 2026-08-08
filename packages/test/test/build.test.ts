@@ -2,10 +2,51 @@ import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { codex, cursor, ProjectConfigError, runProject, type PlatformId } from '@tokenroll/acplugin';
+import { codex, cursor, ProjectConfigError, runProject, serializeBuildResult, type PlatformId } from '@tokenroll/acplugin';
 
 /** 当前测试创建并在 afterEach 中统一删除的临时工程根目录。 */
 const roots: string[] = [];
+
+/** 完整受管输出树中的一个稳定文件快照。 */
+interface OutputFileSnapshot {
+  /** 使用 POSIX 分隔符的 dist 相对路径。 */
+  readonly path: string;
+  /** 只保留 Artifact 契约关心的权限位。 */
+  readonly mode: number;
+  /** 未文本化的真实文件字节。 */
+  readonly bytes: Buffer;
+}
+
+/**
+ * 递归读取完整 dist 文件树，供跨绝对根执行字节级比较。
+ *
+ * @param directory 当前遍历目录。
+ * @param outputRoot 受管输出根。
+ * @returns 按 code-unit 路径排序的普通文件快照。
+ */
+async function outputTree(directory: string, outputRoot: string = directory): Promise<OutputFileSnapshot[]> {
+  /** 当前目录按 code-unit 排序后的文件系统项。 */
+  const entries = (await fs.readdir(directory, { withFileTypes: true }))
+    .sort((left, right) => left.name < right.name ? -1 : left.name > right.name ? 1 : 0);
+  /** 当前子树累计的普通文件快照。 */
+  const files: OutputFileSnapshot[] = [];
+  for (const entry of entries) {
+    /** 当前目录项的绝对路径。 */
+    const target = path.join(directory, entry.name);
+    if (entry.isDirectory()) {
+      files.push(...await outputTree(target, outputRoot));
+    } else if (entry.isFile()) {
+      /** 当前输出文件的权限与真实字节。 */
+      const stat = await fs.stat(target);
+      files.push({
+        path: path.relative(outputRoot, target).split(path.sep).join('/'),
+        mode: stat.mode & 0o777,
+        bytes: await fs.readFile(target),
+      });
+    }
+  }
+  return files;
+}
 
 /**
  * 创建包含最小 Skill 和可选自定义配置的测试工程。
@@ -55,6 +96,32 @@ describe('unified pipeline', () => {
     const dryBuild = await runProject({ cwd: root, command: 'build', mode: 'production', commit: false });
     expect(dryBuild).toMatchObject({ success: true, committed: false, command: 'build' });
     await expect(fs.access(path.join(root, 'dist'))).rejects.toThrow();
+  });
+
+  it('keeps the complete dist tree, Artifact hashes, and report bytes stable across roots and unrelated environment values', async () => {
+    /** 相同字节工程使用的两个不同绝对根。 */
+    const firstRoot = await project();
+    /** 与第一个工程字节相同但绝对位置不同的第二个根。 */
+    const secondRoot = await project();
+    /** 测试结束后需要恢复的原始环境值。 */
+    const previousEnvironment = process.env.ACPLUGIN_UNRELATED_FIXTURE;
+    try {
+      process.env.ACPLUGIN_UNRELATED_FIXTURE = 'first-machine-value';
+      /** 第一个根和环境输入下的内置构建报告。 */
+      const first = await runProject({ cwd: firstRoot, command: 'build', mode: 'production' });
+      process.env.ACPLUGIN_UNRELATED_FIXTURE = 'second-machine-value';
+      /** 第二个根和无关环境输入下的内置构建报告。 */
+      const second = await runProject({ cwd: secondRoot, command: 'build', mode: 'production' });
+
+      expect(second.deliveryUnits).toEqual(first.deliveryUnits);
+      expect(serializeBuildResult(second)).toBe(serializeBuildResult(first));
+      expect(await outputTree(path.join(secondRoot, 'dist'))).toEqual(await outputTree(path.join(firstRoot, 'dist')));
+    } finally {
+      if (previousEnvironment === undefined)
+        delete process.env.ACPLUGIN_UNRELATED_FIXTURE;
+      else
+        process.env.ACPLUGIN_UNRELATED_FIXTURE = previousEnvironment;
+    }
   });
 
   it('preserves the last complete dual-Platform output when either Platform fails', async () => {

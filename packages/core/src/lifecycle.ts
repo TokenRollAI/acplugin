@@ -220,8 +220,8 @@ export async function executeLifecycle(request: LifecycleRequest): Promise<Build
   const environment = Object.freeze({ ...(request.environment ?? process.env) });
   /** 当前运行所有隔离工作目录的共同临时父目录。 */
   const runtimeRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'acplugin-work-'));
-  /** 程序化结果、JSON 报告和 buildEnd 错误摘要共同使用的脱敏边界。 */
-  const reportRedaction = Object.freeze({ roots: [request.config.root, runtimeRoot], environment });
+  /** 程序化结果、JSON 报告和 buildEnd 错误摘要共同使用的路径脱敏边界。 */
+  const reportRedaction = Object.freeze({ roots: [request.config.root, runtimeRoot] });
   /** 所有 Hook、Scanner、Registry 与事务共享的诊断容器。 */
   const diagnostics = new DiagnosticCollector(reportRedaction);
   /** Platform 和 Adapter 产生的功能兼容性结论。 */
@@ -555,6 +555,8 @@ export async function executeLifecycle(request: LifecycleRequest): Promise<Build
             }
             /** Adapter 同步 API 提交的异步 Artifact 校验任务。 */
             const pendingArtifacts: Promise<unknown>[] = [];
+            /** 任一 Document patch 拒绝后保持 true，第三方 Adapter 无法通过 catch 清除此状态。 */
+            let documentPatchRejected = false;
             /** Adapter 只能访问当前 Draft 的 add-only 受限上下文。 */
             const context: PlatformAdapterContext = Object.freeze({
               command: request.config.command,
@@ -567,17 +569,50 @@ export async function executeLifecycle(request: LifecycleRequest): Promise<Build
               project,
               /** getDocument 提供当前对象协议要求的回调实现。 */ getDocument: <T>(id: string): Readonly<T> | undefined => draft.getDocument<T>(id),
               /** emitArtifact 提供当前对象协议要求的回调实现。 */ emitArtifact: (input: ArtifactInput): void => {
-                pendingArtifacts.push(draft.emitArtifact(`extension:${extensionRuntime.extension.name}`, input));
+                /** 立即附加 observer，避免 Adapter 后续 await 期间形成 unhandled rejection。 */
+                const contribution = draft.emitArtifact(`extension:${extensionRuntime.extension.name}`, input);
+                void contribution.catch(() => undefined);
+                pendingArtifacts.push(contribution);
               },
-              /** patchDocument 提供当前对象协议要求的回调实现。 */ patchDocument: (input: DocumentAddPatch): void => draft.patchDocument(`extension:${extensionRuntime.extension.name}`, input),
+              /** patchDocument 的失败是粘滞状态，即使 Adapter 捕获异常也必须阻止提交。 */ patchDocument: (input: DocumentAddPatch): void => {
+                try {
+                  draft.patchDocument(`extension:${extensionRuntime.extension.name}`, input);
+                } catch /** error 保存当前操作捕获的异常，供本阶段转换或恢复。 */ (error) {
+                  if (!documentPatchRejected) {
+                    diagnostics.error('ADAPTER_DOCUMENT_PATCH_REJECTED', `Extension "${extensionRuntime.extension.name}" submitted an invalid Document patch for Platform "${platform.id}".`, {
+                      phase: 'adapter', platform: platform.id, extension: extensionRuntime.extension.name,
+                    });
+                  }
+                  documentPatchRejected = true;
+                  throw error;
+                }
+              },
               /** reportCompatibility 提供当前对象协议要求的回调实现。 */ reportCompatibility: (entry: CompatibilityInput): void => compatibility.add({ ...entry, platform: platform.id }),
               reportDiagnostic: diagnosticReporter(diagnostics, {
                 platform: platform.id,
                 extension: extensionRuntime.extension.name,
               }, 'adapter'),
             });
-            await adapter.apply(context, extensionRuntime.built as never);
-            await Promise.all(pendingArtifacts);
+            /** apply 首错必须在等待全部贡献 settle 后保持原样传播。 */
+            let applyFailed = false;
+            /** Adapter apply 抛出的原始失败，仅用于 Core 内部控制流且绝不写入报告。 */
+            let applyFailure: unknown;
+            try {
+              await adapter.apply(context, extensionRuntime.built as never);
+            } catch /** error 保存当前操作捕获的异常，供本阶段转换或恢复。 */ (error) {
+              applyFailed = true;
+              applyFailure = error;
+            }
+            /** 无论 apply 成功或失败，都观察已登记的全部异步贡献。 */
+            const artifactResults = await Promise.allSettled(pendingArtifacts);
+            /** 配置顺序和 emit 顺序共同决定第一个需要传播的贡献失败。 */
+            const artifactFailure = artifactResults.find((result): result is PromiseRejectedResult => result.status === 'rejected');
+            if (applyFailed)
+              throw applyFailure;
+            if (artifactFailure)
+              throw artifactFailure.reason;
+            if (documentPatchRejected)
+              throw new Error('Adapter submitted a rejected Document patch.');
           }
 
           /** document 表示当前 Platform 在 Adapter 完成后的最终结构化 Document。 */

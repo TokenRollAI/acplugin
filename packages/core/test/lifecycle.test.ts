@@ -209,6 +209,55 @@ function lifecycleConfig(
   return resolved.config!;
 }
 
+/**
+ * 执行一个在事务交换后由 Platform buildEnd 注入失败的真实 build。
+ *
+ * @param withPreviousOutput 是否预先创建一份必须恢复的完整旧输出。
+ * @returns 失败结果、输出目录和可观察的 buildEnd 状态。
+ */
+async function buildEndRollbackFixture(withPreviousOutput: boolean) {
+  /** 当前事务回滚场景独占的工程根。 */
+  const root = await temporaryRoot();
+  /** resolveConfig 缺省管理的完整输出目录。 */
+  const outDir = path.join(root, 'dist');
+  if (withPreviousOutput) {
+    await fs.mkdir(path.join(outDir, 'previous', 'plugin'), { recursive: true });
+    await fs.writeFile(path.join(outDir, 'previous', 'plugin', 'version.txt'), 'old');
+  }
+  /** 记录 buildEnd 在抛错前收到的事务状态。 */
+  const endStatuses: string[] = [];
+  /** 能生成完整主单元、但在 buildEnd 中失败的虚拟 Platform。 */
+  const platform = definePlatform({
+    id: withPreviousOutput ? 'rollback-existing' : 'rollback-empty',
+    apiVersion: '1',
+    deliveryType: 'plugin',
+    /** prepare 创建事务将尝试提交的新版本。 */
+    prepare: () => ({ documents: [], artifacts: [bytesArtifact('version.txt', 'new')] }),
+    /** generateBundle 透传已校验的新版本 Artifact。 */
+    generateBundle: context => ({
+      id: 'plugin', role: 'primary', type: 'plugin', artifacts: context.artifacts,
+    }),
+    /** validateBundle 证明失败发生在候选完成验证之后。 */
+    async validateBundle(context) {
+      expect(await fs.readFile(path.join(context.candidate.root, 'version.txt'), 'utf8')).toBe('new');
+    },
+    /** buildEnd 在 swap 后失败，事务必须恢复进入调用前的输出状态。 */
+    buildEnd(context) {
+      endStatuses.push(context.status);
+      throw new Error('buildEnd rollback fixture');
+    },
+  });
+
+  /** 真实 build 命令默认启用 managed output commit。 */
+  const result = await executeLifecycle({
+    config: lifecycleConfig(root, 'build', [platform], []),
+    /** 当前 Fixture 不加载作者 TypeScript descriptor。 */
+    loadTypeScriptModule: async () => undefined,
+    environment: {},
+  });
+  return { root, outDir, result, endStatuses };
+}
+
 afterEach(async () => {
   await Promise.all(temporaryDirectories.splice(0).map(directory => fs.rm(directory, { recursive: true, force: true })));
 });
@@ -350,6 +399,66 @@ describe('fixed Core lifecycle', () => {
     ]);
   });
 
+  it('shares one frozen environment snapshot across buildStart and buildEnd hooks', async () => {
+    /** 调用方提供且 Core 必须复制冻结的环境输入。 */
+    const suppliedEnvironment = { FIXTURE_ENVIRONMENT: 'stable-value' };
+    /** 四个生命周期 Hook 观察到的环境对象引用。 */
+    const snapshots: Readonly<Record<string, string | undefined>>[] = [];
+    /** 同时实现 buildStart/buildEnd 的最小虚拟 Platform。 */
+    const platform = definePlatform({
+      id: 'environment-platform',
+      apiVersion: '1',
+      deliveryType: 'plugin',
+      /** buildStart 保存只读环境快照。 */
+      buildStart(context) {
+        snapshots.push(context.environment);
+      },
+      /** prepare 创建无扩展点的空 Draft。 */
+      prepare: () => ({ documents: [], artifacts: [] }),
+      /** generateBundle 创建无 Artifact 的合法主单元。 */
+      generateBundle: () => ({ id: 'plugin', role: 'primary', type: 'plugin', artifacts: [] }),
+      /** validateBundle 接受当前空候选。 */
+      validateBundle: () => undefined,
+      /** buildEnd 保存与启动阶段相同的环境快照。 */
+      buildEnd(context) {
+        snapshots.push(context.environment);
+      },
+    });
+    /** 同时实现 buildStart/buildEnd 且无资源的最小虚拟 Extension。 */
+    const extension = defineExtension({
+      name: 'environment-extension',
+      apiVersion: '1',
+      adapters: [],
+      /** buildStart 保存只读环境快照。 */
+      buildStart(context) {
+        snapshots.push(context.environment);
+      },
+      /** discover 明确表示当前 Extension 没有资源。 */
+      discover: () => undefined,
+      /** buildEnd 保存与启动阶段相同的环境快照。 */
+      buildEnd(context) {
+        snapshots.push(context.environment);
+      },
+    });
+    /** 空工程用于隔离环境 Context 行为。 */
+    const root = await temporaryRoot();
+
+    /** 不提交输出的完整验证结果。 */
+    const result = await executeLifecycle({
+      config: lifecycleConfig(root, 'validate', [platform], [extension]),
+      /** 当前 Fixture 不加载作者 TypeScript descriptor。 */
+      loadTypeScriptModule: async () => undefined,
+      environment: suppliedEnvironment,
+    });
+
+    expect(result.success).toBe(true);
+    expect(snapshots).toHaveLength(4);
+    expect(snapshots.every(snapshot => snapshot === snapshots[0])).toBe(true);
+    expect(snapshots[0]).not.toBe(suppliedEnvironment);
+    expect(snapshots[0]).toEqual(suppliedEnvironment);
+    expect(Object.isFrozen(snapshots[0])).toBe(true);
+  });
+
   it('continues later Platforms after failure and appends cleanup errors without replacing it', async () => {
     /** 故障隔离与逆序清理事件。 */
     const events: string[] = [];
@@ -395,6 +504,35 @@ describe('fixed Core lifecycle', () => {
     ]));
   });
 
+  it('rolls back a swapped build to the previous complete output when buildEnd fails', async () => {
+    /** 带旧输出的事务失败结果。 */
+    const { root, outDir, result, endStatuses } = await buildEndRollbackFixture(true);
+
+    expect(result.success).toBe(false);
+    expect(result.committed).toBe(false);
+    expect(endStatuses).toEqual(['success']);
+    expect(result.diagnostics).toContainEqual(expect.objectContaining({
+      code: 'PLATFORM_BUILD_END_FAILED', platform: 'rollback-existing', severity: 'error',
+    }));
+    expect(await fs.readFile(path.join(outDir, 'previous', 'plugin', 'version.txt'), 'utf8')).toBe('old');
+    await expect(fs.access(path.join(outDir, 'rollback-existing'))).rejects.toThrow();
+    expect((await fs.readdir(root)).filter(name => name.startsWith('.dist.acplugin-'))).toEqual([]);
+  });
+
+  it('removes the swapped output when buildEnd fails without a previous output', async () => {
+    /** 首次构建事务失败结果。 */
+    const { root, outDir, result, endStatuses } = await buildEndRollbackFixture(false);
+
+    expect(result.success).toBe(false);
+    expect(result.committed).toBe(false);
+    expect(endStatuses).toEqual(['success']);
+    expect(result.diagnostics).toContainEqual(expect.objectContaining({
+      code: 'PLATFORM_BUILD_END_FAILED', platform: 'rollback-empty', severity: 'error',
+    }));
+    await expect(fs.access(outDir)).rejects.toThrow();
+    expect((await fs.readdir(root)).filter(name => name.startsWith('.dist.acplugin-'))).toEqual([]);
+  });
+
   it('treats resources without an Adapter as strict unsupported and emits no unit', async () => {
     /** 严格 Platform 和无 Adapter Extension。 */
     const events: string[] = [];
@@ -423,6 +561,132 @@ describe('fixed Core lifecycle', () => {
     expect(result.deliveryUnits).toEqual([]);
     expect(result.compatibility).toContainEqual(expect.objectContaining({ level: 'unsupported', platform: 'strict-platform' }));
     expect(result.diagnostics).toContainEqual(expect.objectContaining({ code: 'COMPATIBILITY_STRICT' }));
+  });
+
+  it('keeps a rejected Document patch sticky when the Adapter catches the owner conflict', async () => {
+    /** 单一扩展点让第二个 Extension 必然与第一个 owner 冲突。 */
+    const events: string[] = [];
+    /** 暴露唯一 bridge 扩展点的测试 Platform。 */
+    const platform = virtualPlatform('sticky-owner', events);
+    /** 每个 Adapter 都捕获 patch 异常，模拟试图吞掉 Core 拒绝的第三方代码。 */
+    const extension = (name: string): AcpluginExtension => defineExtension({
+      name,
+      apiVersion: '1',
+      /** 非空发现状态确保当前 Extension 进入 Adapter 阶段。 */
+      discover: () => ({ enabled: true }),
+      adapters: [{
+        extensionApiVersion: '1', platform: platform.id, platformApiVersion: '1',
+        /** 捕获 owner 冲突以验证 Core 的粘滞失败状态。 */
+        apply(context) {
+          try {
+            context.patchDocument({
+              document: 'manifest', path: ['extensions', 'bridge'], value: { owner: name },
+            });
+          } catch {
+            // 第三方 catch 不能清除 Core 已记录的 sticky invalid 状态。
+          }
+        },
+      }],
+    });
+    /** 按给定 Extension 顺序运行一次隔离生命周期。 */
+    const run = async (names: readonly string[]) => {
+      /** 当前顺序测试独占的工程根。 */
+      const root = await temporaryRoot();
+      /** 按调用方给定顺序创建的 Extension 实例。 */
+      const extensions = names.map(name => extension(name));
+      return executeLifecycle({
+        config: lifecycleConfig(root, 'validate', [platform], extensions),
+        /** 当前 Fixture 不加载作者 TypeScript descriptor。 */
+        loadTypeScriptModule: async () => undefined,
+        environment: {},
+      });
+    };
+
+    /** A 先占用扩展点时的粘滞失败结果。 */
+    const forward = await run(['owner-a', 'owner-b']);
+    /** B 先占用扩展点时的粘滞失败结果。 */
+    const reverse = await run(['owner-b', 'owner-a']);
+    expect(forward.success).toBe(false);
+    expect(reverse.success).toBe(false);
+    expect(forward.deliveryUnits).toEqual([]);
+    expect(reverse.deliveryUnits).toEqual([]);
+    expect(forward.diagnostics).toContainEqual(expect.objectContaining({
+      code: 'ADAPTER_DOCUMENT_PATCH_REJECTED', platform: 'sticky-owner', extension: 'owner-b',
+    }));
+    expect(reverse.diagnostics).toContainEqual(expect.objectContaining({
+      code: 'ADAPTER_DOCUMENT_PATCH_REJECTED', platform: 'sticky-owner', extension: 'owner-a',
+    }));
+  });
+
+  it('keeps distinct extension points configuration-ordered and deterministic', async () => {
+    /** 执行指定 Extension 顺序并捕获 generateBundle 看到的最终 Document。 */
+    const run = async (order: readonly ('alpha' | 'beta')[]) => {
+      /** 每次执行独占的最终文档快照。 */
+      let generated: unknown;
+      /** 带两个独立 add-only 扩展点的顺序测试 Platform。 */
+      const platform = definePlatform({
+        id: 'ordered-adapters',
+        apiVersion: '1',
+        deliveryType: 'plugin',
+        /** 初始 Draft 保持两个扩展点都为空。 */
+        prepare: () => ({
+          documents: [{
+            id: 'manifest', path: 'manifest.json', format: 'json', owner: 'platform:ordered-adapters',
+            value: { slots: {} }, extensionPoints: [['slots', 'alpha'], ['slots', 'beta']],
+          }],
+          artifacts: [],
+        }),
+        /** 捕获最终文档并创建最小合法主单元。 */
+        generateBundle(context) {
+          generated = context.documents[0]!.value;
+          return { id: 'plugin', role: 'primary', type: 'plugin', artifacts: [bytesArtifact('manifest.json', stableJson(generated))] };
+        },
+        /** 当前顺序测试无需额外候选约束。 */
+        validateBundle: () => undefined,
+      });
+      /** Adapter 只写自己的点，但记录执行时已可见的其他字段。 */
+      const makeExtension = (point: 'alpha' | 'beta'): AcpluginExtension => defineExtension({
+        name: `ordered-${point}`,
+        apiVersion: '1',
+        /** 非空发现状态激活当前顺序观察 Adapter。 */
+        discover: () => ({ enabled: true }),
+        adapters: [{
+          extensionApiVersion: '1', platform: platform.id, platformApiVersion: '1',
+          /** 记录当前 Draft 可见字段后只写入自己的扩展点。 */
+          apply(context) {
+            /** 当前 Adapter 执行前可见的 owner-merged Document。 */
+            const document = context.getDocument<{ slots: Record<string, unknown> }>('manifest')!;
+            context.patchDocument({
+              document: 'manifest', path: ['slots', point], value: { saw: Object.keys(document.slots) },
+            });
+          },
+        }],
+      });
+      /** 当前 Extension 顺序独占的工程根。 */
+      const root = await temporaryRoot();
+      /** 指定顺序执行后的完整生命周期结果。 */
+      const result = await executeLifecycle({
+        config: lifecycleConfig(root, 'validate', [platform], order.map(makeExtension)),
+        /** 当前 Fixture 不加载作者 TypeScript descriptor。 */
+        loadTypeScriptModule: async () => undefined,
+        environment: {},
+      });
+      expect(result.success).toBe(true);
+      return generated;
+    };
+
+    /** alpha 后 beta 的首次最终文档。 */
+    const forward = await run(['alpha', 'beta']);
+    /** alpha 后 beta 的重复执行文档。 */
+    const forwardAgain = await run(['alpha', 'beta']);
+    /** beta 后 alpha 的首次最终文档。 */
+    const reverse = await run(['beta', 'alpha']);
+    /** beta 后 alpha 的重复执行文档。 */
+    const reverseAgain = await run(['beta', 'alpha']);
+    expect(forward).toEqual({ slots: { alpha: { saw: [] }, beta: { saw: ['alpha'] } } });
+    expect(reverse).toEqual({ slots: { alpha: { saw: ['beta'] }, beta: { saw: [] } } });
+    expect(forwardAgain).toEqual(forward);
+    expect(reverseAgain).toEqual(reverse);
   });
 
   it('authorizes scanned Component files relative to project.root instead of process.cwd()', async () => {

@@ -1,6 +1,19 @@
 import { stringify } from 'yaml';
 
 /**
+ * 按 ECMAScript UTF-16 code unit 比较字符串，不依赖宿主 locale 或 ICU 数据。
+ *
+ * @param left 左侧字符串。
+ * @param right 右侧字符串。
+ * @returns 与 Array.sort 约定一致的 -1、0 或 1。
+ */
+export function compareCodeUnits(left: string, right: string): number {
+  if (left === right)
+    return 0;
+  return left < right ? -1 : 1;
+}
+
+/**
  * 递归复制可序列化值，并按键名排序对象、移除值为 undefined 的字段。
  *
  * 数组顺序属于业务语义，因此只处理数组元素而不会重新排序。
@@ -14,7 +27,7 @@ export function sortObject(value: unknown): unknown {
   if (value !== null && typeof value === 'object') {
     return Object.fromEntries(Object.entries(value as Record<string, unknown>)
       .filter(([, child]) => child !== undefined)
-      .sort(([a], [b]) => a.localeCompare(b, 'en'))
+      .sort(([a], [b]) => compareCodeUnits(a, b))
       .map(([key, child]) => [key, sortObject(child)]));
   }
   return value;

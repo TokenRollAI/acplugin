@@ -1,6 +1,8 @@
+import { spawn } from 'node:child_process';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
   bytesArtifact,
@@ -15,6 +17,9 @@ import {
 
 /** 生态契约测试创建并统一清理的临时工程。 */
 const temporaryRoots: string[] = [];
+
+/** 原生严格拒绝子进程直接加载的 Core 构建入口。 */
+const coreEntry = fileURLToPath(new URL('../../core/dist/index.mjs', import.meta.url));
 
 /**
  * 创建不包含内置 Platform 假设的空作者工程。
@@ -141,5 +146,103 @@ describe('third-party ecosystem contract', () => {
     expect(result.metadata).toEqual([
       expect.objectContaining({ platform: 'ecosystem-fixture', field: 'name', disposition: 'emitted' }),
     ]);
+  });
+
+  it('observes immediate Artifact rejection before an async Adapter failure in strict Node mode', async () => {
+    /** 子进程使用的空工程，确保生命周期可进入 Adapter 阶段。 */
+    const root = await temporaryProject();
+    /** 真实构建 Core 中创建立即碰撞 Promise、随后等待 timer 并抛错的 ESM 程序。 */
+    const source = `
+import {
+  bytesArtifact,
+  defineExtension,
+  definePlatform,
+  executeLifecycle,
+  resolveConfig,
+} from ${JSON.stringify(coreEntry)};
+
+const platform = definePlatform({
+  id: 'strict-rejection',
+  apiVersion: '1',
+  deliveryType: 'plugin',
+  prepare: () => ({
+    documents: [{
+      id: 'manifest',
+      path: 'manifest.json',
+      format: 'json',
+      owner: 'platform:strict-rejection',
+      value: {},
+      extensionPoints: [],
+    }],
+    artifacts: [],
+  }),
+  generateBundle: context => ({
+    id: 'plugin', role: 'primary', type: 'plugin', artifacts: context.artifacts,
+  }),
+  validateBundle: () => undefined,
+});
+const extension = defineExtension({
+  name: 'strict-rejection-extension',
+  apiVersion: '1',
+  discover: () => ({ enabled: true }),
+  adapters: [{
+    extensionApiVersion: '1',
+    platform: platform.id,
+    platformApiVersion: '1',
+    async apply(context) {
+      context.emitArtifact(bytesArtifact('manifest.json', 'collision'));
+      await new Promise(resolve => setTimeout(resolve, 20));
+      throw new Error('later Adapter failure');
+    },
+  }],
+});
+const resolved = resolveConfig({
+  name: 'strict-rejection-fixture',
+  version: '1.0.0',
+  description: 'Strict rejection fixture.',
+  public: false,
+  platforms: [platform],
+  extensions: [extension],
+}, ${JSON.stringify(path.join(root, 'acplugin.config.ts'))}, 'validate', 'production', { defaultPlatforms: [platform] });
+if (!resolved.config)
+  throw new Error('Fixture config did not resolve.');
+const result = await executeLifecycle({
+  config: resolved.config,
+  loadTypeScriptModule: async () => undefined,
+  environment: {},
+});
+process.stdout.write(JSON.stringify(result));
+`;
+    /** strict 模式会把任何短暂无 observer 的拒绝直接升级为进程失败。 */
+    const execution = await new Promise<{ code: number | null; stdout: string; stderr: string }>((resolve, reject) => {
+      /** 使用原生 ESM 与严格拒绝策略执行真实 Core 构建产物。 */
+      const child = spawn(process.execPath, ['--unhandled-rejections=strict', '--input-type=module', '--eval', source], {
+        stdio: ['ignore', 'pipe', 'pipe'],
+      });
+      /** 子进程返回的唯一 JSON 构建结果。 */
+      let stdout = '';
+      /** 严格模式下不得出现未处理拒绝堆栈。 */
+      let stderr = '';
+      child.stdout.setEncoding('utf8');
+      child.stderr.setEncoding('utf8');
+      child.stdout.on('data', (chunk: string) => {
+        stdout += chunk;
+      });
+      child.stderr.on('data', (chunk: string) => {
+        stderr += chunk;
+      });
+      child.on('error', reject);
+      child.on('close', code => resolve({ code, stdout, stderr }));
+    });
+
+    expect(execution.code).toBe(0);
+    expect(execution.stderr).toBe('');
+    expect(JSON.parse(execution.stdout)).toEqual(expect.objectContaining({
+      success: false,
+      committed: false,
+      diagnostics: expect.arrayContaining([
+        expect.objectContaining({ code: 'PLATFORM_GENERATION_FAILED', platform: 'strict-rejection' }),
+      ]),
+    }));
   });
 });

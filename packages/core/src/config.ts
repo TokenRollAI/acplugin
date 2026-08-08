@@ -96,7 +96,7 @@ function isInside(root: string, candidate: string): boolean {
  * @returns 规范化后的绝对路径；非法时仍返回结果以继续收集错误。
  */
 function resolveInside(root: string, value: string, field: string, diagnostics: DiagnosticCollector): string {
-  if (path.isAbsolute(value)) {
+  if (path.posix.isAbsolute(value) || path.win32.isAbsolute(value)) {
     diagnostics.error('CONFIG_PATH_ABSOLUTE', `${field} must be relative to the project root.`, {
       phase: 'config', fieldPath: field.split('.'),
     });
@@ -109,6 +109,29 @@ function resolveInside(root: string, value: string, field: string, diagnostics: 
     });
   }
   return resolved;
+}
+
+/**
+ * 判断用户路径是否包含任一宿主都不应接受的绝对或逃逸语法。
+ *
+ * @param value 尚未按宿主或交付格式解释的用户路径。
+ * @returns POSIX/Win32 绝对路径、NUL 或父目录片段存在时返回 true。
+ */
+function isUnsafePortablePath(value: string): boolean {
+  return path.posix.isAbsolute(value)
+    || path.win32.isAbsolute(value)
+    || value.includes('\0')
+    || value.split(/[\\/]/u).includes('..');
+}
+
+/**
+ * 把 Public 交付目标统一为 POSIX 分隔符，不改变来源路径的宿主语义。
+ *
+ * @param value 已通过可移植安全检查的 Public 目标。
+ * @returns 供 Scanner 展开和碰撞检查的 POSIX 目标文本。
+ */
+function normalizePublicTarget(value: string): string {
+  return value.replaceAll('\\', '/');
 }
 
 /**
@@ -242,10 +265,10 @@ function resolvePublic(root: string, value: unknown, diagnostics: DiagnosticColl
         diagnostics.error('CONFIG_PUBLIC_RULE_INVALID', 'Public copy rules require non-empty string from and to fields.', { phase: 'config', fieldPath: ['public', 'copy', index] });
         continue;
       }
-      /** 在进入 Scanner 前保留稳定的相对 POSIX/系统路径文本。 */
-      const rule = { from: rawRule.from, to: rawRule.to };
+      /** 来源保持宿主文件系统语义，交付目标统一为 POSIX 分隔符。 */
+      const rule = { from: rawRule.from, to: normalizePublicTarget(rawRule.to) };
       copy.push(rule);
-      if (path.isAbsolute(rule.from) || path.isAbsolute(rule.to) || rule.from.split(/[\\/]/).includes('..') || rule.to.split(/[\\/]/).includes('..')) {
+      if (isUnsafePortablePath(rawRule.from) || isUnsafePortablePath(rawRule.to)) {
         diagnostics.error('CONFIG_PUBLIC_RULE_ESCAPE', 'Public copy paths must be relative and cannot contain parent traversal.', {
           phase: 'config', fieldPath: ['public', 'copy', index],
         });

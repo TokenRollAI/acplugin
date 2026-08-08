@@ -1,5 +1,6 @@
 import { ArtifactRegistry, type ArtifactSourcePolicies } from './artifacts.js';
 import { OutputPathRegistry } from './output-paths.js';
+import { compareCodeUnits } from './serialization.js';
 import type {
   DocumentAddPatch,
   DraftDocument,
@@ -54,7 +55,7 @@ function cloneJson(value: JsonValue, ancestors: WeakSet<object> = new WeakSet<ob
   const object = value as JsonObject;
   /** 接收按键排序字段的不可变普通对象。 */
   const result: Record<string, JsonValue> = {};
-  for (const key of Object.keys(object).sort((left, right) => left.localeCompare(right, 'en'))) {
+  for (const key of Object.keys(object).sort(compareCodeUnits)) {
     /** 当前字段的递归不可变快照。 */
     const child = cloneJson(object[key]!, ancestors);
     Object.defineProperty(result, key, { value: child, enumerable: true, configurable: false, writable: false });
@@ -115,7 +116,7 @@ function addField(value: JsonValue, fieldPath: readonly string[], addition: Json
     entries.push([head!, addition]);
   /** 接收排序字段并逐项定义为只读属性的新 JSON 对象。 */
   const result: Record<string, JsonValue> = {};
-  for (const [key, child] of entries.sort(([left], [right]) => left.localeCompare(right, 'en')))
+  for (const [key, child] of entries.sort(([left], [right]) => compareCodeUnits(left, right)))
     Object.defineProperty(result, key, { value: child, enumerable: true, configurable: false, writable: false });
   return Object.freeze(result);
 }
@@ -239,7 +240,7 @@ export class DocumentRegistry {
   /** @returns 按逻辑 ID 排序且完全不可变的 Document 快照。 */
   snapshot(): readonly DraftDocument[] {
     return Object.freeze([...this.#documents.values()]
-      .sort((left, right) => left.id.localeCompare(right.id, 'en'))
+      .sort((left, right) => compareCodeUnits(left.id, right.id))
       .map(document => Object.freeze({
         id: document.id,
         path: document.path,
