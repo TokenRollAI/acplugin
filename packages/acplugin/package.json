@@ -15,6 +15,7 @@
   "publishConfig": { "access": "public" },
   "scripts": {
     "build": "tsdown",
+    "prepublishOnly": "pnpm run build",
     "dev": "tsdown --watch",
     "pretest": "pnpm --filter @acplugin/core run build",
     "test": "vitest run --passWithNoTests",

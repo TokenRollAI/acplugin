@@ -65,6 +65,14 @@ npm publish <tarball-path> --access public --otp <OTP>
 npm view <package-name>@<version> version
 ```
 
+首次发布九个 `0.0.1-beta` package 时，可以由维护者在仓库根手工执行简化命令：
+
+```bash
+pnpm run publish:beta
+```
+
+根 `prepublish:beta` 会先执行 frozen install 和 `release:preflight`。该前置检查依次执行 lint/typecheck、一次全仓构建、关闭 package pre/post 生命周期的测试、不再重建全仓的 Docs/Playground 验证，最后执行 `release:verify`；随后 `pnpm -r publish` 只选择 `@tokenroll/*` 公开包，并使用固定的 npmjs Registry 与 `beta` tag。九个公开 package 各自通过 `prepublishOnly` 在实际 pack 前重建自身。该命令只适用于所有九个包均为首次发布的 `0.0.1-beta` cohort，不得复用于稳定版或独立增量发布，也不得由 Workflow 自动调用。
+
 如果发布过程被中断，查询计划中的每个精确版本，只继续发布 peer dependency 已可满足且 Registry 中仍缺失的版本。npm 版本不可变，不能重复发布。
 
 ## 手动创建 Release 引用

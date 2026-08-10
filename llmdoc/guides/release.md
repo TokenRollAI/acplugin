@@ -65,6 +65,14 @@ npm publish <tarball-path> --access public --otp <OTP>
 npm view <package-name>@<version> version
 ```
 
+For the first publication of the nine `0.0.1-beta` packages, a maintainer may use the simplified root command:
+
+```bash
+pnpm run publish:beta
+```
+
+The root `prepublish:beta` first runs a frozen install and `release:preflight`. The preflight performs lint and typecheck, builds the workspace once, runs tests with package pre/post scripts disabled, validates Docs/Playground without rebuilding the workspace, and finishes with `release:verify`. `pnpm -r publish` then selects only the public `@tokenroll/*` packages, pins the npmjs Registry and the `beta` tag, and lets every public package rebuild itself through `prepublishOnly` immediately before packing. This command is limited to the initial nine-package `0.0.1-beta` cohort; it must not be reused for stable or independently versioned incremental releases, or invoked by a Workflow.
+
 If publication is interrupted, query every planned exact version and continue only with missing versions whose peer dependencies are already available. npm versions are immutable and must not be republished.
 
 ## Create release references manually
