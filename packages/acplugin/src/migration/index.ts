@@ -1578,13 +1578,13 @@ async function writeCanonicalProject(
   await copyText(path.join(outputRoot, 'acplugin.config.ts'), `${imports.join('\n')}\n\n${configLines.join('\n')}\n`);
   /** 新工程基础开发依赖及按需追加的官方 MCP Extension。 */
   const devDependencies: Record<string, string> = {
-    '@tokenroll/acplugin': '^1.0.0',
-    '@tokenroll/acplugin-platform-claude-code': '^1.0.0',
+    '@tokenroll/acplugin': '^0.0.1-beta',
+    '@tokenroll/acplugin-platform-claude-code': '^0.0.1-beta',
     'typescript': '^7.0.2',
     '@types/node': '^20.19.0',
   };
   if (usesMcp)
-    devDependencies['@tokenroll/acplugin-extension-mcp'] = '^1.0.0';
+    devDependencies['@tokenroll/acplugin-extension-mcp'] = '^0.0.1-beta';
   await copyText(path.join(outputRoot, 'package.json'), stableJson({
     name: metadata.name,
     version: metadata.version,

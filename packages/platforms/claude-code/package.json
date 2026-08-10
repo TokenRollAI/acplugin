@@ -1,6 +1,6 @@
 {
   "name": "@tokenroll/acplugin-platform-claude-code",
-  "version": "1.0.0",
+  "version": "0.0.1-beta",
   "description": "Claude Code Platform adapter for acplugin.",
   "type": "module",
   "license": "MIT",

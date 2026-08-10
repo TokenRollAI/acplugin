@@ -53,7 +53,7 @@ describe('final workspace skeleton', () => {
 
     expect(manifests.map(manifest => manifest.name)).toEqual(platformPackages.map(([, name]) => name));
     expect(manifests.every(manifest => manifest.private !== true)).toBe(true);
-    expect(manifests.every(manifest => manifest.version === '1.0.0')).toBe(true);
+    expect(manifests.every(manifest => manifest.version === '0.0.1-beta')).toBe(true);
     expect(manifests.every(manifest => manifest.peerDependencies?.['@tokenroll/acplugin'] === 'workspace:^')).toBe(true);
     expect(manifests.every(manifest => manifest.dependencies?.['@acplugin/core'] === undefined)).toBe(true);
   });

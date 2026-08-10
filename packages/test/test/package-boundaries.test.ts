@@ -24,6 +24,9 @@ const publicManifests = [
   'packages/extensions/mcp/package.json',
 ] as const;
 
+/** 递归检查时不属于源码或 Workspace 拓扑的依赖与可重建输出目录。 */
+const ignoredGeneratedDirectories = new Set(['.vitepress', 'api', 'dist', 'node_modules']);
+
 /**
  * 递归读取目录中满足后缀要求的全部文件。
  *
@@ -38,7 +41,7 @@ async function filesWithSuffixes(directory: string, suffixes: readonly string[])
   const files: string[] = [];
   /** entry 表示当前排序后的目录项，用于递归收集目标后缀。 */
   for (const entry of entries.sort((left, right) => left.name.localeCompare(right.name, 'en'))) {
-    if (entry.name === 'node_modules')
+    if (entry.isDirectory() && ignoredGeneratedDirectories.has(entry.name))
       continue;
     /** 当前目录项的绝对路径。 */
     const candidate = path.join(directory, entry.name);

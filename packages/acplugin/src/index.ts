@@ -105,7 +105,7 @@ export { initializeProject } from './init.js';
 export type { InitOptions, InitPlatformId, InitResult } from './init.js';
 
 /** 当前 CLI 与公开运行时 API 的版本号。 */
-export const ACPLUGIN_VERSION = '1.0.0';
+export const ACPLUGIN_VERSION = '0.0.1-beta';
 
 /**
  * 为 `acplugin.config.ts` 提供类型推断友好的恒等辅助函数。

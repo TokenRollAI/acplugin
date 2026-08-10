@@ -10,7 +10,7 @@
 - MCP packaging: the official Extension publishes a lightweight `index.mjs` and a lazy local-stdio `bundler.mjs`; the main package has no optional Extension/Rolldown runtime dependency. The isolated Migration lazy chunk bundles only the official integrations needed to validate generated projects.
 - Dev: Extension module graphs participate in watch mode; initial/dynamic ready windows receive catch-up builds; split editor writes are stabilized before queue-level debounce; signal cleanup exits with code 130.
 - Review: Standards Hard 0, with one non-blocking Hooks platform-profile consolidation suggestion. Spec final rereview passed after the Migration field-fidelity remediation; no blocking findings remain.
-- Validation: lint, TypeScript 7 typecheck, package and cross-package Vitest suites, build, ATTW/publint, and `release:verify` passed for nine 1.0.0 tarballs; clean consumers covered all official integrations, a third-party Platform brand, six-platform scaffolding, and main-only packed Migration.
+- Validation: lint, TypeScript 7 typecheck, package and cross-package Vitest suites, build, ATTW/publint, `release:verify`, and `docs:check` pass for the `0.0.1-beta` workspace. Nine beta tarballs pass clean-consumer checks covering all official integrations, a third-party Platform brand, six-platform scaffolding, and main-only packed Migration.
 
 ```text
 pnpm run check

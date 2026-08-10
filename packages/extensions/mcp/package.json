@@ -1,6 +1,6 @@
 {
   "name": "@tokenroll/acplugin-extension-mcp",
-  "version": "1.0.0",
+  "version": "0.0.1-beta",
   "description": "Portable MCP authoring and platform adapters for acplugin.",
   "type": "module",
   "license": "MIT",

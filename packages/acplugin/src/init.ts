@@ -170,16 +170,16 @@ export default defineConfig({
 function packageSource(name: string, platforms: readonly InitPlatformId[], hooks: boolean, mcp: boolean): string {
   /** 根据 Extension 选择动态扩展的开发依赖映射。 */
   const devDependencies: Record<string, string> = {
-    '@tokenroll/acplugin': '^1.0.0',
+    '@tokenroll/acplugin': '^0.0.1-beta',
     '@types/node': '^20.19.0',
     'typescript': '^7.0.2',
   };
   for (const platform of platforms)
-    devDependencies[PLATFORM_PACKAGES[platform].packageName] = '^1.0.0';
+    devDependencies[PLATFORM_PACKAGES[platform].packageName] = '^0.0.1-beta';
   if (hooks)
-    devDependencies['@tokenroll/acplugin-extension-hooks'] = '^1.0.0';
+    devDependencies['@tokenroll/acplugin-extension-hooks'] = '^0.0.1-beta';
   if (mcp)
-    devDependencies['@tokenroll/acplugin-extension-mcp'] = '^1.0.0';
+    devDependencies['@tokenroll/acplugin-extension-mcp'] = '^0.0.1-beta';
   return `${JSON.stringify({
     name,
     version: '0.1.0',

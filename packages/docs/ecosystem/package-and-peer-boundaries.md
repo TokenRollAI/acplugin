@@ -14,10 +14,10 @@
     }
   },
   "peerDependencies": {
-    "@tokenroll/acplugin": "^1.0.0"
+    "@tokenroll/acplugin": "^0.0.1-beta"
   },
   "devDependencies": {
-    "@tokenroll/acplugin": "^1.0.0"
+    "@tokenroll/acplugin": "^0.0.1-beta"
   }
 }
 ```
