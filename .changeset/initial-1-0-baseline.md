@@ -1,18 +1,18 @@
 ---
-"@tokenroll/acplugin": patch
-"@tokenroll/acplugin-platform-claude-code": patch
-"@tokenroll/acplugin-platform-codex": patch
-"@tokenroll/acplugin-platform-cursor": patch
-"@tokenroll/acplugin-platform-antigravity": patch
-"@tokenroll/acplugin-platform-opencode": patch
-"@tokenroll/acplugin-platform-pi": patch
-"@tokenroll/acplugin-extension-hooks": patch
-"@tokenroll/acplugin-extension-mcp": patch
+"@tokenroll/acplugin": major
+"@tokenroll/acplugin-platform-claude-code": major
+"@tokenroll/acplugin-platform-codex": major
+"@tokenroll/acplugin-platform-cursor": major
+"@tokenroll/acplugin-platform-antigravity": major
+"@tokenroll/acplugin-platform-opencode": major
+"@tokenroll/acplugin-platform-pi": major
+"@tokenroll/acplugin-extension-hooks": major
+"@tokenroll/acplugin-extension-mcp": major
 ---
 
-Promote the complete TokenRoll ACPlugin beta package ecosystem to the stable `0.0.1` release.
+Promote the complete TokenRoll ACPlugin beta package ecosystem to the stable `1.0.0` release after its validation and real-world usage period.
 
-This release establishes the new `@tokenroll/*` package line after the coordinated `0.0.1-beta` cohort. It is not a patch-compatible continuation of the legacy `@disdjj/acplugin` converter.
+This release establishes the new `@tokenroll/*` package line after the coordinated `0.0.1-beta` cohort has passed all quality gates, sustained representative project usage, and resolved every release-blocking issue. It is not a compatible continuation of the legacy `@disdjj/acplugin` converter.
 
 ### Framework and CLI
 

@@ -11,6 +11,7 @@
 - Dev: Extension module graphs participate in watch mode; initial/dynamic ready windows receive catch-up builds; split editor writes are stabilized before queue-level debounce; signal cleanup exits with code 130.
 - Review: Standards Hard 0, with one non-blocking Hooks platform-profile consolidation suggestion. Spec final rereview passed after the Migration field-fidelity remediation; no blocking findings remain.
 - Validation: lint, TypeScript 7 typecheck, package and cross-package Vitest suites, build, ATTW/publint, `release:verify`, and `docs:check` pass for the `0.0.1-beta` workspace. Nine beta tarballs pass clean-consumer checks covering all official integrations, a third-party Platform brand, six-platform scaffolding, and main-only packed Migration.
+- Release phase: `0.0.1-beta` remains a validation and real-world usage cohort. The nine public packages advance directly to stable `1.0.0` only after the agreed observation period completes without unresolved release blockers and the full release-readiness matrix is rerun.
 
 ```text
 pnpm run check
