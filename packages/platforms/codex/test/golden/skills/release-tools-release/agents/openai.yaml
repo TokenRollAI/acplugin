@@ -1,0 +1,5 @@
+interface:
+  display_name: Release command
+  short_description: Prepare a release
+policy:
+  allow_implicit_invocation: false

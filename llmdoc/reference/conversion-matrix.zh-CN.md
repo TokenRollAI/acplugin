@@ -10,7 +10,7 @@
 | --- | --- | --- | --- | --- | --- | --- |
 | 交付单元 | 可安装 Plugin | 可安装 Plugin | 可安装 Plugin | 可安装 Plugin | Workspace Overlay | npm Package |
 | Skill | 原生 | 原生 | 原生 | 原生 | 原生 | 原生 |
-| Command | 原生 Command | 转换为显式 `command-<id>` Skill | 原生 Command | 转换为显式 `command-<id>` Skill | 原生 Workspace Command | 转换为 Prompt Template |
+| Command | 原生 Command | 默认转换为显式 `command-<id>` Skill；可选 `plugin-name-<id>` | 原生 Command | 转换为显式 `command-<id>` Skill | 原生 Workspace Command | 转换为 Prompt Template |
 | Agent | 原生 Agent | 降级为 `agent-<id>` 指导 Skill | 原生 Subagent；部分模型/能力字段降级 | 降级为 `agent-<id>` 指导 Skill | 原生 Subagent；能力转换为 tools/permissions | 降级为 `agent-<id>` 指导 Skill |
 | Public 文件 | 复制到 Plugin 根 | 复制到 Plugin 根 | 复制到 Plugin 根 | 复制到 Plugin 根 | 复制到 Workspace 根 | 复制到 Package 根 |
 | 独立 Marketplace 分发 | 可选 | 可选 | 不生成 | 不生成 | 不适用 | 不适用 |
@@ -20,6 +20,8 @@
 OpenCode 明确是 Workspace Overlay，不会收到伪造的通用 `package.json`。Pi 是真实 npm Package，其 Manifest 不得泄漏 workspace/private 字段。Antigravity 只输出公开契约已经确认的 Manifest 字段。
 
 当 Codex Command 正文使用 `{{arguments}}` 时，回退 Skill 会把它替换为显式调用指引，并独立报告 `arguments/transform` 能力。作者声明的 `argumentHint` 仍是另一项 degraded 能力，因为 Codex Skill 元数据没有等价的参数提示 UI。
+
+Codex 默认保持稳定的 `command-<id>` generated Skill ID。确实需要在 Skill ID 中显示 Plugin name 的工程可以显式使用 `codex({ generatedSkillIds: { command: 'plugin-prefixed' } })`；最终 ID 继续接受相同的冲突与 Plugin/Skill 组合身份校验。
 
 ## Hooks Extension
 

@@ -107,6 +107,7 @@ describe('Codex public Platform integration', () => {
         displayName: 'TokenRoll Plugins',
         policy: { installation: 'INSTALLED_BY_DEFAULT' },
       },
+      generatedSkillIds: { command: 'plugin-prefixed' },
     });
 
     expect(platform.id).toBe(PLATFORM_ID);
@@ -122,10 +123,47 @@ describe('Codex public Platform integration', () => {
         displayName: 'TokenRoll Plugins',
         policy: { installation: 'INSTALLED_BY_DEFAULT' },
       },
+      generatedSkillIds: { command: 'plugin-prefixed' },
     });
     expect(Object.isFrozen(platform.options)).toBe(true);
     expect(Object.isFrozen(platform.options!.interface)).toBe(true);
     expect(Object.isFrozen(platform.options!.marketplace)).toBe(true);
+    expect(Object.isFrozen(platform.options!.generatedSkillIds)).toBe(true);
+  });
+
+  it('loads plugin-prefixed Command Skill IDs through the built public packages', async () => {
+    /** 使用真实配置加载路径验证独立 Platform package 与主包 bundle 的品牌一致性。 */
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'acplugin-codex-generated-id-'));
+    temporaryRoots.push(root);
+    await fs.mkdir(path.join(root, 'src/commands'), { recursive: true });
+    await fs.writeFile(path.join(root, 'src/commands/bootstrap.md'), `---
+description: Bootstrap the repository.
+---
+Bootstrap the repository.
+`);
+    await fs.writeFile(path.join(root, 'acplugin.config.ts'), `
+import codex from ${JSON.stringify(codexEntry)};
+export default {
+  name: 'repository-ops',
+  version: '1.0.0',
+  description: 'Repository operations.',
+  platforms: [codex({ generatedSkillIds: { command: 'plugin-prefixed' } })],
+};
+`);
+    /** 子进程加载真实 dist 入口并完成事务提交。 */
+    const result = await runBuiltProject(root);
+    /** 最终 Skill ID 不依赖生成后重命名或报告修补。 */
+    const generatedId = 'repository-ops-bootstrap';
+
+    expect(result.success, JSON.stringify(result.diagnostics)).toBe(true);
+    expect(result.deliveryUnits.find(unit => unit.id === 'plugin')?.artifacts)
+      .toContainEqual(expect.objectContaining({ path: `skills/${generatedId}/SKILL.md` }));
+    expect(result.compatibility).toContainEqual(expect.objectContaining({
+      subject: 'command:bootstrap',
+      transformation: `Explicit Skill ${generatedId}`,
+    }));
+    expect(await fs.readFile(path.join(root, `dist/codex/plugin/skills/${generatedId}/SKILL.md`), 'utf8'))
+      .toContain(`name: ${generatedId}`);
   });
 
   it('keeps Hooks and MCP implementation packages outside the Platform dependency boundary', async () => {

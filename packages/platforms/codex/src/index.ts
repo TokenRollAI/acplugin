@@ -20,6 +20,8 @@ import { validateCodexBundle } from './validator.js';
 
 export type {
   CodexCategory,
+  CodexCommandGeneratedSkillIdStrategy,
+  CodexGeneratedSkillIdsOptions,
   CodexInterfaceOptions,
   CodexMarketplaceInstallation,
   CodexMarketplaceOptions,
@@ -41,6 +43,8 @@ export const PLATFORM_API_VERSION = '1' as const;
  */
 export function codex(options: CodexPlatformOptions = {}): AcpluginPlatform {
   validatePlatformOptions(options);
+  /** generateBundle Context 不暴露 options，因此只按值捕获已校验的纯字符串策略。 */
+  const commandGeneratedSkillId = options.generatedSkillIds?.command;
   /** strict 属于 Core 策略，其余字段作为 Platform 生命周期专属配置保存。 */
   const { strict, ...platformOptions } = options;
   return definePlatform({
@@ -52,13 +56,13 @@ export function codex(options: CodexPlatformOptions = {}): AcpluginPlatform {
     validateComponentFields: validateCodexComponentFields,
     /** prepare 固定 Manifest、最终 Skill 命名空间和 Extension 空位。 */
     prepare: (context) => {
-      validateGeneratedSkillIds(context);
+      validateGeneratedSkillIds(context, commandGeneratedSkillId);
       return { documents: [createManifestDocument(context)], artifacts: [] };
     },
     /** generateBundle 在 Adapter 合并完成后生成 Skills 并序列化 Manifest。 */
     generateBundle: (context) => {
       /** 原生 Skill 与 Command/Agent fallback 产生的 Component Artifact。 */
-      const componentArtifacts = generateComponentArtifacts(context);
+      const componentArtifacts = generateComponentArtifacts(context, commandGeneratedSkillId);
       return {
         id: 'plugin',
         role: 'primary',

@@ -183,6 +183,45 @@ describe('Codex Platform', () => {
     expect(await fs.readFile(path.join(output, 'assets/logo.svg'), 'utf8')).toContain('viewBox="0 0 48 48"');
   });
 
+  it('opts into one plugin-prefixed Command Skill ID across Plugin and Marketplace output', async () => {
+    /** 复用完整严格工程，隔离 generated ID 策略对同一 Command 的影响。 */
+    const root = await temporaryProject();
+    await writeSupportedProject(root);
+    /** Plugin 前缀策略必须是显式 opt-in，Marketplace 只继承主单元。 */
+    const platform = codex({
+      generatedSkillIds: { command: 'plugin-prefixed' },
+      interface: { category: 'Developer Tools' },
+      marketplace: {},
+    });
+    /** 完成主 Plugin 和单 Plugin Marketplace 构建后的稳定结果。 */
+    const result = await run(resolvedConfig(root, 'build', platform));
+    /** 最终 generated ID 由配置中的稳定 Plugin name 与 canonical Command ID 组成。 */
+    const generatedId = 'release-tools-release';
+    /** 主 Plugin 使用的输出根。 */
+    const pluginRoot = path.join(root, 'dist/codex/plugin');
+    /** 单 Plugin Marketplace 使用的输出根。 */
+    const marketplaceRoot = path.join(root, 'dist/codex/marketplace');
+
+    expect(result.success, JSON.stringify(result.diagnostics)).toBe(true);
+    expect(result.compatibility).toContainEqual(expect.objectContaining({
+      subject: 'command:release',
+      capability: 'component',
+      level: 'transform',
+      transformation: `Explicit Skill ${generatedId}`,
+    }));
+    await expectGolden(
+      path.join(pluginRoot, `skills/${generatedId}/SKILL.md`),
+      `skills/${generatedId}/SKILL.md`,
+    );
+    await expectGolden(
+      path.join(pluginRoot, `skills/${generatedId}/agents/openai.yaml`),
+      `skills/${generatedId}/agents/openai.yaml`,
+    );
+    await expect(fs.access(path.join(pluginRoot, 'skills/command-release/SKILL.md'))).rejects.toThrow();
+    expect(await fs.readFile(path.join(marketplaceRoot, `skills/${generatedId}/SKILL.md`)))
+      .toEqual(await fs.readFile(path.join(pluginRoot, `skills/${generatedId}/SKILL.md`)));
+  });
+
   it('rejects only an actually declared Command argument hint in strict mode', async () => {
     /** 单 Command 工程用于隔离 hint 兼容性。 */
     const root = await temporaryProject();
@@ -286,6 +325,59 @@ Run the existing workflow.
     expect(result.diagnostics).toContainEqual(expect.objectContaining({
       code: 'CODEX_GENERATED_SKILL_ID_COLLISION',
       message: expect.stringContaining('skill:command-release'),
+    }));
+  });
+
+  it('rejects plugin-prefixed Command collisions and overlong combined identities', async () => {
+    /** 第一份工程让 opt-in Command 与 canonical Skill 占用同一最终 ID。 */
+    const collisionRoot = await temporaryProject();
+    await fs.mkdir(path.join(collisionRoot, 'src/commands'), { recursive: true });
+    await fs.mkdir(path.join(collisionRoot, 'src/skills/release-tools-release'), { recursive: true });
+    await fs.writeFile(path.join(collisionRoot, 'src/commands/release.md'), `---
+description: Prepare a release.
+---
+Prepare the release.
+`);
+    await fs.writeFile(path.join(collisionRoot, 'src/skills/release-tools-release/SKILL.md'), `---
+description: Existing colliding Skill.
+---
+Run the existing workflow.
+`);
+    /** prepare 必须使用与 generateBundle 相同的 opt-in ID resolver。 */
+    const collision = await run(resolvedConfig(
+      collisionRoot,
+      'build',
+      codex({ generatedSkillIds: { command: 'plugin-prefixed' } }),
+    ));
+
+    expect(collision).toMatchObject({ success: false, committed: false });
+    expect(collision.diagnostics).toContainEqual(expect.objectContaining({
+      code: 'CODEX_GENERATED_SKILL_ID_COLLISION',
+      message: expect.stringContaining('release-tools-release'),
+    }));
+
+    /** 第二份工程验证重复 Plugin 前缀仍受官方组合身份长度限制。 */
+    const lengthRoot = await temporaryProject();
+    await fs.mkdir(path.join(lengthRoot, 'src/commands'), { recursive: true });
+    await fs.writeFile(path.join(lengthRoot, 'src/commands/prepare-release-workflow.md'), `---
+description: Prepare a release workflow.
+---
+Prepare the release workflow.
+`);
+    /** 较长但本身合法的 Plugin name 与 generated Skill name 合并后超过 64 字符。 */
+    const lengthConfig = resolveConfig({
+      name: 'organization-release-operations',
+      version: '1.0.0',
+      description: 'Organization release operations.',
+      platforms: [codex({ generatedSkillIds: { command: 'plugin-prefixed' } })],
+    }, path.join(lengthRoot, 'acplugin.config.ts'), 'build', 'production');
+    expect(lengthConfig.diagnostics).toEqual([]);
+    /** 最终候选校验必须拒绝超过官方组合身份限制的 Skill。 */
+    const overlong = await run(lengthConfig.config!);
+
+    expect(overlong).toMatchObject({ success: false, committed: false });
+    expect(overlong.diagnostics).toContainEqual(expect.objectContaining({
+      code: 'CODEX_SKILL_IDENTITY_TOO_LONG',
     }));
   });
 
@@ -444,6 +536,11 @@ Use the extension resources.
     expect(() => codex({ interface: { displayName: 'duplicate' } } as never)).toThrow('Unknown Codex interface option');
     expect(() => codex({ interface: { websiteURL: 'https://user:secret@example.com' } })).toThrow('without credentials');
     expect(() => codex({ marketplace: { policy: { installation: 'UNKNOWN' } } } as never)).toThrow('not supported');
+    expect(() => codex({ generatedSkillIds: null } as never)).toThrow('must be an object');
+    expect(() => codex({ generatedSkillIds: [] } as never)).toThrow('must be an object');
+    expect(() => codex({ generatedSkillIds: { skill: 'plugin-prefixed' } } as never)).toThrow('Unknown Codex generatedSkillIds option');
+    expect(() => codex({ generatedSkillIds: { command: 'template' } } as never)).toThrow('must be "plugin-prefixed"');
+    expect(() => codex({ generatedSkillIds: { command: true } } as never)).toThrow('must be "plugin-prefixed"');
 
     /** 非法 Component 专属字段应在 Scanner 阶段失败。 */
     const root = await temporaryProject();

@@ -6,14 +6,14 @@ import { describe, expect, it } from 'vitest';
 /** Workspace 边界测试读取的仓库绝对根目录。 */
 const root = fileURLToPath(new URL('../../..', import.meta.url));
 
-/** 六个官方 Platform 的目录名与公开包名。 */
+/** 六个官方 Platform 的目录名、公开包名与当前独立版本。 */
 const platformPackages = [
-  ['claude-code', '@tokenroll/acplugin-platform-claude-code'],
-  ['codex', '@tokenroll/acplugin-platform-codex'],
-  ['cursor', '@tokenroll/acplugin-platform-cursor'],
-  ['antigravity', '@tokenroll/acplugin-platform-antigravity'],
-  ['opencode', '@tokenroll/acplugin-platform-opencode'],
-  ['pi', '@tokenroll/acplugin-platform-pi'],
+  ['claude-code', '@tokenroll/acplugin-platform-claude-code', '0.0.1-beta'],
+  ['codex', '@tokenroll/acplugin-platform-codex', '0.0.2-beta'],
+  ['cursor', '@tokenroll/acplugin-platform-cursor', '0.0.1-beta'],
+  ['antigravity', '@tokenroll/acplugin-platform-antigravity', '0.0.1-beta'],
+  ['opencode', '@tokenroll/acplugin-platform-opencode', '0.0.1-beta'],
+  ['pi', '@tokenroll/acplugin-platform-pi', '0.0.1-beta'],
 ] as const;
 
 /** 九个独立版本的正式公开包清单路径。 */
@@ -53,7 +53,7 @@ describe('final workspace skeleton', () => {
 
     expect(manifests.map(manifest => manifest.name)).toEqual(platformPackages.map(([, name]) => name));
     expect(manifests.every(manifest => manifest.private !== true)).toBe(true);
-    expect(manifests.every(manifest => manifest.version === '0.0.1-beta')).toBe(true);
+    expect(manifests.map(manifest => manifest.version)).toEqual(platformPackages.map(([, , version]) => version));
     expect(manifests.every(manifest => manifest.peerDependencies?.['@tokenroll/acplugin'] === 'workspace:^')).toBe(true);
     expect(manifests.every(manifest => manifest.dependencies?.['@acplugin/core'] === undefined)).toBe(true);
   });

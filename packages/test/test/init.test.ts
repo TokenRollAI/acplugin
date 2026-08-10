@@ -33,7 +33,7 @@ describe('init', () => {
       engines: { node: '^20.19.0 || ^22.13.0 || >=23.5.0' },
       devDependencies: {
         '@tokenroll/acplugin-platform-claude-code': '^0.0.1-beta',
-        '@tokenroll/acplugin-platform-codex': '^0.0.1-beta',
+        '@tokenroll/acplugin-platform-codex': '^0.0.2-beta',
         'typescript': '^7.0.2',
       },
     });

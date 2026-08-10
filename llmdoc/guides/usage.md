@@ -86,6 +86,14 @@ export default defineConfig({
 
 `platforms` is required and `--platform <id...>` only filters IDs already instantiated in that list. The main package does not re-export official factories or provide Platform subpaths. OpenCode output is a workspace overlay and Pi output is an npm package. They are not mislabeled as static Plugins. See the [Platform support matrix](../reference/conversion-matrix.md) before enabling strict multi-Platform builds.
 
+Codex transforms Commands into explicit `command-<id>` Skills by default. When a consumer specifically requires Plugin-visible generated IDs, opt in per Codex Platform instance:
+
+```ts
+codex({ generatedSkillIds: { command: 'plugin-prefixed' } })
+```
+
+For Plugin `my-plugin`, Command `bootstrap` then becomes `my-plugin-bootstrap`. This does not change the canonical Command ID, other Platforms, or the default Codex output.
+
 ## Public files
 
 Regular files in `public/` are copied to every target root by default. Use explicit rules when only part of the directory should be copied:

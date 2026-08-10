@@ -131,16 +131,34 @@ function validateMarketplaceOptions(options: CodexMarketplaceOptions | undefined
 }
 
 /**
+ * 校验 canonical Component 转换为 Codex Skill 时的 ID 策略。
+ *
+ * @param options 用户声明且可能绕过 TypeScript 的未知嵌套配置。
+ */
+function validateGeneratedSkillIdsOptions(options: unknown): void {
+  if (options === undefined)
+    return;
+  if (typeof options !== 'object' || options === null || Array.isArray(options))
+    throw new TypeError('Codex generatedSkillIds must be an object.');
+  rejectUnknownFields(options, new Set(['command']), 'generatedSkillIds');
+  /** 当前唯一开放策略使用已校验的 Plugin name 作为生成前缀。 */
+  const command = (options as Readonly<Record<string, unknown>>).command;
+  if (command !== undefined && command !== 'plugin-prefixed')
+    throw new TypeError('Codex generatedSkillIds.command must be "plugin-prefixed".');
+}
+
+/**
  * 校验 Codex Platform 工厂公开配置。
  *
  * @param options 用户传入且可能来自宽类型变量的平台选项。
  */
 export function validatePlatformOptions(options: CodexPlatformOptions): void {
-  rejectUnknownFields(options, new Set(['strict', 'interface', 'marketplace']), 'Platform');
+  rejectUnknownFields(options, new Set(['strict', 'interface', 'marketplace', 'generatedSkillIds']), 'Platform');
   if (options.strict !== undefined && typeof options.strict !== 'boolean')
     throw new TypeError('Codex strict must be a boolean.');
   validateInterfaceOptions(options.interface);
   validateMarketplaceOptions(options.marketplace);
+  validateGeneratedSkillIdsOptions(options.generatedSkillIds);
 }
 
 /**

@@ -10,7 +10,7 @@ This matrix describes canonical ACPlugin 1.0 builds. Tolerant conversion code be
 | --- | --- | --- | --- | --- | --- | --- |
 | Delivery unit | Installable Plugin | Installable Plugin | Installable Plugin | Installable Plugin | Workspace overlay | npm package |
 | Skill | Native | Native | Native | Native | Native | Native |
-| Command | Native Command | Transform to explicit `command-<id>` Skill | Native Command | Transform to explicit `command-<id>` Skill | Native workspace Command | Transform to Prompt Template |
+| Command | Native Command | Transform to explicit `command-<id>` Skill by default; optional `plugin-name-<id>` | Native Command | Transform to explicit `command-<id>` Skill | Native workspace Command | Transform to Prompt Template |
 | Agent | Native Agent | Degraded `agent-<id>` guidance Skill | Native Subagent; some model/capability fields degrade | Degraded `agent-<id>` guidance Skill | Native Subagent; capabilities transform to tools/permissions | Degraded `agent-<id>` guidance Skill |
 | Public files | Plugin-root copy | Plugin-root copy | Plugin-root copy | Plugin-root copy | Workspace-root copy | Package-root copy |
 | Separate Marketplace distribution | Optional | Optional | Not generated | Not generated | Not applicable | Not applicable |
@@ -20,6 +20,8 @@ This matrix describes canonical ACPlugin 1.0 builds. Tolerant conversion code be
 OpenCode is intentionally a workspace overlay and does not receive a fabricated generic `package.json`. Pi is a real npm package and its manifest must not leak workspace/private fields. Antigravity emits only Manifest fields confirmed by its public contract.
 
 When a Codex Command body uses `{{arguments}}`, the fallback Skill replaces it with explicit invocation guidance and reports an independent `arguments/transform` capability. A declared `argumentHint` remains a separate degraded capability because Codex Skill metadata has no equivalent hint UI.
+
+Codex keeps the stable `command-<id>` generated Skill ID by default. Projects that require the Plugin name to remain visible in the Skill ID can opt into `codex({ generatedSkillIds: { command: 'plugin-prefixed' } })`; the final ID remains subject to the same collision and combined Plugin/Skill identity validation.
 
 ## Hooks Extension
 

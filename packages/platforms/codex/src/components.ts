@@ -10,6 +10,7 @@ import {
   type PluginProject,
 } from '@tokenroll/acplugin';
 import { CODEX_BRAND_COLOR_PATTERN, CODEX_SKILL_PRODUCTS } from './protocol.js';
+import type { CodexCommandGeneratedSkillIdStrategy } from './types.js';
 
 /** Codex Skill `agents/openai.yaml` 允许配置的 Component 专属字段。 */
 const COMPONENT_FIELDS = new Set([
@@ -153,15 +154,37 @@ function codexFields(component: Component): UnknownFields {
 }
 
 /**
+ * 把 canonical Command ID 转换为唯一的最终 Codex Skill ID。
+ *
+ * @param project 提供已校验 Plugin name 的规范工程。
+ * @param strategy Platform 工厂已验证并按值捕获的可选策略。
+ * @param commandId 已由 Scanner 校验的 canonical Command ID。
+ * @returns 默认带 Command 类型前缀，或显式选择 Plugin 前缀的最终 ID。
+ */
+function commandSkillId(
+  project: PluginProject,
+  strategy: CodexCommandGeneratedSkillIdStrategy | undefined,
+  commandId: string,
+): string {
+  return strategy === 'plugin-prefixed'
+    ? `${project.metadata.name}-${commandId}`
+    : `command-${commandId}`;
+}
+
+/**
  * 列出全部规范 Component 最终占用的 Codex Skill ID。
  *
  * @param project 已完成规范扫描的 Plugin 工程。
+ * @param commandStrategy Platform 工厂已验证并按值捕获的 Command 策略。
  * @returns 保持 Component 类型与扫描顺序的生成身份。
  */
-function generatedSkillIdentities(project: PluginProject): GeneratedSkillIdentity[] {
+function generatedSkillIdentities(
+  project: PluginProject,
+  commandStrategy: CodexCommandGeneratedSkillIdStrategy | undefined,
+): GeneratedSkillIdentity[] {
   return [
     ...project.skills.map(skill => ({ id: skill.id, subject: `skill:${skill.id}` })),
-    ...project.commands.map(command => ({ id: `command-${command.id}`, subject: `command:${command.id}` })),
+    ...project.commands.map(command => ({ id: commandSkillId(project, commandStrategy, command.id), subject: `command:${command.id}` })),
     ...project.agents.map(agent => ({ id: `agent-${agent.id}`, subject: `agent:${agent.id}` })),
   ];
 }
@@ -170,11 +193,15 @@ function generatedSkillIdentities(project: PluginProject): GeneratedSkillIdentit
  * 在 prepare 阶段拒绝规范 ID 与 fallback ID 的大小写不敏感冲突。
  *
  * @param context Codex Platform prepare 上下文。
+ * @param commandStrategy Platform 工厂已验证并按值捕获的 Command 策略。
  */
-export function validateGeneratedSkillIds(context: PlatformPrepareContext): void {
+export function validateGeneratedSkillIds(
+  context: PlatformPrepareContext,
+  commandStrategy: CodexCommandGeneratedSkillIdStrategy | undefined,
+): void {
   /** 已经占用最终 ID 的首个规范 Component。 */
   const owners = new Map<string, GeneratedSkillIdentity>();
-  for (const identity of generatedSkillIdentities(context.project)) {
+  for (const identity of generatedSkillIdentities(context.project, commandStrategy)) {
     /** Codex 安装表面应采用大小写不敏感的稳定冲突规则。 */
     const key = identity.id.toLocaleLowerCase('en-US');
     /** 已经占用同一最终 ID 的来源。 */
@@ -262,9 +289,13 @@ function appendSkillMetadata(
  * 把规范 Commands、Skills 与 Agents 转换为 Codex Skills。
  *
  * @param context Platform generateBundle 生命周期上下文。
+ * @param commandStrategy Platform 工厂已验证并按值捕获的 Command 策略。
  * @returns 确定排序且尚未进入 DeliveryUnit Registry 的 Artifact 输入。
  */
-export function generateComponentArtifacts(context: PlatformGenerateContext): ArtifactInput[] {
+export function generateComponentArtifacts(
+  context: PlatformGenerateContext,
+  commandStrategy: CodexCommandGeneratedSkillIdStrategy | undefined,
+): ArtifactInput[] {
   /** 当前 Platform 累计生成的 Component Artifact。 */
   const artifacts: ArtifactInput[] = [];
 
@@ -299,8 +330,8 @@ export function generateComponentArtifacts(context: PlatformGenerateContext): Ar
   }
 
   for (const command of context.project.commands) {
-    /** Command 使用固定前缀进入统一 Codex Skill 命名空间。 */
-    const id = `command-${command.id}`;
+    /** Command 缺省使用类型前缀，也可显式选择已校验的 Plugin 前缀。 */
+    const id = commandSkillId(context.project, commandStrategy, command.id);
     artifacts.push(bytesArtifact(`skills/${id}/SKILL.md`, markdownWithFrontmatter({
       name: id,
       description: command.description,

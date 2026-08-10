@@ -53,14 +53,14 @@ export class InitError extends Error {
 /** 无交互脚手架默认启用的正式支持 Platform。 */
 const DEFAULT_PLATFORMS: readonly InitPlatformId[] = ['claude-code', 'codex'];
 
-/** 每个官方 Platform 的独立 package 与配置工厂导出名。 */
-const PLATFORM_PACKAGES: Readonly<Record<InitPlatformId, { packageName: string; factory: string }>> = {
-  'claude-code': { packageName: '@tokenroll/acplugin-platform-claude-code', factory: 'claudeCode' },
-  'codex': { packageName: '@tokenroll/acplugin-platform-codex', factory: 'codex' },
-  'cursor': { packageName: '@tokenroll/acplugin-platform-cursor', factory: 'cursor' },
-  'antigravity': { packageName: '@tokenroll/acplugin-platform-antigravity', factory: 'antigravity' },
-  'opencode': { packageName: '@tokenroll/acplugin-platform-opencode', factory: 'openCode' },
-  'pi': { packageName: '@tokenroll/acplugin-platform-pi', factory: 'pi' },
+/** 每个独立版本化官方 Platform 的 package、配置工厂导出名与脚手架依赖范围。 */
+const PLATFORM_PACKAGES: Readonly<Record<InitPlatformId, { packageName: string; factory: string; version: string }>> = {
+  'claude-code': { packageName: '@tokenroll/acplugin-platform-claude-code', factory: 'claudeCode', version: '^0.0.1-beta' },
+  'codex': { packageName: '@tokenroll/acplugin-platform-codex', factory: 'codex', version: '^0.0.2-beta' },
+  'cursor': { packageName: '@tokenroll/acplugin-platform-cursor', factory: 'cursor', version: '^0.0.1-beta' },
+  'antigravity': { packageName: '@tokenroll/acplugin-platform-antigravity', factory: 'antigravity', version: '^0.0.1-beta' },
+  'opencode': { packageName: '@tokenroll/acplugin-platform-opencode', factory: 'openCode', version: '^0.0.1-beta' },
+  'pi': { packageName: '@tokenroll/acplugin-platform-pi', factory: 'pi', version: '^0.0.1-beta' },
 };
 
 /** Plugin 名称接受的小写 kebab-case 格式。 */
@@ -174,8 +174,11 @@ function packageSource(name: string, platforms: readonly InitPlatformId[], hooks
     '@types/node': '^20.19.0',
     'typescript': '^7.0.2',
   };
-  for (const platform of platforms)
-    devDependencies[PLATFORM_PACKAGES[platform].packageName] = '^0.0.1-beta';
+  for (const platform of platforms) {
+    /** 官方 Platform 独立发布后由自身元数据决定脚手架依赖范围。 */
+    const definition = PLATFORM_PACKAGES[platform];
+    devDependencies[definition.packageName] = definition.version;
+  }
   if (hooks)
     devDependencies['@tokenroll/acplugin-extension-hooks'] = '^0.0.1-beta';
   if (mcp)

@@ -86,6 +86,14 @@ export default defineConfig({
 
 `platforms` 是必填项，`--platform <id...>` 只会筛选该列表中已经实例化的 ID。主包不重新导出官方工厂，也不提供 Platform subpath。OpenCode 产物是 Workspace Overlay，Pi 产物是 npm Package，不会被错误标记为静态 Plugin。启用严格多平台构建前应先查看[平台支持矩阵](../reference/conversion-matrix.zh-CN.md)。
 
+Codex 默认把 Command 转换为显式的 `command-<id>` Skill。只有消费侧明确要求 generated ID 显示 Plugin name 时，才对对应 Codex Platform 实例启用：
+
+```ts
+codex({ generatedSkillIds: { command: 'plugin-prefixed' } })
+```
+
+对于 Plugin `my-plugin`，Command `bootstrap` 会生成 `my-plugin-bootstrap`。这不会改变 canonical Command ID、其他 Platform 或 Codex 默认输出。
+
 ## Public 文件
 
 默认情况下，`public/` 中的普通文件会复制到每个目标根目录。如果只需复制其中一部分，可以使用显式规则：

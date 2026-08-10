@@ -425,24 +425,25 @@ generateDistributions(primary):
 
 ### 内容与数据流
 
-- [components.ts](../../packages/platforms/codex/src/components.ts)：原生 Skill；Command 转 `command-<id>` Skill；Agent 降级为 `agent-<id>` 指导 Skill；可生成 `agents/openai.yaml`。
+- [components.ts](../../packages/platforms/codex/src/components.ts)：原生 Skill；Command 默认转 `command-<id>` Skill，也可显式选用 Plugin 前缀；Agent 降级为 `agent-<id>` 指导 Skill；可生成 `agents/openai.yaml`。
 - [manifest.ts](../../packages/platforms/codex/src/manifest.ts)：拥有 Codex Plugin manifest、Hooks/MCP 扩展点和可选 Marketplace。
 - [protocol.ts](../../packages/platforms/codex/src/protocol.ts)：类别、安装方式、界面字段、URL/资源路径和 SVG 尺寸协议。
 - [validator.ts](../../packages/platforms/codex/src/validator.ts)：验证 Skill、展示资源、Hook、MCP、Plugin 和 Marketplace 的引用闭包。
 
-Command 中的 `{{arguments}}` 会变成显式调用指引，并独立报告 `arguments/transform`；`argumentHint` 因没有等价 UI 仍单独降级。fallback ID 会在 `prepare()` 前检查大小写不敏感冲突。
+Command 中的 `{{arguments}}` 会变成显式调用指引，并独立报告 `arguments/transform`；`argumentHint` 因没有等价 UI 仍单独降级。Command generated ID 默认是 `command-<id>`；`generatedSkillIds.command: 'plugin-prefixed'` 只在显式启用时生成 `<plugin-name>-<id>`。prepare 冲突检查和 generateBundle 共用同一 ID resolver。
 
 ### 实现伪代码
 
 ```ts
-prepare(project):
-  rejectCollisions(skillId, `command-${id}`, `agent-${id}`)
+prepare(project, options):
+  commandId = resolveCommandSkillId(project.name, options.generatedSkillIds)
+  rejectCollisions(skillId, commandId, `agent-${id}`)
   manifest = createCodexManifest(interfaceOptions)
   expose ['hooks'] and ['mcpServers']
 
-generateBundle(draft):
+generateBundle(draft, capturedCommandIdStrategy):
   nativeSkills = emitSkills(project.skills)
-  commandSkills = emitExplicitSkills(project.commands, prefix='command-')
+  commandSkills = emitExplicitSkills(project.commands, capturedCommandIdStrategy)
   agentSkills = emitGuidanceSkills(project.agents, prefix='agent-')
   metadata = emitOptionalAgentsOpenAiYaml()
   reportNativeTransformOrDegradedPerCapability()

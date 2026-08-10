@@ -27,7 +27,10 @@ export function verifyPublicPlatformTypes(): void {
   /** 六个官方 package 各自约束自己的工厂选项。 */
   const official = [
     claudeCode({ defaultEnabled: false, marketplace: { owner: { name: 'TokenRoll' } } }),
-    codex({ interface: { category: 'Productivity' } }),
+    codex({
+      interface: { category: 'Productivity' },
+      generatedSkillIds: { command: 'plugin-prefixed' },
+    }),
     cursor({ strict: false }),
     antigravity({ strict: false }),
     openCode({ workspace: { schema: true } }),

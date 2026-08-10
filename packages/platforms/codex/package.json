@@ -1,6 +1,6 @@
 {
   "name": "@tokenroll/acplugin-platform-codex",
-  "version": "0.0.1-beta",
+  "version": "0.0.2-beta",
   "description": "Codex Platform adapter for acplugin.",
   "type": "module",
   "license": "MIT",
