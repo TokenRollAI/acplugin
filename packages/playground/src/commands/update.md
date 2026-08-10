@@ -1,10 +1,10 @@
 ---
-description: 根据源码变化规划 llmdoc v3 知识更新
+description: 根据需求规划并验证一次工程更新
 requires:
   skills:
-    - llmdoc
+    - project-workflow
   agents:
     - investigator
 ---
 
-调查 `{{arguments}}` 的源码和现有知识，形成带证据的候选更新、冲突与待确认项。不要在当前模板中声称已经计算 fingerprint、delta 或提交 transaction。
+使用 ACPlugin capability template 调查 `{{arguments}}` 的源码、测试和约束，形成带证据的改动建议、风险与待确认项，并列出验证命令。

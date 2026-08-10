@@ -24,6 +24,6 @@ Extension package 同时拥有作者格式、build state 和面向六个平台�
 | --- | --- |
 | `@acplugin/test` | 跨包 Vitest、tarball 和架构验证 |
 | `@acplugin/docs` | VitePress 与九个公开入口的 TypeDoc 生成 |
-| `@acplugin/playground` | llmdoc v3 主题 packaging/template smoke |
+| `@acplugin/playground` | 领域中立的全能力 packaging/template smoke |
 
 Docs 与 Playground 都是私有消费者，不进入 Changesets 或 release tarball。

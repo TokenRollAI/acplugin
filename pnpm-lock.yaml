@@ -373,12 +373,27 @@ importers:
       '@tokenroll/acplugin-extension-hooks':
         specifier: workspace:^
         version: link:../extensions/hooks
+      '@tokenroll/acplugin-extension-mcp':
+        specifier: workspace:^
+        version: link:../extensions/mcp
+      '@tokenroll/acplugin-platform-antigravity':
+        specifier: workspace:^
+        version: link:../platforms/antigravity
       '@tokenroll/acplugin-platform-claude-code':
         specifier: workspace:^
         version: link:../platforms/claude-code
       '@tokenroll/acplugin-platform-codex':
         specifier: workspace:^
         version: link:../platforms/codex
+      '@tokenroll/acplugin-platform-cursor':
+        specifier: workspace:^
+        version: link:../platforms/cursor
+      '@tokenroll/acplugin-platform-opencode':
+        specifier: workspace:^
+        version: link:../platforms/opencode
+      '@tokenroll/acplugin-platform-pi':
+        specifier: workspace:^
+        version: link:../platforms/pi
       '@types/node':
         specifier: 'catalog:'
         version: 20.19.43

@@ -176,16 +176,37 @@ function isNativeAddon(moduleId: string): boolean {
 }
 
 /**
+ * 移除 Rolldown 为模块边界生成的 region 注释，同时保留用户和第三方的法律注释。
+ *
+ * Hook 的虚拟 runner 位于 Core 每轮创建的随机 workDir；Rolldown 默认把这个
+ * 绝对临时路径写入 `//#region`，会让相同输入的 Handler 字节和报告 hash 漂移。
+ * region 标记不参与运行语义或许可履约，因此必须在提交 Artifact 前移除。
+ *
+ * @param code Rolldown 唯一输出 Chunk 的源码。
+ * @returns 不含机器路径相关 region 标记的稳定 ESM 源码。
+ */
+function stableChunkCode(code: string): string {
+  return code.replace(/^\/\/#(?:end)?region[^\r\n]*(?:\r?\n|$)/gmu, '');
+}
+
+/**
  * 把 Rolldown 实际解析的作者模块图登记给 Core，排除 Extension 自己生成的临时入口。
  *
  * @param context 当前 Extension build 上下文。
  * @param moduleIds 输出 Chunk 中的全部模块 ID。
+ * @param generatedEntry 当前构建独占且不应进入 dev 监听集合的 runner 真实路径。
  */
-function registerBundleWatchFiles(context: ExtensionBuildContext, moduleIds: readonly string[]): void {
+function registerBundleWatchFiles(
+  context: ExtensionBuildContext,
+  moduleIds: readonly string[],
+  generatedEntry: string,
+): void {
   for (const moduleId of moduleIds) {
     /** 查询参数不属于文件名，虚拟模块与相对 ID 也不能交给文件监听器。 */
     const file = moduleId.replace(/\?.*$/u, '');
     if (!path.isAbsolute(file))
+      continue;
+    if (file === generatedEntry)
       continue;
     /** runner.mjs 位于每轮都会删除的 workDir，监听它会制造无效重建。 */
     const relative = path.relative(context.workDir, file);
@@ -206,9 +227,13 @@ async function bundleHook(hook: DiscoveredHook, context: ExtensionBuildContext):
   /** 当前 Hook 独占的 Bundle 工作目录。 */
   const directory = path.join(context.workDir, hook.id);
   await fs.mkdir(directory, { recursive: true });
+  /** Rolldown 使用真实路径解析模块；macOS 的 `/var` 别名必须先与 `/private/var` 对齐。 */
+  const realDirectory = await fs.realpath(directory);
+  /** 作者入口同样规范化，避免相对 import 跨越文件系统别名后落到不存在的路径。 */
+  const realSourcePath = await fs.realpath(hook.sourcePath);
   /** 动态生成且导入用户 hook.ts 的 Rolldown 入口。 */
-  const runner = path.join(directory, 'runner.mjs');
-  await fs.writeFile(runner, createRunnerSource(hook, directory));
+  const runner = path.join(realDirectory, 'runner.mjs');
+  await fs.writeFile(runner, createRunnerSource({ ...hook, sourcePath: realSourcePath }, realDirectory));
   /** 保留 Node 内置模块为 external 的内存构建结果。 */
   const output = await rolldownBuild({
     input: runner,
@@ -233,10 +258,10 @@ async function bundleHook(hook: DiscoveredHook, context: ExtensionBuildContext):
   if (Object.keys(chunk.modules).some(isNativeAddon))
     throw new Error(`Hook "${hook.id}" includes an unsupported native addon.`);
   // dev 必须跟随 Rolldown 的真实解析结果，而不是只监听 hook.ts 描述入口。
-  registerBundleWatchFiles(context, Object.keys(chunk.modules));
+  registerBundleWatchFiles(context, Object.keys(chunk.modules), runner);
   /** 最终贡献给 Plugin 的独立 ESM Handler。 */
   const handler = path.join(directory, 'handler.mjs');
-  await fs.writeFile(handler, chunk.code);
+  await fs.writeFile(handler, stableChunkCode(chunk.code));
   /** Bundle 包含第三方依赖时生成的许可汇总。 */
   const licenses = await writeThirdPartyLicenses(chunk, directory);
   return Object.freeze({

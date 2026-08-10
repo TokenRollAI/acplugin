@@ -1,13 +1,13 @@
-# Reflection case template
+# Review template
 
-## Candidate lesson
+## Finding
 
-描述可能值得提升的经验。
+描述可复现的问题、证据和影响范围。
 
 ## Counterexamples
 
-检查该经验在哪些场景不成立。
+检查结论在哪些场景不成立或属于预期行为。
 
-## Promotion decision
+## Decision
 
-记录提升、修订、暂缓或拒绝及其证据。
+记录修复、接受、暂缓或拒绝及其理由。

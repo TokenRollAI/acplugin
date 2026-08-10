@@ -1,13 +1,13 @@
-# Knowledge document template
+# Task plan template
 
-## Statement
+## Objective
 
-写出一个范围明确、可验证的稳定结论。
+写出范围明确、可以验收的任务目标。
 
-## Evidence
+## Inputs
 
-列出支持结论的源码位置或权威来源。
+列出源码入口、配置、接口和其他可信输入。
 
-## Applicability
+## Acceptance
 
-注明适用版本、前提和失效条件。
+列出验证命令、预期输出和明确非目标。

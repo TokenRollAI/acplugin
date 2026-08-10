@@ -360,7 +360,7 @@ Use `--dry-run` for scan/map/validation without destination writes and `--strict
 The repository includes two private, repository-only workspaces beside the publishable packages:
 
 - `packages/docs` is a VitePress site with task-oriented Guide, Config, Platform, Extension, Ecosystem, Playground, and Resource sections. TypeDoc regenerates API pages and the sidebar for all nine public package root entries before every docs dev/build.
-- `packages/playground` is a real Claude Code/Codex/Hooks consumer modeled on llmdoc v3. It validates canonical Commands, a Skill with auxiliary references, Agents, no-op Hooks, and Public files. It is a packaging/template smoke, not an llmdoc runtime or conformance suite.
+- `packages/playground` is a domain-neutral six-Platform/Hooks/MCP capability template. It validates canonical Commands, Skill auxiliary files, Agents, all portable Hook events, HTTP and local MCP, Public files, and Claude Code/Codex Marketplaces without implementing product-specific behavior.
 
 ```bash
 pnpm run docs:dev       # generate API pages, then start VitePress

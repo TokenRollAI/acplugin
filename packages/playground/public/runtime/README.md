@@ -1,3 +1,3 @@
-# Runtime placeholder
+# Runtime asset example
 
-完整 llmdoc v3 runtime 应拥有 Frontier、fingerprint、graph、delta、恢复和知识事务。此目录只验证 Public 文件交付，不包含可执行 runtime。
+此目录展示 Public 资源可以按原始字节进入每个交付单元。它不包含可执行代码，第三方作者可以将其替换为目标插件需要的静态 runtime 资源。

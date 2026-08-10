@@ -90,7 +90,7 @@ export default defineConfig({
       ],
       '/playground/': [
         { text: 'Playground 总览', link: '/playground/' },
-        { text: 'llmdoc v3 模板', link: '/playground/llmdoc-v3' },
+        { text: '全能力模板', link: '/playground/capability-template' },
       ],
       '/resources/': [
         { text: '资源总览', link: '/resources/' },

@@ -1,3 +1,3 @@
-# Schema placeholder
+# Schema asset example
 
-完整产品应提供严格、版本化并带迁移策略的 Schema。本模板故意不提供“接受任意对象”的占位 Schema，避免把结构 smoke 误认为数据校验。
+此目录展示 Schema 等静态 Public 文件的交付位置。能力模板不定义业务数据结构，第三方作者应提供与自身输入格式匹配的严格 Schema。

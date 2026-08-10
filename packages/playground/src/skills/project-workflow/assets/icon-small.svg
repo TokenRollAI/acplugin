@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48">
+  <title>ACPlugin capability template</title>
+  <rect width="48" height="48" rx="10" fill="#FACC15"/>
+  <path d="M11 34 20 13h8l9 21h-7l-2-5h-9l-2 5h-6Zm10-11h5l-2.5-7-2.5 7Z" fill="#1F2937"/>
+</svg>

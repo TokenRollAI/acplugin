@@ -1,10 +1,10 @@
 ---
-description: 规划显式的 llmdoc v3 知识格式升级
+description: 规划一个带兼容性检查的版本升级
 requires:
   skills:
-    - llmdoc
+    - project-workflow
   agents:
     - recorder
 ---
 
-针对 `{{arguments}}` 列出格式差异、兼容性风险、备份和验收步骤。此 Command 只是可发现入口，不包含真实 Migration 代码或完整惰性加载正文。
+使用 ACPlugin capability template 针对 `{{arguments}}` 列出版本差异、兼容性风险、回退方式和验收步骤。此 Command 只展示工作流，不包含特定依赖的升级实现。

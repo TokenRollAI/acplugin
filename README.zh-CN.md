@@ -356,7 +356,7 @@ acplugin migrate owner/repository ./new-workspace --all
 除公开包外，仓库还包含两个仅供仓库使用的私有 workspace：
 
 - `packages/docs` 是 VitePress 文档站，按 Guide、Config、Platform、Extension、Ecosystem、Playground 和 Resources 组织内容。每次启动或构建文档前，TypeDoc 都会为九个公开 package 根入口重新生成 API 页面和 sidebar。
-- `packages/playground` 是一个以 llmdoc v3 为主题、真实构建 Claude Code/Codex/Hooks 的消费工程。它验证规范 Commands、带辅助引用的 Skill、Agents、no-op Hooks 和 Public 文件；定位是 packaging/template smoke，不是 llmdoc runtime 或 conformance suite。
+- `packages/playground` 是一个领域中立的六平台/Hooks/MCP 全能力模板。它验证规范 Commands、带辅助资源的 Skill、Agents、全部 portable Hook 事件、HTTP 与本地 MCP、Public 文件和 Claude Code/Codex Marketplace，不实现特定产品业务。
 
 ```bash
 pnpm run docs:dev       # 生成 API 页面并启动 VitePress

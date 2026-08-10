@@ -99,4 +99,4 @@ Extension build context 以 `addWatchFile()` 作为唯一依赖登记边界。�
 
 `packages/docs/` 是私有 VitePress workspace。TypeDoc 只扫描九个公开 package 的根公开入口，把 Markdown 与 API sidebar 生成到 ignored 目录；VitePress 随后构建按任务组织的手写文档，不读取远程内容、不注入时间，也不执行部署副作用。
 
-`packages/playground/` 是私有的真实消费者，显式导入主包、Claude Code/Codex Platform 和 Hooks Extension。它覆盖 Components、Skill auxiliary、Hooks、Public 文件、兼容性传播与受管输出。其 llmdoc v3 内容仅为模板 smoke；runtime 状态、增量更新/缓存、Schema、Migration 和 MCP 行为仍是非目标。两个私有 workspace 都不会成为公开包依赖，也不进入发行 tarball。
+`packages/playground/` 是私有的真实消费者，显式导入主包、六个官方 Platform 和 Hooks/MCP Extension。它覆盖 Components、Skill auxiliary、全部 portable Hook 事件、HTTP/local MCP、Public 文件、Marketplace、兼容性传播与受管输出。内容保持领域中立，只提供协议和交付能力模板，不实现特定产品业务。两个私有 workspace 都不会成为公开包依赖，也不进入发行 tarball。

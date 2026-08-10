@@ -1,5 +1,5 @@
 # Playground
 
-仓库内 Playground 是以 llmdoc v3 为主题的 ACPlugin packaging/template smoke。
+仓库内 Playground 是不绑定具体产品领域的完整 ACPlugin packaging/template smoke，真实构建六个平台、全部 portable Hooks、HTTP/local MCP 和两个 Marketplace。
 
-[查看 llmdoc v3 模板说明](./llmdoc-v3.md)
+[查看全能力模板说明](./capability-template.md)

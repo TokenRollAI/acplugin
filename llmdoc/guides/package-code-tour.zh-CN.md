@@ -20,7 +20,7 @@
 | `packages/extensions/mcp` | `@tokenroll/acplugin-extension-mcp` | 公开 | HTTP/stdio MCP 作者协议、stdio Bundle/smoke、六平台 Adapter |
 | `packages/test` | `@acplugin/test` | 私有 | 跨包、CLI、Migration、架构和发布边界集成测试 |
 | `packages/docs` | `@acplugin/docs` | 私有 | VitePress 手写文档、九公开包 TypeDoc API 与导航生成 |
-| `packages/playground` | `@acplugin/playground` | 私有 | llmdoc v3 主题真实消费工程与 packaging/template smoke |
+| `packages/playground` | `@acplugin/playground` | 私有 | 领域中立的全能力消费工程与 packaging/template smoke |
 
 依赖方向是刻意收窄的：
 
@@ -776,18 +776,19 @@ TypeDoc 因旧 Compiler API 兼容性在此 workspace 使用 TypeScript 6；正�
 
 ### 15.2 Playground 的内容、架构与数据流
 
-[acplugin.config.ts](../../packages/playground/acplugin.config.ts)显式装配主包、Claude Code、Codex 和 Hooks。工程包含四个 Command、一个带四个 auxiliary reference 的 llmdoc Skill、三个 Agent、三个 no-op Hook，以及 runtime/schema/upgrade 边界和四个 Public 模板。
+[acplugin.config.ts](../../packages/playground/acplugin.config.ts)显式装配主包、六个 Platform、Hooks 和 MCP。工程包含四个 Command、一个带 references/icons auxiliary 的 `project-workflow` Skill、三个 Agent、全部 11 个 portable Hook、四类 MCP 定义，以及 runtime/schema/upgrade 静态资源和 Public 模板。
 
 ```text
-canonical llmdoc-v3-themed authoring files
+domain-neutral capability authoring files
 → real public package imports
 → acplugin validate --json
-→ exact Codex degradation whitelist
-→ verify Skill auxiliary / Hook wire / Public artifacts
-→ real managed build for Claude Code + Codex
+→ exact six-Platform compatibility whitelist
+→ real managed build for six primary units + two Marketplaces
+→ verify Artifact registry / Component content / Hook wire / MCP protocol
+→ secret scan + repeated-build byte/mode snapshot
 ```
 
-配置使用 `strict: false` 只接受 Codex Agent fallback 及其依赖传播；[verify-playground.mjs](../../scripts/verify-playground.mjs)按结构化 subject/capability 精确列出允许降级，并拒绝其他诊断和所有 unsupported。Playground 只验证 packaging/template 边界，不实现 llmdoc runtime、增量更新、缓存、Schema、Migration 或 MCP。
+配置使用 `strict: false` 观察六个平台的真实能力差异；[verify-playground.mjs](../../scripts/verify-playground.mjs)精确列出允许的 degradation/unsupported，并要求不支持项没有伪 Artifact。验证器执行全部受支持 Hook handler/wire、三个 local MCP bundle 的 initialize/tools-list/tools-call、Marketplace 字节继承、Secret 扫描和双构建确定性。Playground 只提供领域中立的能力示例，不实现具体产品业务。
 
 ## 16. 快速定位：我要改什么，先看哪里
 
@@ -805,7 +806,7 @@ canonical llmdoc-v3-themed authoring files
 | 修改 MCP transport/auth | MCP `types.ts`/`discovery.ts` | bundler smoke、所有 Adapter、Secret 测试 |
 | 修改发布边界 | package manifest、tsdown、verify script | publint、ATTW、tarball consumer、ESM import graph |
 | 修改文档信息架构或公共 API 页面 | `packages/docs`、公开源码 JSDoc | TypeDoc generation、VitePress dead link、`verify-docs` |
-| 修改 Playground 模板或允许的兼容性 | `packages/playground` | typecheck、结构化 degradation 白名单、两平台真实 build |
+| 修改 Playground 模板或允许的兼容性 | `packages/playground` | typecheck、六平台白名单、Hook/MCP 协议、双构建确定性 |
 
 ## 17. 推荐阅读顺序
 
@@ -819,6 +820,6 @@ canonical llmdoc-v3-themed authoring files
 6. 再读 Codex，理解 fallback、兼容性和复杂 Validator。
 7. 最后读 Hooks/MCP 的 `types → discovery → bundler → adapters`，理解横向能力如何不侵入 Platform。
 8. 用 `packages/test` 中对应集成测试反向验证自己的理解。
-9. 最后从 `packages/docs` 看公共叙事与 API，从 `packages/playground` 看最小真实消费闭环。
+9. 最后从 `packages/docs` 看公共叙事与 API，从 `packages/playground` 看完整真实消费闭环。
 
 本仓库的核心判断口诀是：**谁拥有数据、谁能读取来源、谁负责最终验证、失败时旧输出是否仍完整。** 遇到新需求时先回答这四个问题，通常就能找到正确 package 和正确抽象层。

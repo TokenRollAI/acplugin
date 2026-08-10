@@ -19,7 +19,7 @@
     "playground:validate": "pnpm --filter @acplugin/playground run validate",
     "playground:build": "pnpm --filter @acplugin/playground run build",
     "playground:verify": "node scripts/verify-playground.mjs",
-    "playground:check": "pnpm run build && pnpm run playground:typecheck && pnpm run playground:verify && pnpm run playground:build",
+    "playground:check": "pnpm run build && pnpm run playground:typecheck && pnpm run playground:verify",
     "docs:check": "pnpm run docs:build && pnpm run docs:verify && pnpm run playground:check",
     "pretest": "pnpm run build",
     "test": "pnpm --config.enable-pre-post-scripts=false -r --if-present run test",

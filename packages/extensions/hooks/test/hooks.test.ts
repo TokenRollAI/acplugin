@@ -446,6 +446,39 @@ describe('Hooks Extension', () => {
     )).toContain('fixture-dependency@2.3.4');
   });
 
+  it('keeps Handler bytes and report hashes stable across isolated work directories', async () => {
+    /** 单个 Hook 足以暴露随机 Extension workDir 曾进入 Rolldown region 注释的问题。 */
+    const root = await createProject({
+      hooks: [{ id: 'session-start', definition: `{ event: 'SessionStart', run() {} }` }],
+    });
+    /** 第一次完整构建的稳定报告。 */
+    const first = await runProject({ cwd: root, command: 'build', mode: 'production' });
+    /** 第一次事务提交后的 Handler 原始字节。 */
+    const firstHandler = await fs.readFile(path.join(root, 'dist/claude-code/plugin/hooks/session-start/handler.mjs'));
+    /** 相同输入下由新 workDir 完成的第二次构建报告。 */
+    const second = await runProject({ cwd: root, command: 'build', mode: 'production' });
+    /** 第二次事务提交后的 Handler 原始字节。 */
+    const secondHandler = await fs.readFile(path.join(root, 'dist/claude-code/plugin/hooks/session-start/handler.mjs'));
+
+    expect(first.success).toBe(true);
+    expect(second.success).toBe(true);
+    expect(secondHandler).toEqual(firstHandler);
+    expect(secondHandler.toString('utf8')).not.toMatch(/^\/\/#(?:end)?region/mu);
+    expect(secondHandler.toString('utf8')).not.toContain(root);
+    expect(secondHandler.toString('utf8')).not.toContain('src/hooks/session-start/hook.ts');
+    expect(second.deliveryUnits).toEqual(first.deliveryUnits);
+    /** 删除 Canonical 源码后，安装产物仍必须只依赖相邻 wire 并可独立执行。 */
+    await fs.rm(path.join(root, 'src/hooks'), { recursive: true });
+    /** 删除源码后执行已安装 Handler 的进程结果。 */
+    const execution = await runHandler(
+      path.join(root, 'dist/claude-code/plugin/hooks/session-start/handler.mjs'),
+      'claude-code',
+      JSON.stringify({ session_id: 'session-1', cwd: root, hook_event_name: 'SessionStart', source: 'startup' }),
+      { CLAUDE_PLUGIN_ROOT: '/plugin-root', CLAUDE_PLUGIN_DATA: '/plugin-data' },
+    );
+    expect(execution).toEqual({ code: 0, stdout: '', stderr: '' });
+  });
+
   it('normalizes input, maps results, bounds I/O, and never exposes handler failures', async () => {
     /** 复用完整事件 fixture 取得真实构建后的 Handler。 */
     const root = await createProject({ hooks: canonicalHooks(), dependency: true });

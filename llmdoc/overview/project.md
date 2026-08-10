@@ -40,7 +40,7 @@ Instructions are intentionally outside the installable Plugin boundary. Hooks an
 
 The TypeScript 7 compiler is installed across workspaces through the cataloged `@typescript/native` alias, so every package `tsc` script uses 7.x. The root keeps the official `@typescript/typescript6` compatibility API under the `typescript` name only for tools such as typescript-eslint and the comment AST checker, because TypeScript 7 no longer exposes the legacy JavaScript compiler API. TypeDoc uses the same TypeScript 6 compatibility family inside `@acplugin/docs`; production package typechecking remains on TypeScript 7. Vitest, tsdown, Rolldown, and Node types are also shared through the catalog; package-specific runtime and lint dependencies stay in the package that owns them.
 
-The CLI entry is `packages/acplugin/src/cli.ts`; the facade is `packages/acplugin/src/index.ts`, and `packages/acplugin/src/project-config.ts` loads trusted project configuration. Official integration factories live only in their own packages. `packages/docs` builds the VitePress/manual and generated API surface, while `packages/playground` exercises the published authoring boundary as an llmdoc v3 themed template smoke.
+The CLI entry is `packages/acplugin/src/cli.ts`; the facade is `packages/acplugin/src/index.ts`, and `packages/acplugin/src/project-config.ts` loads trusted project configuration. Official integration factories live only in their own packages. `packages/docs` builds the VitePress/manual and generated API surface, while `packages/playground` exercises the published authoring boundary as a domain-neutral full-capability template smoke.
 
 ## Migration boundary
 

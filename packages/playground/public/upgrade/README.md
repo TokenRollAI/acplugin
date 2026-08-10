@@ -1,3 +1,3 @@
-# Upgrade placeholder
+# Upgrade guide example
 
-完整 upgrade 流程应显式选择目标版本、验证备份、按版本加载迁移正文并在提交前检查全部候选。本模板只有 Command 与内容边界。
+此目录展示升级说明等静态 Public 文件。能力模板只提供 Command 工作流示例，不包含任何特定依赖或产品格式的升级实现。

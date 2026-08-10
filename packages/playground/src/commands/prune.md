@@ -1,10 +1,10 @@
 ---
-description: 审查并规划清理过期的 llmdoc v3 知识
+description: 审查并规划移除不再需要的工程资源
 requires:
   skills:
-    - llmdoc
+    - project-workflow
   agents:
     - reflector
 ---
 
-审查 `{{arguments}}` 中可能过期、重复或与源码冲突的知识。输出保留、合并、删除候选及理由，等待人工确认；当前模板不执行删除或 rollback。
+使用 ACPlugin capability template 审查 `{{arguments}}` 中过期、重复或不再被引用的文件。输出保留、合并和删除建议及理由，不直接执行破坏性操作。

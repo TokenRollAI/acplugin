@@ -37,7 +37,7 @@ packages/
 │   └── mcp/
 ├── test/                   # 私有跨包 Vitest 集成测试
 ├── docs/                   # 私有 VitePress/TypeDoc 文档工程
-└── playground/             # 私有 llmdoc v3 主题真实消费模板
+└── playground/             # 私有、领域中立的全能力消费模板
 ```
 
 `@tokenroll/acplugin` 构建时必须 bundle Core，但不得 bundle 或重新导出官方 Platform/Extension。六个官方 Platform 与 Hooks/MCP Extension 都只能从主包公开 SDK 导入契约，并通过 `workspace:^` peer 开发边连接主包；pack 后必须变为正常 `^x.y.z`。任何公开 tarball 的运行时依赖都不得出现 `@acplugin/*`。

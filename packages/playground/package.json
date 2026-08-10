@@ -14,8 +14,13 @@
   "devDependencies": {
     "@tokenroll/acplugin": "workspace:^",
     "@tokenroll/acplugin-extension-hooks": "workspace:^",
+    "@tokenroll/acplugin-extension-mcp": "workspace:^",
+    "@tokenroll/acplugin-platform-antigravity": "workspace:^",
     "@tokenroll/acplugin-platform-claude-code": "workspace:^",
     "@tokenroll/acplugin-platform-codex": "workspace:^",
+    "@tokenroll/acplugin-platform-cursor": "workspace:^",
+    "@tokenroll/acplugin-platform-opencode": "workspace:^",
+    "@tokenroll/acplugin-platform-pi": "workspace:^",
     "@types/node": "catalog:",
     "@typescript/native": "catalog:"
   }
