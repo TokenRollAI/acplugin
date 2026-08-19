@@ -1,30 +1,52 @@
 {
   "name": "@tokenroll/acplugin-extension-mcp",
-  "version": "0.0.1-beta",
-  "description": "Portable MCP authoring and platform adapters for acplugin.",
+  "version": "0.0.2-beta",
+  "description": "Portable MCP authoring and platform contributors for acplugin.",
   "type": "module",
   "license": "MIT",
   "homepage": "https://github.com/TokenRollAI/acplugin#mcp-extension",
-  "repository": { "type": "git", "url": "git+https://github.com/TokenRollAI/acplugin.git", "directory": "packages/extensions/mcp" },
-  "bugs": { "url": "https://github.com/TokenRollAI/acplugin/issues" },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/TokenRollAI/acplugin.git",
+    "directory": "packages/extensions/mcp"
+  },
+  "bugs": {
+    "url": "https://github.com/TokenRollAI/acplugin/issues"
+  },
   "sideEffects": false,
-  "engines": { "node": "^20.19.0 || ^22.13.0 || >=23.5.0" },
-  "exports": { ".": { "types": "./dist/index.d.mts", "import": "./dist/index.mjs" } },
-  "files": ["dist", "README.md", "LICENSE"],
-  "publishConfig": { "access": "public" },
+  "engines": {
+    "node": "^20.19.0 || ^22.13.0 || >=23.5.0"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.mts",
+      "import": "./dist/index.mjs"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "build": "tsdown",
     "prepublishOnly": "pnpm run build",
+    "pretest": "pnpm --filter @acplugin/core run build && pnpm --filter @tokenroll/acplugin run build && pnpm --filter @tokenroll/acplugin-platform-claude-code run build && pnpm --filter @tokenroll/acplugin-platform-codex run build && pnpm run build",
     "test": "vitest run --passWithNoTests",
     "typecheck": "tsc -p tsconfig.json"
   },
-  "peerDependencies": { "@tokenroll/acplugin": "workspace:^" },
-  "dependencies": { "rolldown": "catalog:" },
+  "peerDependencies": {
+    "@tokenroll/acplugin": "workspace:^"
+  },
   "devDependencies": {
+    "@modelcontextprotocol/sdk": "^1.30.0",
     "@tokenroll/acplugin": "workspace:^",
     "@types/node": "catalog:",
-    "tsdown": "catalog:",
     "@typescript/native": "catalog:",
+    "tsdown": "catalog:",
     "vitest": "catalog:"
   }
 }

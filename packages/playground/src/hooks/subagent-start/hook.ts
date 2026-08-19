@@ -1,7 +1,7 @@
-import { defineHook } from '@tokenroll/acplugin-extension-hooks';
+import type { Hook } from '@tokenroll/acplugin-extension-hooks';
 
 /** 展示子代理启动时的上下文补充。 */
-export default defineHook({
+export default {
   event: 'SubagentStart',
   /** 返回子代理启动时的模板上下文。 */
   run() {
@@ -10,4 +10,4 @@ export default defineHook({
       systemMessage: 'ACPlugin playground subagent template activated.',
     };
   },
-});
+} satisfies Hook<'SubagentStart'>;

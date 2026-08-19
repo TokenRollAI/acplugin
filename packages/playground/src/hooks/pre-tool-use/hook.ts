@@ -1,7 +1,7 @@
-import { defineHook } from '@tokenroll/acplugin-extension-hooks';
+import type { Hook } from '@tokenroll/acplugin-extension-hooks';
 
 /** 覆盖 matcher、timeout、statusMessage 和 Codex 上下文上限等 Hook 配置字段。 */
-export default defineHook({
+export default {
   event: 'PreToolUse',
   matcher: '^(Read|Glob|Grep|read|glob|grep)$',
   timeout: 15,
@@ -21,4 +21,4 @@ export default defineHook({
       additionalContext: 'Treat generated Platform output as build artifacts, not canonical author input.',
     };
   },
-});
+} satisfies Hook<'PreToolUse'>;

@@ -1,42 +1,42 @@
-# ADR-0002: Extension contribution order is configuration order
+# ADR-0002: Extension contributions are unordered and centrally merged
 
 - Status: Accepted
 - Date: 2026-08-08
-- Applies to: lifecycle API v1
+- Updated: 2026-08-14
+- Applies to: Kernel v2, lifecycle API v1
 
 ## Context
 
-Platform Adapters run serially against one mutable Platform Draft. `getDocument()` returns the current document, including patches from earlier Extensions, while `patchDocument()` and `emitArtifact()` add owner-scoped contributions.
+An Extension builds one Platform-independent immutable state and may publish a `PlatformContributor` for each supported Platform. If Contributors mutated a shared package or observed earlier contributions, configuration order would become an implicit dependency and conflict resolution would degrade into first-writer-wins behavior.
 
-Add-only ownership prevents replacement and silent deep merge, but it does not make Adapter execution commutative. An Adapter can inspect an earlier contribution before choosing a different value. A synchronous owner-conflict exception can also be caught by Adapter code unless Core remembers that the contribution was rejected.
+Kernel v2 instead needs independent integrations, parallel-safe collection, and deterministic conflicts.
 
 ## Decision
 
-1. The order of `extensions[]` in resolved configuration is the semantic Extension contribution order.
-2. Adapters execute serially in that order and may observe contributions accepted from earlier Adapters through `getDocument()`.
-3. Lifecycle API v1 does not add `order`, `enforce`, an Extension dependency graph, or parallel Adapter execution. Reordering the configuration is the explicit ordering mechanism.
-4. Add-only and owner isolation remain mandatory. They constrain what each Adapter may change; they do not promise order-independent output.
-5. A rejected `patchDocument()` or Artifact contribution makes the current Platform invalid even if Adapter code catches the immediate exception. Core owns the final validity decision.
-6. Reports and tests describe configuration-order behavior directly. Documentation must not justify the absence of `order/enforce` by claiming that contributions commute.
+1. A Platform creates one frozen base Package. Every matching Framework and Extension Contributor reads that same base snapshot.
+2. A Contributor cannot observe another Contribution, another Extension's state, or a mutable Package.
+3. Core collects Extension Contributions concurrently, binds each one to its owner, sorts the collection by stable owner identity, and performs one centralized add-only merge.
+4. Contributions may fill declared empty Document extension points, add owner-authorized Assets, and report compatibility. They cannot replace or delete base content, append to undeclared fields, claim Components, or override another owner.
+5. Duplicate Document fields, Asset paths, compatibility tuples, or normalization-equivalent paths fail deterministically. Configuration order is not a conflict-resolution mechanism.
+6. Lifecycle API v1 does not add `order`, `enforce`, an Extension dependency graph, cross-Extension state access, or claim/suppress protocols.
 
 ## Consequences
 
-- The current implementation model and official Adapters remain compatible.
-- Third-party authors have one deterministic and inspectable ordering mechanism.
-- Reordering Extensions can intentionally change output and must be treated as a configuration change.
-- Same-extension-point conflicts fail rather than degrade into first-writer-wins.
-- A future order-independent model would require every Adapter to read one pre-adapter snapshot, buffer declarative contributions, and let Core merge them centrally with order-independent diagnostics. That would be a new lifecycle API decision.
+- Reordering independent Extensions does not change successful Package bytes.
+- Contributor collection can run concurrently without changing semantics.
+- Conflicts are explicit architecture errors rather than order-sensitive output.
+- Features that truly require cooperation must be represented by a shared Framework contract or a Platform extension point, not hidden Extension sequencing.
 
 ## Rejected alternatives
 
-- Claiming add-only merge is naturally commutative: contradicted by `getDocument()` and first-writer ownership.
-- Adding `enforce:'pre'|'post'`: introduces a second ordering vocabulary without solving data dependencies.
-- Sorting Extensions by name: deterministic but silently ignores the user's configuration order and changes existing behavior.
-- Pre-adapter snapshots in 1.0: requires a buffered contribution protocol and changes what current Adapters can observe.
+- Serial mutation in configuration order: creates an undocumented dependency graph and observable partial state.
+- `enforce: 'pre' | 'post'`: adds ordering vocabulary without defining safe data dependencies.
+- Last-writer-wins merge: violates owner isolation and hides incompatible integrations.
+- Direct Platform replacement or Component suppression: expands the authority model beyond additive integration.
 
 ## Evidence
 
-- `packages/core/src/contracts.ts:266-283`
-- `packages/core/src/documents.ts:198-236,305-325`
-- `packages/core/src/lifecycle.ts:543-580`
-- Specification §9.3 and §9.4
+- `packages/core/src/resources/extension-provider.ts`
+- `packages/core/src/package/package-registry.ts`
+- `packages/core/src/kernel/build-session.ts`
+- `packages/core/src/kernel-types.ts` (`PlatformContributor`, `ContributionContext`, `PackageContribution`)

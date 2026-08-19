@@ -2,26 +2,22 @@ import {
   definePlatform,
   type AcpluginPlatform,
   type JsonObject,
-} from '@tokenroll/acplugin';
+} from '@tokenroll/acplugin/sdk';
 import {
-  generateComponentArtifacts,
-  validateCodexComponentFields,
+  createCodexComponents,
+  validateCodexComponent,
   validateGeneratedSkillIds,
 } from './components.js';
 import {
-  createManifestDocument,
-  marketplaceArtifacts,
-  MARKETPLACE_MANIFEST_PATH,
-  serializeDocuments,
+  createMarketplaceAssets,
+  createPluginDocument,
   validatePlatformOptions,
 } from './manifest.js';
-import type { CodexMarketplaceOptions, CodexPlatformOptions } from './types.js';
-import { validateCodexBundle } from './validator.js';
+import type { CodexInterfaceOptions, CodexMarketplaceOptions, CodexPlatformOptions } from './types.js';
+import { validateCodexPackage } from './validator.js';
 
 export type {
   CodexCategory,
-  CodexCommandGeneratedSkillIdStrategy,
-  CodexGeneratedSkillIdsOptions,
   CodexInterfaceOptions,
   CodexMarketplaceInstallation,
   CodexMarketplaceOptions,
@@ -35,66 +31,59 @@ export const PLATFORM_ID = 'codex' as const;
 /** Codex Platform 实现的 Core API 版本。 */
 export const PLATFORM_API_VERSION = '1' as const;
 
-/**
- * 创建独立且可由 Core 品牌校验的 Codex Platform。
- *
- * @param options 严格度覆盖、安装界面与 Marketplace 选项。
- * @returns Codex Plugin 交付实现。
- */
+/** 创建只通过 Package API 交付 Codex Plugin 的 Platform。 */
 export function codex(options: CodexPlatformOptions = {}): AcpluginPlatform {
   validatePlatformOptions(options);
-  /** generateBundle Context 不暴露 options，因此只按值捕获已校验的纯字符串策略。 */
-  const commandGeneratedSkillId = options.generatedSkillIds?.command;
-  /** strict 属于 Core 策略，其余字段作为 Platform 生命周期专属配置保存。 */
+  /** strict 由 Core 解释，其余选项复制、深冻后提供给每个 Session。 */
   const { strict, ...platformOptions } = options;
   return definePlatform({
     id: PLATFORM_ID,
     apiVersion: PLATFORM_API_VERSION,
     deliveryType: 'plugin',
+    capabilities: { nodeRuntime: { target: 'node20', format: 'esm', root: 'plugin' } },
     ...(strict === undefined ? {} : { strict }),
     options: platformOptions as unknown as JsonObject,
-    validateComponentFields: validateCodexComponentFields,
-    /** prepare 固定 Manifest、最终 Skill 命名空间和 Extension 空位。 */
-    prepare: (context) => {
-      validateGeneratedSkillIds(context, commandGeneratedSkillId);
-      return { documents: [createManifestDocument(context)], artifacts: [] };
-    },
-    /** generateBundle 在 Adapter 合并完成后生成 Skills 并序列化 Manifest。 */
-    generateBundle: (context) => {
-      /** 原生 Skill 与 Command/Agent fallback 产生的 Component Artifact。 */
-      const componentArtifacts = generateComponentArtifacts(context, commandGeneratedSkillId);
+    /** 每轮构建只读取 Core 已复制的 sessionOptions。 */
+    createSession({ options: sessionOptions }) {
       return {
-        id: 'plugin',
-        role: 'primary',
-        type: 'plugin',
-        artifacts: [
-          ...context.artifacts,
-          ...componentArtifacts,
-          ...serializeDocuments(context.documents),
-        ],
+        validateComponent: validateCodexComponent,
+        /** base Package 在生成任何 Asset 前检查最终共享 Skill namespace。 */
+        async createPackage({ project, assets, diagnostics }) {
+          /** idsValid 防止 collision 诊断后继续签发有歧义的 bytes。 */
+          const idsValid = validateGeneratedSkillIds(project, diagnostics);
+          /** manifest 可独立报告空 Skill 项目错误。 */
+          const manifest = createPluginDocument({ project, options: sessionOptions, diagnostics });
+          /** components 只在最终命名空间无冲突时构建。 */
+          const components = idsValid
+            ? await createCodexComponents(project, assets)
+            : { assets: Object.freeze([]), compatibility: Object.freeze([]) };
+          return {
+            documents: [manifest.document],
+            assets: components.assets,
+            compatibility: components.compatibility,
+            metadata: manifest.metadata,
+          };
+        },
+        /** base/contribution Assets 和 Documents 由 Core 自动进入固定主 Plugin。 */
+        finalizePackage: () => ({ id: 'plugin', type: 'plugin' }),
+        validatePackage: validateCodexPackage,
+        /** 可选 Marketplace 只继承已验证 primary 的真实 AssetRef。 */
+        async createDistributions(context) {
+          /** marketplace 和 interface 都来自同一个 session options snapshot。 */
+          const marketplace = sessionOptions.marketplace as CodexMarketplaceOptions | undefined;
+          if (marketplace === undefined)
+            return Object.freeze([]);
+          return Object.freeze([{
+            id: 'marketplace',
+            type: 'marketplace' as const,
+            assets: await createMarketplaceAssets(
+              context,
+              marketplace,
+              sessionOptions.interface as CodexInterfaceOptions | undefined,
+            ),
+          }]);
+        },
       };
-    },
-    validateBundle: validateCodexBundle,
-    /** Marketplace Distribution 始终复用已经验证的完整主 Plugin。 */
-    generateDistributions: async (context, primaryUnits) => {
-      /** 工厂未声明 marketplace 时不生成空壳 Distribution。 */
-      const marketplace = context.options.marketplace as CodexMarketplaceOptions | undefined;
-      if (marketplace === undefined)
-        return [];
-      if (primaryUnits.length === 0)
-        throw new Error('Codex Marketplace requires at least one validated primary Plugin.');
-      /** 任一主 Plugin 都不能预先占用 Distribution 根清单的保留语义。 */
-      if (primaryUnits.some(primary => primary.artifacts.some(artifact => artifact.path === MARKETPLACE_MANIFEST_PATH))) {
-        context.reportDiagnostic({
-          code: 'CODEX_MARKETPLACE_PATH_CONFLICT',
-          severity: 'error',
-          message: 'The primary Plugin already contains the reserved Marketplace manifest path.',
-        });
-        return [];
-      }
-      /** 单项保持根布局，多项由 Platform 确定性放入各自 Plugin 子目录。 */
-      const artifacts = await marketplaceArtifacts(context, marketplace, primaryUnits);
-      return [{ id: 'marketplace', role: 'distribution', type: 'marketplace', artifacts }];
     },
   });
 }

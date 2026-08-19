@@ -1,24 +1,18 @@
-import path from 'node:path';
 import { MAX_HOOK_IO_BYTES } from './constants.js';
-import type { DiscoveredHook } from './discovery.js';
 
 /**
  * 生成单个 Hook 的平台中立隔离运行器源码。
  *
- * Handler 只拥有有限 I/O、规范结果校验和用户实现调用；相邻 `wire.mjs`
- * 由当前 Platform Adapter 贡献，负责平台原生输入与输出协议。生成字符串属于
- * 最终 Plugin 运行时代码，不机械注入开发期中文注释。
+ * Handler 拥有有限 I/O、规范结果校验、用户实现调用和内联的官方平台 wire。
+ * wire 作为虚拟模块一同 Bundle，使最终可执行文件不依赖任何相邻 JavaScript。
+ * 生成字符串属于最终 Plugin 运行时代码，不机械注入开发期中文注释。
  *
- * @param hook 当前 Hook 定义及其源码路径。
- * @param runnerDirectory 临时运行器目录，用于计算可打包的相对导入路径。
  * @returns 可交给 Rolldown 的 Node 20 ESM 入口源码。
  */
-export function createRunnerSource(hook: DiscoveredHook, runnerDirectory: string): string {
-  /** 从生成运行器到用户 hook.ts 的 ESM 相对导入路径。 */
-  let importPath = path.relative(runnerDirectory, hook.sourcePath).split(path.sep).join('/');
-  if (!importPath.startsWith('.'))
-    importPath = `./${importPath}`;
+export function createRunnerSource(): string {
   return `
+import { contextFor, inputFor, outputFor } from 'acplugin:hook-wire';
+
 const MAX_BYTES = ${MAX_HOOK_IO_BYTES};
 const MAX_JSON_DEPTH = 128;
 const PLATFORM_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
@@ -42,7 +36,7 @@ const ERROR_CODES = new Set([
   'INPUT_KEY_COLLISION', 'INPUT_OBJECT_REQUIRED', 'INPUT_TOO_DEEP', 'INPUT_TOO_LARGE',
   'OUTPUT_TOO_LARGE', 'PLATFORM_EVENT_MISMATCH', 'PLATFORM_INVALID', 'RESULT_DECISION_INVALID',
   'RESULT_EVENT_INVALID', 'RESULT_FIELD_INVALID', 'RESULT_INVALID', 'RESULT_SERIALIZATION_FAILED',
-  'RESULT_UPDATED_INPUT_INVALID', 'WIRE_CONTEXT_INVALID', 'WIRE_IMPORT_FAILED', 'WIRE_PLATFORM_MISMATCH',
+  'RESULT_UPDATED_INPUT_INVALID', 'WIRE_CONTEXT_INVALID',
 ]);
 
 function isJsonValue(value, depth = 0, ancestors = new Set()) {
@@ -106,19 +100,10 @@ async function readInput() {
 
 async function loadDefinition() {
   try {
-    const namespace = await import(${JSON.stringify(importPath)});
+    const namespace = await import('./hook.ts');
     return namespace.default;
   } catch {
     throw new Error('HANDLER_IMPORT_FAILED');
-  }
-}
-
-async function loadWire() {
-  try {
-    const wireUrl = new URL('./wire.mjs', import.meta.url);
-    return await import(wireUrl.href);
-  } catch {
-    throw new Error('WIRE_IMPORT_FAILED');
   }
 }
 
@@ -190,20 +175,14 @@ process.on('beforeExit', () => {
 async function main() {
   const platform = process.argv[2];
   if (typeof platform !== 'string' || !PLATFORM_PATTERN.test(platform)) throw new Error('PLATFORM_INVALID');
-  const [definition, wire] = await Promise.all([loadDefinition(), loadWire()]);
-  if (!wire
-    || wire.platform !== platform
-    || typeof wire.contextFor !== 'function'
-    || typeof wire.inputFor !== 'function'
-    || typeof wire.outputFor !== 'function')
-    throw new Error('WIRE_PLATFORM_MISMATCH');
+  const definition = await loadDefinition();
   const declaredEvent = definition && definition.event;
   const expectedEvent = typeof declaredEvent === 'string' ? declaredEvent : declaredEvent && declaredEvent.name;
   const platformEvent = typeof declaredEvent === 'object' && declaredEvent !== null;
   if (platformEvent && declaredEvent.platform !== platform) throw new Error('PLATFORM_EVENT_MISMATCH');
   const raw = await readInput();
-  const input = wire.inputFor(raw, expectedEvent, declaredEvent);
-  const runtimeContext = wire.contextFor(process.env);
+  const input = inputFor(platform, raw, expectedEvent, declaredEvent);
+  const runtimeContext = contextFor(platform, process.env);
   if (!runtimeContext
     || typeof runtimeContext !== 'object'
     || typeof runtimeContext.pluginRoot !== 'string'
@@ -220,7 +199,7 @@ async function main() {
     throw new Error('HANDLER_FAILED');
   }
   validateResult(expectedEvent, result, platformEvent);
-  const output = wire.outputFor(expectedEvent, result);
+  const output = outputFor(platform, expectedEvent, result);
   if (output) {
     try {
       serializedOutput = JSON.stringify(output);

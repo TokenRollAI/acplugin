@@ -1,426 +1,251 @@
-import { promises as fs } from 'node:fs';
-import path from 'node:path';
 import type {
   ExtensionDiscoverContext,
   ExtensionValidateContext,
-} from '@tokenroll/acplugin';
-import { ENV_NAME_PATTERN, MCP_ID_PATTERN } from './constants.js';
-import {
-  isMcpServerDefinition,
-  type McpServerDefinition,
-  type ValueSource,
-} from './types.js';
+  JsonValue,
+  SourceDirectoryRef,
+  SourceFileRef,
+} from '@tokenroll/acplugin/sdk';
+import { MCP_ID_PATTERN, ENV_NAME_PATTERN } from './constants.js';
+import { compareCodeUnits } from './sorting.js';
+import type { McpServer } from './types.js';
 
-/**
- * 按 UTF-16 code unit 比较 MCP 目录项，不依赖宿主 locale/ICU。
- *
- * @param left 左侧名称。
- * @param right 右侧名称。
- * @returns 与 Array.sort 约定一致的 -1、0 或 1。
- */
-function compareCodeUnits(left: string, right: string): number {
-  if (left === right)
-    return 0;
-  return left < right ? -1 : 1;
+/** MCP descriptor 顶层字段由 transport 判别后验证。 */
+const FIELDS = new Set(['transport', 'url', 'auth', 'headers', 'entry', 'env']);
+/** HTTP 与 stdio 顶层字段集合。 */
+const HTTP_FIELDS = new Set(['transport', 'url', 'auth', 'headers']);
+/** stdio 只接受本地入口与环境引用。 */
+const STDIO_FIELDS = new Set(['transport', 'entry', 'env']);
+/** 三种认证分支的精确字段集合。 */
+const NONE_AUTH_FIELDS = new Set(['type']);
+/** bearer 分支只允许一个环境变量引用。 */
+const BEARER_AUTH_FIELDS = new Set(['type', 'env']);
+/** oauth 分支只允许静态 scope 声明。 */
+const OAUTH_AUTH_FIELDS = new Set(['type', 'scopes']);
+
+/** MCP stdio 入口沿用 Core 的 project-relative POSIX 路径语法。 */
+export function isSafeMcpEntryPath(value: unknown): value is string {
+  if (typeof value !== 'string' || value.length === 0 || value.includes('\\') || value.includes('\0') || value.startsWith('/'))
+    return false;
+  /** POSIX segment 必须全部显式且不能包含 dot traversal。 */
+  const segments = value.split('/');
+  return segments.every(segment => segment.length > 0 && segment !== '.' && segment !== '..');
 }
 
-/** discover 阶段保存的 MCP 描述、目录与已执行定义。 */
+/** MCP Extension 发现的单个 owner-bound Server。 */
 export interface DiscoveredMcpServer {
-  /** 从一级目录名称取得的 MCP Server ID。 */
   readonly id: string;
-  /** 当前 MCP Server 的绝对源码目录。 */
-  readonly directory: string;
-  /** `mcp.ts` 描述文件的绝对路径。 */
-  readonly descriptorPath: string;
-  /** TypeScript 描述文件执行后得到的 Server 定义。 */
-  readonly definition: McpServerDefinition;
+  readonly directory: SourceDirectoryRef;
+  readonly source: SourceFileRef;
+  /** stdio Server 的实际业务入口；HTTP Server 不包含此字段。 */
+  readonly entrySource?: SourceFileRef;
+  readonly definition: McpServer;
 }
 
-/** 非空 discover 结果，作为 Core 判断 Extension 拥有实际资源的信号。 */
+/** MCP Extension 的稳定发现 State。 */
 export interface DiscoveredMcpServers {
-  /** 按 Server ID 稳定排序的发现结果。 */
+  readonly root: SourceDirectoryRef;
   readonly servers: readonly DiscoveredMcpServer[];
 }
 
-/** HTTP MCP 定义允许出现的公开字段。 */
-const HTTP_FIELDS = new Set(['transport', 'url', 'auth', 'headers']);
-
-/** stdio MCP 定义允许出现的公开字段。 */
-const STDIO_FIELDS = new Set(['transport', 'entry', 'env']);
-
-/** MCP auth 定义允许出现的字段。 */
-const AUTH_FIELDS = new Set(['type', 'env', 'scopes']);
-
-/**
- * 兼容 TypeScript Loader 返回模块命名空间或已解包默认导出两种形态。
- *
- * @param value TypeScript 描述文件的加载结果。
- * @returns 存在 default 时返回 default，否则返回原值。
- */
-function unwrapDefault(value: unknown): unknown {
-  if (value !== null && typeof value === 'object' && 'default' in value)
-    return (value as { readonly default: unknown }).default;
-  return value;
-}
-
-/**
- * 把绝对描述文件路径转换为不泄露工程根的诊断位置。
- *
- * @param context 当前 discover 上下文。
- * @param sourcePath 需要报告的绝对来源路径。
- * @returns 以 srcDir 为基准且统一使用 POSIX 分隔符的位置。
- */
-function sourceLocation(context: ExtensionDiscoverContext, sourcePath: string): string {
-  /** 相对于规范源码根的安全报告路径。 */
-  const relative = path.relative(context.srcDir, sourcePath).split(path.sep).join('/');
-  return relative.startsWith('../') ? path.basename(sourcePath) : relative;
-}
-
-/**
- * 把 MCP 描述文件转换为相对于工程根的稳定诊断位置。
- *
- * @param context 当前 validate 上下文。
- * @param server 需要报告位置的 Server。
- * @returns 不包含宿主绝对目录的 POSIX 工程路径。
- */
-function serverLocation(context: ExtensionValidateContext, server: DiscoveredMcpServer): string {
-  return path.relative(context.project.root, server.descriptorPath).split(path.sep).join('/');
-}
-
-/**
- * 判断未知值是否为不带自定义原型的普通对象。
- *
- * @param value 待验证的作者配置值。
- * @returns 值可安全按自有字段读取时返回 true。
- */
+/** 仅接受普通 JSON 对象，避免 descriptor 把行为带入 State。 */
 function isPlainObject(value: unknown): value is Record<string, unknown> {
-  if (value === null || typeof value !== 'object' || Array.isArray(value))
-    return false;
-  /** 候选对象的原型，用于拒绝类实例和其他可执行访问器容器。 */
-  const prototype = Object.getPrototypeOf(value);
-  return prototype === Object.prototype || prototype === null;
+  return value !== null && typeof value === 'object' && !Array.isArray(value)
+    && (Object.getPrototypeOf(value) === Object.prototype || Object.getPrototypeOf(value) === null);
 }
 
-/**
- * 扫描并加载 `src/mcp/<id>/mcp.ts` 作者格式。
- *
- * @param context Core 提供的隔离工作目录、源码根和 TypeScript Loader。
- * @param include 可选的显式 Server ID 白名单。
- * @returns 没有选中资源时返回 undefined，否则返回稳定发现状态。
- */
-export async function discoverMcpServers(
-  context: ExtensionDiscoverContext,
-  include?: ReadonlySet<string>,
-): Promise<DiscoveredMcpServers | undefined> {
-  /** MCP Extension 独占的固定作者源码根。 */
-  const root = path.join(context.srcDir, 'mcp');
-  /** MCP 根目录中的一级目录项。 */
-  let entries: import('node:fs').Dirent[];
+/** 把 descriptor 复制成无函数、无 accessor 的 JSON 数据。 */
+function jsonSnapshot(value: unknown, path: string, ancestors = new Set<object>()): JsonValue {
+  if (value === null || typeof value === 'string' || typeof value === 'boolean') return value;
+  if (typeof value === 'number') {
+    if (!Number.isFinite(value))
+      throw new TypeError(`${path} must be finite.`);
+    return value;
+  }
+  if (typeof value !== 'object' || ancestors.has(value)) throw new TypeError(`${path} must be JSON data.`);
+  ancestors.add(value);
   try {
-    entries = await fs.readdir(root, { withFileTypes: true });
-  } catch /** error 保存当前目录读取失败，供 ENOENT 分支判断。 */ (error) {
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT')
-      return undefined;
-    throw error;
-  }
-
-  /** 成功加载并通过品牌检查的 MCP Server 定义。 */
-  const servers: DiscoveredMcpServer[] = [];
-  /** include 中已经在源码目录找到的 Server ID。 */
-  const includedIds = new Set<string>();
-  for (const entry of entries.sort((left, right) => compareCodeUnits(left.name, right.name))) {
-    /** 当前 MCP Server 候选目录的绝对路径。 */
-    const directory = path.join(root, entry.name);
-    if (!entry.isDirectory() || !MCP_ID_PATTERN.test(entry.name)) {
-      context.reportDiagnostic({
-        code: 'MCP_ENTRY_INVALID',
-        severity: 'error',
-        message: 'MCP entries must be one-level lowercase kebab-case directories.',
-        location: { path: sourceLocation(context, directory) },
-      });
-      continue;
-    }
-    if (include !== undefined && !include.has(entry.name))
-      continue;
-    includedIds.add(entry.name);
-    /** 当前 MCP Server 必需的 TypeScript 描述文件。 */
-    const descriptorPath = path.join(directory, 'mcp.ts');
-    try {
-      /** Loader 执行并解包后的 MCP 定义候选值。 */
-      const definition = unwrapDefault(await context.loadTypeScriptModule(descriptorPath));
-      if (!isMcpServerDefinition(definition))
-        throw new TypeError('MCP descriptor must use defineMcpServer().');
-      servers.push(Object.freeze({ id: entry.name, directory, descriptorPath, definition }));
-    } catch {
-      context.reportDiagnostic({
-        code: 'MCP_DESCRIPTOR_LOAD_FAILED',
-        severity: 'error',
-        message: `MCP Server "${entry.name}" descriptor could not be loaded or was not created by defineMcpServer().`,
-        location: { path: sourceLocation(context, descriptorPath) },
-      });
-    }
-  }
-
-  if (include !== undefined) {
-    /** id 表示当前显式 include 项，用于报告不存在的作者资源。 */
-    for (const id of include) {
-      if (!includedIds.has(id)) {
-        context.reportDiagnostic({
-          code: 'MCP_INCLUDE_MISSING',
-          severity: 'error',
-          message: `Included MCP Server "${id}" does not exist under src/mcp.`,
-          location: { path: `mcp/${id}` },
-        });
+    /** 所有自有字段先读取 descriptor，绝不触发 getter。 */
+    const descriptors = Object.getOwnPropertyDescriptors(value);
+    if (Array.isArray(value)) {
+      if (Object.getOwnPropertySymbols(value).length > 0)
+        throw new TypeError(`${path} must not contain symbol fields.`);
+      /** 稀疏数组不能形成稳定的 JSON snapshot。 */
+      for (let i = 0; i < value.length; i += 1) if (!Object.hasOwn(value, i)) throw new TypeError(`${path} must not be sparse.`);
+      /** 数组只允许 index 与 length，不允许隐藏扩展字段。 */
+      if (Object.keys(descriptors).some(key => key !== 'length'
+        && (!/^(?:0|[1-9][0-9]*)$/u.test(key) || Number(key) >= value.length))) throw new TypeError(`${path} has unknown fields.`);
+      /** 逐索引读取 data descriptor，绝不通过 Array.prototype.map 触发 getter。 */
+      const result: JsonValue[] = [];
+      for (let index = 0; index < value.length; index += 1) {
+        /** 稠密索引必须仍是显式 data property。 */
+        const descriptor = descriptors[String(index)]!;
+        if (!('value' in descriptor))
+          throw new TypeError(`${path}[${index}] must be data.`);
+        result.push(jsonSnapshot(descriptor.value, `${path}[${index}]`, ancestors));
       }
+      return Object.freeze(result);
     }
-  }
-
-  /** 目录完全为空或 include 明确没有选择资源时不激活 Extension。 */
-  const hasSelectedResource = servers.length > 0 || includedIds.size > 0;
-  return hasSelectedResource ? Object.freeze({ servers: Object.freeze(servers) }) : undefined;
+    /** descriptor 必须是无 Symbol 的普通对象。 */
+    if (!isPlainObject(value) || Object.getOwnPropertySymbols(value).length > 0) throw new TypeError(`${path} must be plain.`);
+    /** snapshot 输出对象与作者对象完全隔离。 */
+    const result: Record<string, JsonValue> = Object.create(null) as Record<string, JsonValue>;
+    for (const key of Object.keys(descriptors).sort()) {
+      /** 当前字段的 data descriptor。 */
+      const descriptor = descriptors[key]!;
+      if (!('value' in descriptor)) throw new TypeError(`${path}.${key} must be data.`);
+      /** 递归复制字段值并保持稳定路径。 */
+      result[key] = jsonSnapshot(descriptor.value, `${path}.${key}`, ancestors);
+    }
+    return Object.freeze(result);
+  } finally { ancestors.delete(value); }
 }
 
-/**
- * 校验 Header 或环境映射中的每个值只使用字面量和环境变量之一。
- *
- * @param context Core 提供的诊断出口。
- * @param server 当前 MCP Server。
- * @param values 待验证的名称到 ValueSource 映射。
- * @param fieldPath 映射所在的稳定字段路径。
- */
-function validateValueSources(
+/** Descriptor 快照只允许 MCP 规范的普通字段。 */
+function normalizeDefinition(value: unknown): McpServer {
+  /** 先建立无行为 JSON snapshot，再验证 MCP Schema。 */
+  const snapshot = jsonSnapshot(value, 'MCP descriptor');
+  if (!isPlainObject(snapshot) || typeof snapshot.transport !== 'string') throw new TypeError('MCP descriptor is invalid.');
+  if (Object.keys(snapshot).some(key => !FIELDS.has(key))) throw new TypeError('MCP descriptor contains unknown fields.');
+  return snapshot as unknown as McpServer;
+}
+
+/** 发现并加载 src/mcp/<id>/mcp.ts。 */
+export async function discoverMcpServers(context: ExtensionDiscoverContext, include?: ReadonlySet<string>): Promise<DiscoveredMcpServers | undefined> {
+  /** Extension root 缺失表示本轮没有 MCP 作者资源。 */
+  const root = context.roots.mcp;
+  if (root === undefined) return undefined;
+  /** Core Source Service 枚举并审计作者目录。 */
+  const entries = await context.sources.list(root);
+  /** 发现成功的 MCP Server 累计列表。 */
+  const servers: DiscoveredMcpServer[] = [];
+  /** include 校验使用的实际目录 ID 集合。 */
+  const found = new Set<string>();
+  for (const entry of entries) {
+    if (entry.type !== 'directory' || !MCP_ID_PATTERN.test(entry.name)) {
+      context.diagnostics.report({ code: 'MCP_ENTRY_INVALID', severity: 'error', message: 'MCP entries must be lowercase kebab-case directories.', location: { path: entry.path } });
+      continue;
+    }
+    if (include !== undefined && !include.has(entry.name)) continue;
+    found.add(entry.name);
+    try {
+      /** mcp.ts 是每个 Server 的唯一 descriptor 入口。 */
+      const source = await context.sources.file(entry.directory, 'mcp.ts');
+      /** Module Host 负责安全加载 ESM default export。 */
+      const raw = await context.modules.loadDefault({ id: `mcp-${entry.name}`, entry: source });
+      /** descriptor 进入纯数据边界。 */
+      const definition = normalizeDefinition(raw);
+      /** stdio 业务入口的受权 SourceRef。 */
+      let entrySource: SourceFileRef | undefined;
+      if (definition.transport === 'stdio' && isSafeMcpEntryPath(definition.entry ?? 'server.ts')) {
+        try {
+          entrySource = await context.sources.file(entry.directory, definition.entry ?? 'server.ts');
+        } catch {
+          /** validate 阶段报告稳定缺失入口。 */
+        }
+      }
+      servers.push(Object.freeze({ id: entry.name, directory: entry.directory, source, definition, ...(entrySource === undefined ? {} : { entrySource }) }));
+    } catch (error) {
+      /** 只读取底层错误的稳定类别，不把原始路径带入诊断。 */
+      const message = error instanceof Error ? error.message : '';
+      context.diagnostics.report({
+        code: /unknown fields/iu.test(message) ? 'MCP_FIELD_UNKNOWN' : 'MCP_DESCRIPTOR_LOAD_FAILED',
+        severity: 'error',
+        message: /unknown fields/iu.test(message)
+          ? `MCP Server "${entry.name}" descriptor contains unknown fields.`
+          : `MCP Server "${entry.name}" descriptor could not be loaded.`,
+        location: { path: `${entry.path}/mcp.ts` },
+      });
+    }
+  }
+  if (include !== undefined) for (const id of include) if (!found.has(id)) context.diagnostics.report({ code: 'MCP_INCLUDE_MISSING', severity: 'error', message: `Included MCP Server "${id}" does not exist under src/mcp.`, location: { path: `${root.path}/${id}` } });
+  return servers.length === 0 ? undefined : Object.freeze({ root, servers: Object.freeze(servers.sort((left, right) => compareCodeUnits(left.id, right.id))) });
+}
+
+/** 校验 ValueSource 映射且绝不读取 env 引用值。 */
+function validateValues(context: ExtensionValidateContext, server: DiscoveredMcpServer, values: unknown, field: string): void {
+  if (values === undefined) return;
+  if (!isPlainObject(values)) {
+    context.diagnostics.report({ code: 'MCP_VALUE_MAP_INVALID', severity: 'error', message: 'MCP value mappings must be plain objects.', location: { path: server.source.path }, fieldPath: [field] });
+    return;
+  }
+  for (const [name, source] of Object.entries(values)) {
+    if (!isPlainObject(source) || Object.keys(source).length !== 1 || (!Object.hasOwn(source, 'value') && !Object.hasOwn(source, 'env')) || (Object.hasOwn(source, 'value') && typeof source.value !== 'string') || (Object.hasOwn(source, 'env') && (typeof source.env !== 'string' || !ENV_NAME_PATTERN.test(source.env))))
+      context.diagnostics.report({ code: 'MCP_VALUE_SOURCE_INVALID', severity: 'error', message: `MCP value "${name}" must contain one valid value or env reference.`, location: { path: server.source.path }, fieldPath: [field, name] });
+  }
+}
+
+/** 验证判别联合对象没有跨 transport 或跨 auth 分支字段。 */
+function validateExactFields(
   context: ExtensionValidateContext,
   server: DiscoveredMcpServer,
-  values: Readonly<Record<string, ValueSource>> | undefined,
-  fieldPath: readonly string[],
-): void {
-  if (values === undefined)
-    return;
-  if (!isPlainObject(values)) {
-    context.reportDiagnostic({
-      code: 'MCP_VALUE_MAP_INVALID', severity: 'error', message: 'MCP value mappings must be plain objects.',
-      location: { path: serverLocation(context, server) }, fieldPath,
-    });
-    return;
+  value: unknown,
+  allowed: ReadonlySet<string>,
+  field: string,
+): value is Record<string, unknown> {
+  if (!isPlainObject(value)) {
+    context.diagnostics.report({ code: 'MCP_FIELD_INVALID', severity: 'error', message: `MCP ${field} must be a plain object.`, location: { path: server.source.path }, fieldPath: [field] });
+    return false;
   }
-  /** [name, source] 表示当前 Header 或环境变量映射。 */
-  for (const [name, source] of Object.entries(values)) {
-    /** 当前 ValueSource 的精确诊断路径。 */
-    const valuePath = [...fieldPath, name];
-    if (name.trim().length === 0 || !isPlainObject(source)
-      || Object.keys(source).some(field => field !== 'value' && field !== 'env')
-      || (Object.hasOwn(source, 'value') === Object.hasOwn(source, 'env'))) {
-      context.reportDiagnostic({
-        code: 'MCP_VALUE_SOURCE_INVALID', severity: 'error',
-        message: `MCP value "${name || '<empty>'}" must contain exactly one of value or env.`,
-        location: { path: serverLocation(context, server) }, fieldPath: valuePath,
-      });
-      continue;
-    }
-    if ('value' in source && typeof source.value !== 'string') {
-      context.reportDiagnostic({
-        code: 'MCP_LITERAL_INVALID', severity: 'error', message: `MCP value "${name}" literal must be a string.`,
-        location: { path: serverLocation(context, server) }, fieldPath: [...valuePath, 'value'],
-      });
-    }
-    if ('env' in source && (typeof source.env !== 'string' || !ENV_NAME_PATTERN.test(source.env))) {
-      context.reportDiagnostic({
-        code: 'MCP_ENV_INVALID', severity: 'error', message: `MCP value "${name}" environment name is invalid.`,
-        location: { path: serverLocation(context, server) }, fieldPath: [...valuePath, 'env'],
-      });
-    }
+  for (const key of Object.keys(value)) {
+    if (!allowed.has(key))
+      context.diagnostics.report({ code: 'MCP_FIELD_UNKNOWN', severity: 'error', message: `MCP ${field} contains an invalid field for its selected variant.`, location: { path: server.source.path }, fieldPath: [field, key] });
   }
+  return true;
 }
 
-/**
- * 校验 HTTP Server 的 URL、认证、Header 和未知字段。
- *
- * @param context Core 提供的构建模式和诊断出口。
- * @param server 当前远程 MCP Server。
- */
-function validateHttpServer(context: ExtensionValidateContext, server: DiscoveredMcpServer): void {
-  /** 当前 Server 已由 transport 判别为 HTTP 的定义。 */
-  const definition = server.definition as Extract<McpServerDefinition, { transport: 'http' }>;
-  /** field 表示当前定义的一个公开字段，用于拒绝宽类型绕过检查。 */
-  for (const field of Object.keys(definition)) {
-    if (!HTTP_FIELDS.has(field)) {
-      context.reportDiagnostic({
-        code: 'MCP_FIELD_UNKNOWN', severity: 'error', message: `Unknown HTTP MCP field "${field}".`,
-        location: { path: serverLocation(context, server) }, fieldPath: [field],
-      });
-    }
-  }
-  /** 成功解析时的标准 URL，用于协议、凭据和主机安全检查。 */
-  let url: URL | undefined;
-  try {
-    if (typeof definition.url !== 'string')
-      throw new TypeError('URL must be a string.');
-    url = new URL(definition.url);
-  } catch {
-    context.reportDiagnostic({
-      code: 'MCP_URL_INVALID', severity: 'error', message: `MCP Server "${server.id}" has an invalid URL.`,
-      location: { path: serverLocation(context, server) }, fieldPath: ['url'],
-    });
-  }
-  if (url !== undefined) {
-    /** development 允许的明确 loopback 主机。 */
-    const loopback = ['localhost', '127.0.0.1', '::1'].includes(url.hostname);
-    if (url.username !== '' || url.password !== '') {
-      context.reportDiagnostic({
-        code: 'MCP_URL_CREDENTIALS_FORBIDDEN', severity: 'error', message: 'MCP URLs must not contain credentials.',
-        location: { path: serverLocation(context, server) }, fieldPath: ['url'],
-      });
-    }
-    if (context.mode === 'production' && url.protocol !== 'https:') {
-      context.reportDiagnostic({
-        code: 'MCP_HTTPS_REQUIRED', severity: 'error', message: `MCP Server "${server.id}" must use HTTPS in production.`,
-        location: { path: serverLocation(context, server) }, fieldPath: ['url'],
-      });
-    }
-    if (context.mode === 'development' && url.protocol !== 'https:' && !(url.protocol === 'http:' && loopback)) {
-      context.reportDiagnostic({
-        code: 'MCP_HTTP_LOOPBACK_ONLY', severity: 'error',
-        message: `MCP Server "${server.id}" may use HTTP only on loopback in development.`,
-        location: { path: serverLocation(context, server) }, fieldPath: ['url'],
-      });
-    }
-  }
-
-  if (definition.auth !== undefined) {
-    /** auth 候选值必须为无自定义原型的普通对象。 */
-    const auth = definition.auth as unknown;
-    if (!isPlainObject(auth)) {
-      context.reportDiagnostic({
-        code: 'MCP_AUTH_INVALID', severity: 'error', message: 'MCP auth must be a plain object.',
-        location: { path: serverLocation(context, server) }, fieldPath: ['auth'],
-      });
-    } else {
-      /** field 表示当前认证声明字段，用于拒绝策略之外的 Secret 或命令配置。 */
-      for (const field of Object.keys(auth)) {
-        if (!AUTH_FIELDS.has(field)) {
-          context.reportDiagnostic({
-            code: 'MCP_AUTH_FIELD_UNKNOWN', severity: 'error', message: `Unknown MCP auth field "${field}".`,
-            location: { path: serverLocation(context, server) }, fieldPath: ['auth', field],
-          });
-        }
-      }
-      if (auth.type !== 'none' && auth.type !== 'oauth' && auth.type !== 'bearer') {
-        context.reportDiagnostic({
-          code: 'MCP_AUTH_TYPE_INVALID', severity: 'error', message: 'MCP auth type must be none, oauth, or bearer.',
-          location: { path: serverLocation(context, server) }, fieldPath: ['auth', 'type'],
-        });
-      }
-      if (auth.type === 'none' && (Object.hasOwn(auth, 'env') || Object.hasOwn(auth, 'scopes'))) {
-        context.reportDiagnostic({
-          code: 'MCP_AUTH_FIELD_INVALID', severity: 'error', message: 'MCP none auth cannot declare env or scopes.',
-          location: { path: serverLocation(context, server) }, fieldPath: ['auth'],
-        });
-      }
-      if (auth.type === 'bearer'
-        && (typeof auth.env !== 'string' || !ENV_NAME_PATTERN.test(auth.env) || Object.hasOwn(auth, 'scopes'))) {
-        context.reportDiagnostic({
-          code: 'MCP_BEARER_INVALID', severity: 'error', message: 'MCP bearer auth requires one valid env and no scopes.',
-          location: { path: serverLocation(context, server) }, fieldPath: ['auth'],
-        });
-      }
-      if (auth.type === 'oauth') {
-        if (Object.hasOwn(auth, 'env')) {
-          context.reportDiagnostic({
-            code: 'MCP_AUTH_FIELD_INVALID', severity: 'error', message: 'MCP OAuth auth cannot declare env.',
-            location: { path: serverLocation(context, server) }, fieldPath: ['auth', 'env'],
-          });
-        }
-        if (auth.scopes !== undefined && (!Array.isArray(auth.scopes)
-          || auth.scopes.some(scope => typeof scope !== 'string' || scope.trim().length === 0)
-          || new Set(auth.scopes).size !== auth.scopes.length)) {
-          context.reportDiagnostic({
-            code: 'MCP_OAUTH_SCOPE_INVALID', severity: 'error',
-            message: 'MCP OAuth scopes must contain unique non-empty strings.',
-            location: { path: serverLocation(context, server) }, fieldPath: ['auth', 'scopes'],
-          });
-        }
-      }
-    }
-  }
-  validateValueSources(context, server, definition.headers, ['headers']);
-}
-
-/**
- * 校验本地 stdio Server 的入口边界、普通文件属性和环境映射。
- *
- * @param context Core 提供的工程和诊断出口。
- * @param server 当前本地 MCP Server。
- */
-async function validateStdioServer(context: ExtensionValidateContext, server: DiscoveredMcpServer): Promise<void> {
-  /** 当前 Server 已由 transport 判别为 stdio 的定义。 */
-  const definition = server.definition as Extract<McpServerDefinition, { transport: 'stdio' }>;
-  /** field 表示当前定义的一个公开字段，用于拒绝宽类型绕过检查。 */
-  for (const field of Object.keys(definition)) {
-    if (!STDIO_FIELDS.has(field)) {
-      context.reportDiagnostic({
-        code: 'MCP_FIELD_UNKNOWN', severity: 'error', message: `Unknown stdio MCP field "${field}".`,
-        location: { path: serverLocation(context, server) }, fieldPath: [field],
-      });
-    }
-  }
-  /** 默认或显式配置解析出的本地 Server 绝对入口。 */
-  const entryValue = definition.entry ?? './server.ts';
-  if (typeof entryValue !== 'string' || entryValue.trim().length === 0 || path.isAbsolute(entryValue)) {
-    context.reportDiagnostic({
-      code: 'MCP_ENTRY_INVALID', severity: 'error', message: `MCP Server "${server.id}" entry must be a relative non-empty path.`,
-      location: { path: serverLocation(context, server) }, fieldPath: ['entry'],
-    });
-  } else {
-    /** 用真实 Server 目录解析但不跟随候选入口符号链接。 */
-    const entry = path.resolve(server.directory, entryValue);
-    /** 用于发现目录逃逸的入口相对路径。 */
-    const relative = path.relative(server.directory, entry);
-    if (relative === '..' || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) {
-      context.reportDiagnostic({
-        code: 'MCP_ENTRY_ESCAPE', severity: 'error', message: `MCP Server "${server.id}" entry must stay inside its directory.`,
-        location: { path: serverLocation(context, server) }, fieldPath: ['entry'],
-      });
-    } else {
-      try {
-        /** lstat 用于拒绝入口文件本身是符号链接。 */
-        const stat = await fs.lstat(entry);
-        if (!stat.isFile() || stat.isSymbolicLink())
-          throw new TypeError('Entry is not a regular file.');
-      } catch {
-        context.reportDiagnostic({
-          code: 'MCP_ENTRY_MISSING', severity: 'error', message: `MCP Server "${server.id}" entry cannot be used.`,
-          location: { path: serverLocation(context, server) }, fieldPath: ['entry'],
-        });
-      }
-    }
-  }
-  validateValueSources(context, server, definition.env, ['env']);
-}
-
-/**
- * 验证全部 MCP Server 的静态 Schema 与安全边界。
- *
- * @param context Core 提供的规范工程和构建模式。
- * @param discovered discover 阶段得到的稳定 Server 列表。
- */
-export async function validateMcpServers(
-  context: ExtensionValidateContext,
-  discovered: Readonly<DiscoveredMcpServers>,
-): Promise<void> {
-  /** server 表示当前待验证的远程声明或本地实现。 */
+/** 验证全部 HTTP/stdio MCP 安全约束。 */
+export async function validateMcpServers(context: ExtensionValidateContext, discovered: Readonly<DiscoveredMcpServers>): Promise<{ readonly state: Readonly<DiscoveredMcpServers>; readonly subjects: readonly { readonly subject: string; readonly capabilities: readonly string[] }[] }> {
   for (const server of discovered.servers) {
-    /** transport 在作者使用宽类型时仍可能是未知值。 */
-    const transport = (server.definition as { readonly transport?: unknown }).transport;
-    if (transport === 'http')
-      validateHttpServer(context, server);
-    else if (transport === 'stdio')
-      await validateStdioServer(context, server);
-    else {
-      context.reportDiagnostic({
-        code: 'MCP_TRANSPORT_UNSUPPORTED', severity: 'error',
-        message: `MCP Server "${server.id}" transport is unsupported.`,
-        location: { path: serverLocation(context, server) }, fieldPath: ['transport'],
-      });
-    }
+    /** 已快照的联合定义转为只读字段映射。 */
+    const definition = server.definition as unknown as Record<string, unknown>;
+    if (definition.transport === 'http') {
+      if (typeof definition.url !== 'string') context.diagnostics.report({ code: 'MCP_URL_INVALID', severity: 'error', message: 'MCP HTTP url must be a string.', location: { path: server.source.path } });
+      else {
+        try {
+          /** URL 解析只使用 descriptor 中的公开字符串。 */
+          const url = new URL(definition.url);
+          if (url.username || url.password) throw new Error('credentials');
+          if (context.mode === 'production' && url.protocol !== 'https:') throw new Error('https');
+          if (context.mode === 'development'
+            && url.protocol !== 'https:'
+            && (url.protocol !== 'http:' || !['127.0.0.1', 'localhost', '[::1]'].includes(url.hostname)))
+            throw new Error('scheme');
+        } catch (error) {
+          /** URL 错误归一化为稳定诊断码。 */
+          const reason = error instanceof Error ? error.message : '';
+          context.diagnostics.report({ code: reason === 'https' ? 'MCP_HTTPS_REQUIRED' : 'MCP_URL_INVALID', severity: 'error', message: 'MCP HTTP url must be HTTPS in production and loopback HTTP in development.', location: { path: server.source.path } });
+        }
+      }
+      if (definition.auth !== undefined) {
+        /** 认证对象只检查规范字段，不读取 Secret。 */
+        const auth = definition.auth;
+        if (isPlainObject(auth)) {
+          if (auth.type === 'none') {
+            validateExactFields(context, server, auth, NONE_AUTH_FIELDS, 'auth');
+          } else if (auth.type === 'bearer') {
+            validateExactFields(context, server, auth, BEARER_AUTH_FIELDS, 'auth');
+            if (typeof auth.env !== 'string' || !ENV_NAME_PATTERN.test(auth.env)) context.diagnostics.report({ code: 'MCP_BEARER_INVALID', severity: 'error', message: 'MCP bearer auth requires a valid env name.', location: { path: server.source.path }, fieldPath: ['auth', 'env'] });
+          } else if (auth.type === 'oauth') {
+            validateExactFields(context, server, auth, OAUTH_AUTH_FIELDS, 'auth');
+            if (auth.scopes !== undefined && (!Array.isArray(auth.scopes) || auth.scopes.length === 0 || auth.scopes.some(scope => typeof scope !== 'string' || scope.length === 0) || new Set(auth.scopes).size !== auth.scopes.length)) context.diagnostics.report({ code: 'MCP_OAUTH_INVALID', severity: 'error', message: 'MCP OAuth scopes must be unique non-empty strings.', location: { path: server.source.path }, fieldPath: ['auth', 'scopes'] });
+          } else {
+            validateExactFields(context, server, auth, NONE_AUTH_FIELDS, 'auth');
+            context.diagnostics.report({ code: 'MCP_AUTH_INVALID', severity: 'error', message: 'MCP auth type is unsupported.', location: { path: server.source.path }, fieldPath: ['auth', 'type'] });
+          }
+        } else validateExactFields(context, server, auth, NONE_AUTH_FIELDS, 'auth');
+      }
+      validateValues(context, server, definition.headers, 'headers');
+      /** HTTP 不接受 stdio 专属字段，即使 descriptor 通过了 TS 类型断言。 */
+      validateExactFields(context, server, definition, HTTP_FIELDS, 'server');
+    } else if (definition.transport === 'stdio') {
+      /** stdio 入口默认固定为当前 Server 目录下的 server.ts。 */
+      const entry = definition.entry ?? 'server.ts';
+      if (!isSafeMcpEntryPath(entry)) context.diagnostics.report({ code: typeof entry === 'string' && (entry.startsWith('/') || entry.split('/').includes('..')) ? 'MCP_ENTRY_ESCAPE' : 'MCP_ENTRY_INVALID', severity: 'error', message: 'MCP stdio entry must be a safe relative POSIX path without dot, parent, backslash, or NUL segments.', location: { path: server.source.path }, fieldPath: ['entry'] });
+      if (isSafeMcpEntryPath(entry) && server.entrySource === undefined) context.diagnostics.report({ code: 'MCP_ENTRY_MISSING', severity: 'error', message: 'MCP stdio entry file does not exist.', location: { path: server.source.path }, fieldPath: ['entry'] });
+      validateValues(context, server, definition.env, 'env');
+      /** stdio 不接受 HTTP 专属字段。 */
+      validateExactFields(context, server, definition, STDIO_FIELDS, 'server');
+    } else context.diagnostics.report({ code: 'MCP_TRANSPORT_UNSUPPORTED', severity: 'error', message: `MCP Server "${server.id}" transport is unsupported.`, location: { path: server.source.path } });
   }
+  return Object.freeze({ state: discovered, subjects: Object.freeze(discovered.servers.map(server => Object.freeze({ subject: `mcp:${server.id}`, capabilities: Object.freeze([`transport.${server.definition.transport}`]) }))) });
 }

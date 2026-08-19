@@ -15,8 +15,6 @@ const RETIRED_PACKAGE_PATTERN = /@acplugin\/compiler-|@tokenroll\/acplugin-modul
 /** 允许保留旧字段文字、但只能用于定向诊断或迁移的生产源码。 */
 const LEGACY_TERM_ALLOWLIST = new Set([
   'packages/acplugin/src/cli.ts',
-  'packages/core/src/config.ts',
-  'packages/core/src/scanner.ts',
 ]);
 
 /**

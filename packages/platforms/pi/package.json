@@ -1,7 +1,7 @@
 {
   "name": "@tokenroll/acplugin-platform-pi",
-  "version": "0.0.1-beta",
-  "description": "Pi Platform adapter for acplugin.",
+  "version": "0.0.2-beta",
+  "description": "Pi Platform integration for acplugin.",
   "type": "module",
   "license": "MIT",
   "homepage": "https://github.com/TokenRollAI/acplugin#pi-platform",

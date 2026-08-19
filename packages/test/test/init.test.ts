@@ -32,24 +32,40 @@ describe('init', () => {
     expect(JSON.parse(await fs.readFile(path.join(cwd, 'demo-plugin/package.json'), 'utf8'))).toMatchObject({
       engines: { node: '^20.19.0 || ^22.13.0 || >=23.5.0' },
       devDependencies: {
-        '@tokenroll/acplugin-platform-claude-code': '^0.0.1-beta',
-        '@tokenroll/acplugin-platform-codex': '^0.0.2-beta',
+        '@tokenroll/acplugin-platform-claude-code': '^0.0.2-beta',
+        '@tokenroll/acplugin-platform-codex': '^0.0.3-beta',
         'typescript': '^7.0.2',
       },
     });
   });
 
-  it('adds selected Extensions without generating fake handlers or servers', async () => {
+  it('adds selected Extensions and a built-in Runtime entry without fake handlers or servers', async () => {
     /** 可选 Extension 脚手架测试使用的父目录。 */
     const cwd = await fs.mkdtemp(path.join(os.tmpdir(), 'acplugin-init-test-'));
     roots.push(cwd);
-    await initializeProject({ cwd, directory: 'extension-plugin', yes: true, hooks: true, mcp: true });
+    /** 同时启用两个官方 Extension 和 Core Runtime 模板的初始化结果。 */
+    const result = await initializeProject({
+      cwd,
+      directory: 'extension-plugin',
+      yes: true,
+      hooks: true,
+      mcp: true,
+      nodeRuntime: true,
+    });
     /** 已生成工程的绝对路径。 */
     const project = path.join(cwd, 'extension-plugin');
 
     expect(await fs.readFile(path.join(project, 'acplugin.config.ts'), 'utf8')).toContain('extensions: [hooks(), mcp()]');
     expect(await fs.readdir(path.join(project, 'src/hooks'))).toEqual([]);
     expect(await fs.readdir(path.join(project, 'src/mcp'))).toEqual([]);
+    await expect(fs.access(path.join(project, 'src/runtime/runtime.ts'))).rejects.toThrow();
+    expect(await fs.readFile(path.join(project, 'src/runtime/main.ts'), 'utf8')).toContain('ACPlugin Node runtime is ready.');
+    expect(result.extensions).toEqual([
+      '@tokenroll/acplugin-extension-hooks',
+      '@tokenroll/acplugin-extension-mcp',
+    ]);
+    expect(JSON.parse(await fs.readFile(path.join(project, 'package.json'), 'utf8')).devDependencies)
+      .not.toHaveProperty('@tokenroll/acplugin-extension-node-runtime');
   });
 
   it('writes any explicit subset of the six official Platform factories', async () => {

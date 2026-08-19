@@ -42,7 +42,7 @@ Core、测试工作区、Docs 和 Playground 是私有包，不能发布，也�
    pnpm run release:verify
    ```
 
-`release:verify` 会在临时目录中打包九个 package，对实际 tarball 执行类型解析与 Package Lint，检查 manifest 和内容，验证 peer rewrite，以及经同一主包 peer 实例产生的私有 Symbol 品牌互操作，再在干净外部消费者中安装并构建六 Platform/两 Extension 脚手架。对于主包，它会解析 tarball 内真实 ESM 图，证明 CLI 到 Migration 的边仍是 lazy，逐条核对外部 import 与已声明运行时依赖，并拒绝主包正常运行图对官方集成产生依赖。它绝不会发布任何内容。CI 通过 `--tarball-dir <empty-directory>` 保留精确验证过的文件，供独立 Node 20.19 consumer job 使用；本地需要保留待发布 tarball 时也可使用该参数。
+`release:verify` 会在临时目录中打包九个 package，对实际 tarball 执行类型解析与 Package Lint，检查 manifest 和内容，验证 peer rewrite，以及经同一主包 peer 实例产生的私有 Symbol 品牌互操作，再在干净外部消费者中安装并构建六 Platform/两个 Extension 脚手架。消费者会真实执行 Core Runtime，并证明 Claude Code/Codex 收到相同字节。对于主包，它会解析 tarball 内真实 ESM 图，证明 CLI 到 Migration 的边仍是 lazy，逐条核对外部 import 与已声明运行时依赖，并拒绝主包外部引用或内联官方集成。它绝不会发布任何内容。CI 通过 `--tarball-dir <empty-directory>` 保留精确验证过的文件，供独立 Node 20.19 consumer job 使用；本地需要保留待发布 tarball 时也可使用该参数。
 
 发布前必须提交这份精确验证过的发布准备。验证后不得从另一个 Revision 重新构建待发布文件。
 
@@ -65,13 +65,7 @@ npm publish <tarball-path> --access public --otp <OTP>
 npm view <package-name>@<version> version
 ```
 
-首次发布九个 `0.0.1-beta` package 时，可以由维护者在仓库根手工执行简化命令：
-
-```bash
-pnpm run publish:beta
-```
-
-根 `prepublish:beta` 会先执行 frozen install 和 `release:preflight`。该前置检查依次执行 lint/typecheck、一次全仓构建、关闭 package pre/post 生命周期的测试、不再重建全仓的 Docs/Playground 验证，最后执行 `release:verify`；随后 `pnpm -r publish` 只选择 `@tokenroll/*` 公开包，并使用固定的 npmjs Registry 与 `beta` tag。九个公开 package 各自通过 `prepublishOnly` 在实际 pack 前重建自身。该命令只适用于所有九个包均为首次发布的 `0.0.1-beta` cohort，不得复用于稳定版或独立增量发布，也不得由 Workflow 自动调用。
+初始 cohort 已完成发布，因此仓库有意不再提供一次发布全部公开包的根命令。先运行 `release:preflight`，再使用上面的显式命令只发布已选中且经过验证的 tarball。
 
 如果发布过程被中断，查询计划中的每个精确版本，只继续发布 peer dependency 已可满足且 Registry 中仍缺失的版本。npm 版本不可变，不能重复发布。
 

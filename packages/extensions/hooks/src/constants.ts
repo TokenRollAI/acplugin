@@ -19,12 +19,6 @@ export const OPENCODE_PLATFORM_ID = 'opencode';
 /** Pi 官方 Platform 的稳定 ID。 */
 export const PI_PLATFORM_ID = 'pi';
 
-/** Claude Code 与 Codex Platform 共同公开的 Plugin Manifest 逻辑 ID。 */
-export const PLUGIN_MANIFEST_ID = 'plugin-manifest';
-
-/** Hooks Adapter 写入的固定平台清单相对路径。 */
-export const HOOKS_MANIFEST_PATH = 'hooks/hooks.json';
-
 /** Hook 一级目录接受的小写 kebab-case 格式。 */
 export const HOOK_ID_PATTERN: RegExp = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 

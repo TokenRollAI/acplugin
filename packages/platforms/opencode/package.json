@@ -1,7 +1,7 @@
 {
   "name": "@tokenroll/acplugin-platform-opencode",
-  "version": "0.0.1-beta",
-  "description": "OpenCode Platform adapter for acplugin.",
+  "version": "0.0.2-beta",
+  "description": "OpenCode Platform integration for acplugin.",
   "type": "module",
   "license": "MIT",
   "homepage": "https://github.com/TokenRollAI/acplugin#opencode-platform",

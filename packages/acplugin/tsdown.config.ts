@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 export default defineConfig({
   entry: {
     index: fileURLToPath(new URL('./src/index.ts', import.meta.url)),
+    sdk: fileURLToPath(new URL('./src/sdk.ts', import.meta.url)),
     cli: fileURLToPath(new URL('./src/cli.ts', import.meta.url)),
   },
   format: ['esm'],
@@ -16,10 +17,6 @@ export default defineConfig({
   publint: true,
   attw: { profile: 'esm-only', level: 'error' },
   deps: {
-    alwaysBundle: [
-      '@acplugin/core',
-      '@tokenroll/acplugin-platform-claude-code',
-      '@tokenroll/acplugin-extension-mcp',
-    ],
+    alwaysBundle: ['@acplugin/core'],
   },
 });

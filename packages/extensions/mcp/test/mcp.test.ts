@@ -2,9 +2,11 @@ import { spawn } from 'node:child_process';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
-import type { BuildResult, RunProjectOptions } from '@tokenroll/acplugin';
-import mcp, { defineMcpServer, EXTENSION_NAME } from '../src/index.js';
+import type { BuildReport, RunProjectOptions } from '@tokenroll/acplugin';
+import mcp, { EXTENSION_NAME } from '../src/index.js';
+import { compareCodeUnits } from '../src/sorting.js';
 
 /** 当前测试文件所在仓库的绝对根目录。 */
 const repositoryRoot = path.resolve(import.meta.dirname, '../../../..');
@@ -19,6 +21,9 @@ const acpluginEntry = path.join(repositoryRoot, 'packages/acplugin/dist/index.mj
 const claudeCodeEntry = path.join(repositoryRoot, 'packages/platforms/claude-code/dist/index.mjs');
 /** MCP 生命周期测试显式配置的 Codex Platform 构建入口。 */
 const codexEntry = path.join(repositoryRoot, 'packages/platforms/codex/dist/index.mjs');
+
+/** 真实 MCP SDK package root，测试工程通过正常 package-manager symlink 使用。 */
+const mcpSdkRoot = path.resolve(path.dirname(fileURLToPath(import.meta.resolve('@modelcontextprotocol/sdk/server/index.js'))), '../../..');
 
 /** 当前测试创建并在 afterEach 中统一删除的临时工程。 */
 const temporaryRoots: string[] = [];
@@ -48,16 +53,16 @@ interface ProjectFixtureOptions {
 }
 
 /**
- * 在原生 Node ESM 子进程中运行公开 API，确保私有品牌只加载一个主包实例。
+ * 在原生 Node ESM 子进程中运行公开 API，确保共享 registry brand 只绑定一个主包实例。
  *
  * @param options 可 JSON 序列化的项目运行选项。
  * @param environment 测试构建阶段显式加入的环境变量。
- * @returns 公开 API 产生的结构化 BuildResult。
+ * @returns 公开 API 产生的结构化 BuildReport。
  */
 async function runProject(
   options: RunProjectOptions,
   environment: Readonly<Record<string, string>> = {},
-): Promise<BuildResult> {
+): Promise<BuildReport> {
   /** 子进程直接导入真实主包构建产物并序列化结果的 ESM 源码。 */
   const source = `
 import { runProject } from ${JSON.stringify(acpluginEntry)};
@@ -80,7 +85,7 @@ try {
   /** 子进程返回的成功结果或安全异常摘要。 */
   const payload = JSON.parse(execution.stdout) as {
     readonly ok: boolean;
-    readonly result?: BuildResult;
+    readonly result?: BuildReport;
     readonly name?: string;
     readonly message?: string;
   };
@@ -127,7 +132,7 @@ async function executeNode(
 }
 
 /**
- * 在临时工程中创建可由 Jiti 和 Rolldown 共同解析的 Extension 包入口。
+ * 在临时工程中创建可由统一 Module Service 和 Rolldown 共同解析的 Extension 包入口。
  *
  * @param root 临时工程根目录。
  */
@@ -145,6 +150,28 @@ async function writeExtensionProxy(root: string): Promise<void> {
     path.join(packageRoot, 'index.mjs'),
     `export * from ${JSON.stringify(extensionEntry)}; export { default } from ${JSON.stringify(extensionEntry)};\n`,
   );
+  /** 主包与 SDK 代理保持与真实 tarball 相同的 package identity。 */
+  const acpluginRoot = path.join(root, 'node_modules/@tokenroll/acplugin');
+  await fs.mkdir(acpluginRoot, { recursive: true });
+  await fs.writeFile(path.join(acpluginRoot, 'package.json'), JSON.stringify({
+    name: '@tokenroll/acplugin', version: '1.0.0', type: 'module', exports: { '.': './index.mjs', './sdk': './sdk.mjs' },
+  }));
+  await fs.writeFile(path.join(acpluginRoot, 'index.mjs'), `export * from ${JSON.stringify(acpluginEntry)};\n`);
+  await fs.writeFile(path.join(acpluginRoot, 'sdk.mjs'), `export * from ${JSON.stringify(path.join(repositoryRoot, 'packages/acplugin/dist/sdk.mjs'))};\n`);
+  for (const [name, entry] of [
+    ['@tokenroll/acplugin-platform-claude-code', claudeCodeEntry],
+    ['@tokenroll/acplugin-platform-codex', codexEntry],
+  ] as const) {
+    /** 当前官方 Platform 的测试代理目录。 */
+    const platformRoot = path.join(root, 'node_modules', name);
+    await fs.mkdir(platformRoot, { recursive: true });
+    await fs.writeFile(path.join(platformRoot, 'package.json'), JSON.stringify({ name, version: '1.0.0', type: 'module', exports: './index.mjs' }));
+    await fs.writeFile(path.join(platformRoot, 'index.mjs'), `export * from ${JSON.stringify(entry)}; export { default } from ${JSON.stringify(entry)};\n`);
+  }
+  /** pnpm 依赖 symlink 是合法 package 边界，不属于作者源码 symlink。 */
+  const sdkRoot = path.join(root, 'node_modules/@modelcontextprotocol/sdk');
+  await fs.mkdir(path.dirname(sdkRoot), { recursive: true });
+  await fs.symlink(mcpSdkRoot, sdkRoot, 'dir');
 }
 
 /**
@@ -187,23 +214,23 @@ async function createProject(options: ProjectFixtureOptions = {}): Promise<strin
   if (options.remote !== false) {
     await fs.mkdir(path.join(root, 'src/mcp/docs'), { recursive: true });
     await fs.writeFile(path.join(root, 'src/mcp/docs/mcp.ts'), `
-import { defineMcpServer } from '@tokenroll/acplugin-extension-mcp';
-export default defineMcpServer(${options.remote ?? `{
+import type { McpServer } from '@tokenroll/acplugin-extension-mcp';
+export default ${options.remote ?? `{
   transport: 'http',
   url: 'https://mcp.example.com/mcp',
   auth: { type: 'bearer', env: 'DOCS_TOKEN' },
   headers: { 'X-Tenant': { env: 'DOCS_TENANT' }, 'X-Client': { value: 'acplugin-test' } },
-}`});
+}`} satisfies McpServer;
 `);
   }
   if (options.local !== false) {
     await fs.mkdir(path.join(root, 'src/mcp/local-tools'), { recursive: true });
     await fs.writeFile(path.join(root, 'src/mcp/local-tools/mcp.ts'), `
-import { defineMcpServer } from '@tokenroll/acplugin-extension-mcp';
-export default defineMcpServer(${options.local ?? `{
+import type { McpServer } from '@tokenroll/acplugin-extension-mcp';
+export default ${options.local ?? `{
   transport: 'stdio',
   env: { LOG_LEVEL: { value: 'warn' }, API_TOKEN: { env: 'LOCAL_TOKEN' } },
-}`});
+}`} satisfies McpServer;
 `);
     await fs.writeFile(path.join(root, 'src/mcp/local-tools/server.ts'), options.serverSource ?? `
 import { serverName } from 'mcp-fixture-dependency';
@@ -230,8 +257,8 @@ process.stdin.on('data', (chunk) => {
   }
   await fs.writeFile(path.join(root, 'acplugin.config.ts'), `
 import mcp from '@tokenroll/acplugin-extension-mcp';
-import claudeCode from ${JSON.stringify(claudeCodeEntry)};
-import codex from ${JSON.stringify(codexEntry)};
+import claudeCode from '@tokenroll/acplugin-platform-claude-code';
+import codex from '@tokenroll/acplugin-platform-codex';
 export default {
   name: 'mcp-fixture',
   version: '1.0.0',
@@ -249,20 +276,16 @@ afterEach(async () => {
 });
 
 describe('MCP Extension', () => {
-  it('exposes branded definitions, filters resources, and rejects invalid options', async () => {
+  it('exposes plain descriptor types, filters resources, and rejects invalid options', async () => {
     /** 公开工厂创建的默认 MCP Extension。 */
     const extension = mcp();
-    /** 公开辅助函数创建的品牌化远程定义。 */
-    const definition = defineMcpServer({ transport: 'http', url: 'https://example.com/mcp' });
     expect(EXTENSION_NAME).toBe('@tokenroll/acplugin-extension-mcp');
-    expect(extension.name).toBe(EXTENSION_NAME);
-    expect(extension.adapters.map(adapter => adapter.platform)).toEqual([
-      'claude-code', 'codex', 'cursor', 'antigravity', 'opencode', 'pi',
-    ]);
+    expect(extension.id).toBe('mcp');
+    expect(extension.resourceRoots).toEqual(['mcp']);
     expect(Object.isFrozen(extension)).toBe(true);
-    expect(Object.isFrozen(definition)).toBe(true);
     expect(() => mcp({ include: ['docs', 'docs'] })).toThrow('duplicate ID');
     expect(() => mcp({ include: ['Not-Kebab'] })).toThrow('lowercase kebab-case');
+    expect(() => mcp({ include: ['mcp-é'] })).toThrow('lowercase kebab-case');
     expect(() => mcp({ unknown: true } as never)).toThrow('Unknown MCP option');
 
     /** include 只选择远程 Server 的真实工程。 */
@@ -273,6 +296,97 @@ describe('MCP Extension', () => {
     await expect(fs.access(path.join(root, 'dist/codex/plugin/mcp/local-tools/server.mjs'))).rejects.toThrow();
     expect(JSON.parse(await fs.readFile(path.join(root, 'dist/codex/plugin/.mcp.json'), 'utf8')))
       .toHaveProperty('docs.url', 'https://mcp.example.com/mcp');
+  });
+
+  it('uses locale-independent code-unit ordering for deterministic internal maps', () => {
+    /** 非 ASCII 样本证明排序不委托给宿主 locale 或 ICU。 */
+    const values = ['é', 'z', 'ä', 'a'];
+    expect(values.sort(compareCodeUnits)).toEqual(['a', 'z', 'ä', 'é']);
+  });
+
+  it('rejects non-enumerable descriptor accessors without evaluating them', async () => {
+    /** 不可枚举 getter 不能绕过 plain descriptor 的无行为数据边界。 */
+    const root = await createProject({
+      local: false,
+      remote: `(() => {
+        const value = { transport: 'http', url: 'https://mcp.example.com/mcp' };
+        Object.defineProperty(value, 'hidden', { get() { throw new Error('MUST_NOT_RUN'); } });
+        return value;
+      })() as never`,
+    });
+    /** discover 以稳定错误码拒绝，并且原始 getter 文本不进入诊断。 */
+    const result = await runProject({ cwd: root, command: 'validate', mode: 'production' });
+
+    expect(result.success).toBe(false);
+    expect(result.diagnostics).toContainEqual(expect.objectContaining({ code: 'MCP_DESCRIPTOR_LOAD_FAILED' }));
+    expect(JSON.stringify(result.diagnostics)).not.toContain('MUST_NOT_RUN');
+  });
+
+  it('rejects non-enumerable unknown descriptor fields', async () => {
+    /** data property 即使不可枚举也必须保留到 HTTP Server Schema 检查。 */
+    const root = await createProject({
+      local: false,
+      remote: `(() => {
+        const value = { transport: 'http', url: 'https://mcp.example.com/mcp' };
+        Object.defineProperty(value, 'hidden', { value: true });
+        return value;
+      })() as never`,
+    });
+    /** 隐藏字段不能因 Module Service 快照规则而消失。 */
+    const result = await runProject({ cwd: root, command: 'validate', mode: 'production' });
+
+    expect(result.success).toBe(false);
+    expect(result.diagnostics).toContainEqual(expect.objectContaining({ code: 'MCP_FIELD_UNKNOWN' }));
+  });
+
+  it('rejects array accessors, custom fields, Symbols and __proto__ fields without executing accessors', async () => {
+    /** nested array getter 写 stdout；若被执行会直接破坏子进程 JSON 协议并使测试失败。 */
+    const accessorRoot = await createProject({
+      local: false,
+      remote: `(() => {
+        const scopes = [];
+        Object.defineProperty(scopes, '0', { get() { process.stdout.write('GETTER_EXECUTED'); return 'docs:read'; } });
+        Object.defineProperty(scopes, 'length', { value: 1 });
+        const value = { transport: 'http', url: 'https://mcp.example.com/mcp', auth: { type: 'oauth', scopes } };
+        Object.defineProperty(value, '__proto__', { value: true });
+        return value;
+      })() as never`,
+    });
+    /** 快照必须在执行 getter 前拒绝整个 descriptor。 */
+    const accessor = await runProject({ cwd: accessorRoot, command: 'validate', mode: 'production' });
+
+    expect(accessor.success).toBe(false);
+    expect(accessor.diagnostics).toContainEqual(expect.objectContaining({ code: 'MCP_DESCRIPTOR_LOAD_FAILED' }));
+
+    /** 类似索引的自定义字段也不能被 snapshot 静默忽略。 */
+    const fieldRoot = await createProject({
+      local: false,
+      remote: `(() => {
+        const scopes = ['docs:read'];
+        Object.defineProperty(scopes, '01', { value: 'docs:write' });
+        return { transport: 'http', url: 'https://mcp.example.com/mcp', auth: { type: 'oauth', scopes } };
+      })() as never`,
+    });
+    /** 伪索引必须在 discover 数据边界失败。 */
+    const field = await runProject({ cwd: fieldRoot, command: 'validate', mode: 'production' });
+
+    expect(field.success).toBe(false);
+    expect(field.diagnostics).toContainEqual(expect.objectContaining({ code: 'MCP_FIELD_UNKNOWN' }));
+
+    /** 字符串字段检查不能遗漏数组自身携带的 Symbol。 */
+    const symbolRoot = await createProject({
+      local: false,
+      remote: `(() => {
+        const scopes = ['docs:read'];
+        Object.defineProperty(scopes, Symbol.for('hidden'), { value: true });
+        return { transport: 'http', url: 'https://mcp.example.com/mcp', auth: { type: 'oauth', scopes } };
+      })() as never`,
+    });
+    /** Symbol 不能进入纯 JSON descriptor State。 */
+    const symbol = await runProject({ cwd: symbolRoot, command: 'validate', mode: 'production' });
+
+    expect(symbol.success).toBe(false);
+    expect(symbol.diagnostics).toContainEqual(expect.objectContaining({ code: 'MCP_DESCRIPTOR_LOAD_FAILED' }));
   });
 
   it('builds remote and local Servers once without reading or leaking Secret values', async () => {
@@ -356,7 +470,7 @@ describe('MCP Extension', () => {
         auth: { type: 'bearer', env: 'INVALID-NAME' },
         headers: { 'X-Secret': { value: 'public', env: 'PRIVATE_TOKEN' } },
       } as never`,
-      mcpOptions: `{ include: ['docs', 'missing'] }`,
+      mcpOptions: `{ include: ['docs'] }`,
     });
     /** 远程安全策略产生的结构化失败结果。 */
     const remote = await runProject({ cwd: remoteRoot, command: 'validate', mode: 'production' });
@@ -365,8 +479,12 @@ describe('MCP Extension', () => {
       expect.objectContaining({ code: 'MCP_HTTPS_REQUIRED' }),
       expect.objectContaining({ code: 'MCP_BEARER_INVALID' }),
       expect.objectContaining({ code: 'MCP_VALUE_SOURCE_INVALID' }),
-      expect.objectContaining({ code: 'MCP_INCLUDE_MISSING' }),
     ]));
+    /** 单独工程验证 include 指向不存在资源时的诊断。 */
+    const includeRoot = await createProject({ local: false, mcpOptions: `{ include: ['missing'] }` });
+    /** 执行 include fixture 并读取稳定诊断。 */
+    const include = await runProject({ cwd: includeRoot, command: 'validate', mode: 'production' });
+    expect(include.diagnostics).toContainEqual(expect.objectContaining({ code: 'MCP_INCLUDE_MISSING' }));
 
     /** 使用目录逃逸入口的本地定义。 */
     const localRoot = await createProject({
@@ -377,6 +495,115 @@ describe('MCP Extension', () => {
     const local = await runProject({ cwd: localRoot, command: 'validate', mode: 'production' });
     expect(local.success).toBe(false);
     expect(local.diagnostics).toContainEqual(expect.objectContaining({ code: 'MCP_ENTRY_ESCAPE' }));
+  });
+
+  it('enforces exact transport, auth, URL, and stdio entry variants', async () => {
+    /** HTTP 不能携带 stdio 字段，none auth 不能携带 bearer 字段。 */
+    const httpRoot = await createProject({
+      local: false,
+      remote: `{ transport: 'http', url: 'https://mcp.example.com/mcp', entry: 'server.ts', env: {}, auth: { type: 'none', env: 'TOKEN' } } as never`,
+    });
+    /** 跨判别分支字段必须在 Extension validate 阶段失败。 */
+    const http = await runProject({ cwd: httpRoot, command: 'validate', mode: 'production' });
+    expect(http.success).toBe(false);
+    expect(http.diagnostics.filter(diagnostic => diagnostic.code === 'MCP_FIELD_UNKNOWN').length).toBeGreaterThanOrEqual(3);
+
+    /** bearer 与 oauth 认证分支各自拒绝另一分支的字段。 */
+    for (const auth of [
+      `{ type: 'bearer', env: 'TOKEN', scopes: ['docs:read'] }`,
+      `{ type: 'oauth', scopes: ['docs:read'], env: 'TOKEN' }`,
+    ]) {
+      /** 当前认证分支交叉字段的独立 HTTP fixture。 */
+      const authRoot = await createProject({
+        local: false,
+        remote: `{ transport: 'http', url: 'https://mcp.example.com/mcp', auth: ${auth} } as never`,
+      });
+      /** exact discriminated union 必须在领域 validate 阶段拒绝交叉字段。 */
+      const authResult = await runProject({ cwd: authRoot, command: 'validate', mode: 'production' });
+      expect(authResult.success).toBe(false);
+      expect(authResult.diagnostics).toContainEqual(expect.objectContaining({ code: 'MCP_FIELD_UNKNOWN' }));
+    }
+
+    /** stdio 不能携带 HTTP 字段或任何 HTTP auth。 */
+    const stdioRoot = await createProject({
+      remote: false,
+      local: `{ transport: 'stdio', entry: 'server.ts', url: 'https://mcp.example.com', headers: {}, auth: { type: 'bearer', env: 'TOKEN' } } as never`,
+    });
+    /** 顶层 transport exact union 不依赖 TypeScript 静态检查。 */
+    const stdio = await runProject({ cwd: stdioRoot, command: 'validate', mode: 'production' });
+    expect(stdio.success).toBe(false);
+    expect(stdio.diagnostics.filter(diagnostic => diagnostic.code === 'MCP_FIELD_UNKNOWN').length).toBeGreaterThanOrEqual(3);
+
+    /** development 也只允许 HTTPS 或 loopback HTTP，不能放行其他 scheme。 */
+    const schemeRoot = await createProject({ local: false, remote: `{ transport: 'http', url: 'ftp://localhost/mcp' }` });
+    /** 非 HTTP(S) scheme 必须产生稳定 URL 失败。 */
+    const scheme = await runProject({ cwd: schemeRoot, command: 'validate', mode: 'development' });
+    expect(scheme.diagnostics).toContainEqual(expect.objectContaining({ code: 'MCP_URL_INVALID' }));
+
+    /** 文档化的 canonical entry 和 development loopback URL 都合法。 */
+    const validRoot = await createProject({ remote: `{ transport: 'http', url: 'http://127.0.0.1:3000/mcp' }`, local: `{ transport: 'stdio', entry: 'server.ts' }` });
+    /** validate 不执行 stdio smoke，但应完整通过作者 schema。 */
+    const valid = await runProject({ cwd: validRoot, command: 'validate', mode: 'development' });
+    expect(valid.success).toBe(true);
+
+    /** dot、空 segment、反斜线和父目录 spelling 都不能被静默 normalize。 */
+    for (const entry of ['./server.ts', '.', 'nested//server.ts', 'nested\\server.ts', '../server.ts', '/server.ts']) {
+      /** 每个非法 spelling 使用独立工程，避免诊断相互掩盖。 */
+      const root = await createProject({ remote: false, local: `{ transport: 'stdio', entry: ${JSON.stringify(entry)} }` });
+      /** 路径语法错误必须与真实缺失文件区分。 */
+      const result = await runProject({ cwd: root, command: 'validate', mode: 'production' });
+      expect(result.success).toBe(false);
+      expect(result.diagnostics).toContainEqual(expect.objectContaining({
+        code: entry.startsWith('/') || entry.includes('../') ? 'MCP_ENTRY_ESCAPE' : 'MCP_ENTRY_INVALID',
+      }));
+      expect(result.diagnostics).not.toContainEqual(expect.objectContaining({ code: 'MCP_ENTRY_MISSING' }));
+    }
+  });
+
+  it('accepts a complete server implemented with the official MCP SDK', async () => {
+    /** SDK Server 提供真实 initialize 协商和 tools/list handler。 */
+    const root = await createProject({
+      remote: false,
+      serverSource: `
+import { Server } from '@modelcontextprotocol/sdk/server/index.js';
+import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
+import { ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
+const server = new Server({ name: 'sdk-fixture', version: '1.0.0' }, { capabilities: { tools: {} } });
+server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: [] }));
+await server.connect(new StdioServerTransport());
+`,
+    });
+    /** 真实 SDK 响应必须通过同一 Core Execution Host smoke。 */
+    const result = await runProject({ cwd: root, command: 'build', mode: 'production' });
+    expect(result.success, JSON.stringify(result)).toBe(true);
+    expect(result.diagnostics).not.toContainEqual(expect.objectContaining({ code: 'MCP_STDIO_SMOKE_FAILED' }));
+  });
+
+  it('rejects protocol-shaped output that is not a valid MCP handshake', async () => {
+    /** 所有 case 都会正常退出并打印 JSON，差异只在 JSON-RPC/MCP shape。 */
+    const validInitialize = { jsonrpc: '2.0', id: 1, result: { protocolVersion: '2025-11-25', capabilities: {}, serverInfo: { name: 'fixture', version: '1.0.0' } } };
+    /** 标准空 tool list 响应。 */
+    const validTools = { jsonrpc: '2.0', id: 2, result: { tools: [] } };
+    /** 旧实现会误接受的响应及各类 envelope/result 反例。 */
+    const cases: readonly (readonly unknown[])[] = [
+      [{ id: 1, result: {} }, { id: 2, result: {} }],
+      [validInitialize, validInitialize, validTools],
+      [{ jsonrpc: '2.0', id: 1, error: { code: -32_000, message: 'failed' } }, validTools],
+      [{ ...validInitialize, jsonrpc: '1.0' }, validTools],
+      [{ jsonrpc: '2.0', id: 1, result: 'initialized' }, validTools],
+      [validInitialize, { jsonrpc: '2.0', id: 2, result: { tools: [{ name: 'broken' }] } }],
+    ];
+    for (const messages of cases) {
+      /** Fixture 不解析输入，只伪造旧 validator 所需的两行 JSON。 */
+      const stdout = `${messages.map(message => JSON.stringify(message)).join('\n')}\n`;
+      /** 每个反例独立编译和执行，证明失败发生在真实 Extension build path。 */
+      const root = await createProject({ remote: false, serverSource: `process.stdout.write(${JSON.stringify(stdout)});\n` });
+      /** 伪 handshake 不得形成可提交 Platform candidate。 */
+      const result = await runProject({ cwd: root, command: 'build', mode: 'production' });
+      expect(result.success).toBe(false);
+      expect(result.committed).toBe(false);
+      expect(result.diagnostics).toContainEqual(expect.objectContaining({ code: 'MCP_STDIO_SMOKE_FAILED', phase: 'compile' }));
+    }
   });
 
   it('rejects local bundles that fail the MCP protocol smoke in both build modes', async () => {
@@ -393,7 +620,7 @@ describe('MCP Extension', () => {
       expect(result.committed).toBe(false);
       expect(result.diagnostics).toContainEqual(expect.objectContaining({
         code: 'MCP_STDIO_SMOKE_FAILED',
-        phase: 'build',
+        phase: 'compile',
       }));
       await expect(fs.access(path.join(root, 'dist'))).rejects.toThrow();
     }
@@ -410,8 +637,8 @@ describe('MCP Extension', () => {
     expect(result.success).toBe(false);
     expect(result.committed).toBe(false);
     expect(result.diagnostics).toContainEqual(expect.objectContaining({
-      code: 'EXTENSION_HOOK_FAILED',
-      phase: 'build',
+      code: 'BUILD_UNRESOLVED_IMPORT',
+      phase: 'compile',
     }));
   });
 });

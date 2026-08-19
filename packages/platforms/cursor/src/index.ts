@@ -1,25 +1,25 @@
-import { definePlatform, type AcpluginPlatform, type JsonObject } from '@tokenroll/acplugin';
-import { generateComponentArtifacts, validateCursorComponentFields } from './components.js';
-import { createManifestDocument, serializeDocuments, validatePlatformOptions } from './manifest.js';
+import {
+  definePlatform,
+  type AcpluginPlatform,
+  type JsonObject,
+} from '@tokenroll/acplugin/sdk';
+import { createCursorComponents, validateCursorComponent } from './components.js';
+import { createPluginDocument, validatePlatformOptions } from './manifest.js';
 import type { CursorPlatformOptions } from './types.js';
-import { validateCursorBundle } from './validator.js';
+import { validateCursorPackage } from './validator.js';
 
 export type { CursorPlatformOptions } from './types.js';
 
 /** Cursor Platform 的稳定开放 ID。 */
 export const PLATFORM_ID = 'cursor' as const;
+
 /** Cursor Platform 实现的 Core API 版本。 */
 export const PLATFORM_API_VERSION = '1' as const;
 
-/**
- * 创建独立且可由 Core 品牌校验的 Cursor Platform。
- *
- * @param options 当前 Platform 的严格度覆盖。
- * @returns Cursor Plugin 交付实现。
- */
+/** 创建只通过 Package API 交付 Cursor Plugin 的 Platform。 */
 export function cursor(options: CursorPlatformOptions = {}): AcpluginPlatform {
   validatePlatformOptions(options);
-  /** strict 属于 Core 策略，其余字段作为 Platform 生命周期专属配置保存。 */
+  /** strict 由 Core 解释，其余选项复制、深冻后进入 Platform Session。 */
   const { strict, ...platformOptions } = options;
   return definePlatform({
     id: PLATFORM_ID,
@@ -27,22 +27,28 @@ export function cursor(options: CursorPlatformOptions = {}): AcpluginPlatform {
     deliveryType: 'plugin',
     ...(strict === undefined ? {} : { strict }),
     options: platformOptions as unknown as JsonObject,
-    validateComponentFields: validateCursorComponentFields,
-    /** prepare 创建 Platform 自有 Manifest，扩展点随后由 Core 接管。 */
-    prepare: context => ({ documents: [createManifestDocument(context)], artifacts: [] }),
-    /** generateBundle 转换 Component 并序列化完成 Adapter 合并的 Document。 */
-    generateBundle: context => ({
-      id: 'plugin',
-      role: 'primary',
-      type: 'plugin',
-      artifacts: [
-        ...context.artifacts,
-        ...generateComponentArtifacts(context),
-        ...serializeDocuments(context.documents),
-      ],
-    }),
-    /** 最终候选必须满足固定官方 Schema 子集和全部引用边界。 */
-    validateBundle: validateCursorBundle,
+    /** Cursor 不声明 Node Runtime 能力，Core 将对存在的 Runtime 显式报告 unsupported。 */
+    createSession({ options: sessionOptions }) {
+      return {
+        validateComponent: validateCursorComponent,
+        /** base Package 包含原生 Components 和唯一结构化 Manifest。 */
+        async createPackage({ project, assets }) {
+          /** components 全部通过当前 Platform owner 的 Asset Service 签发。 */
+          const components = await createCursorComponents(project, assets);
+          /** manifest 由 Core codec 负责序列化，Extension 只能填写声明点。 */
+          const manifest = createPluginDocument({ project, options: sessionOptions });
+          return {
+            documents: [manifest.document],
+            assets: components.assets,
+            compatibility: components.compatibility,
+            metadata: manifest.metadata,
+          };
+        },
+        /** Core 自动继承 base、Public 和 add-only Contributions。 */
+        finalizePackage: () => ({ id: 'plugin', type: 'plugin' }),
+        validatePackage: validateCursorPackage,
+      };
+    },
   });
 }
 

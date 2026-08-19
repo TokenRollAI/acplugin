@@ -1,27 +1,32 @@
 import {
-  bytesArtifact,
   markdownWithFrontmatter,
   type AgentCapability,
-  type ArtifactInput,
+  type AssetService,
+  type CanonicalProject,
+  type CompatibilityInput,
+  type PackageAssetInput,
   type PlatformComponentValidationContext,
-  type PlatformGenerateContext,
-} from '@tokenroll/acplugin';
+} from '@tokenroll/acplugin/sdk';
 
-/** OpenCode 1.0 暂不开放未经独立 Schema 验证的 Component 专属字段。 */
+/** OpenCode 当前不开放未经独立 Schema 验证的 Component 专属字段。 */
 const COMPONENT_FIELDS = new Set<string>();
 
 /** OpenCode Agent 可以通过 tools/permission 控制的稳定工具名称。 */
 const OPENCODE_TOOLS = ['read', 'glob', 'grep', 'edit', 'bash', 'webfetch', 'task'] as const;
 
-/**
- * 校验 OpenCode Component 专属字段，阻止任意 Frontmatter 透传。
- *
- * @param context Core 规范化并冻结后的字段校验上下文。
- */
-export function validateOpenCodeComponentFields(context: PlatformComponentValidationContext): void {
-  for (const field of Object.keys(context.fields)) {
+/** OpenCode base Workspace 的 Component 转换结果。 */
+export interface OpenCodeComponentPackage {
+  readonly assets: readonly PackageAssetInput[];
+  readonly compatibility: readonly CompatibilityInput[];
+}
+
+/** 校验 OpenCode Component namespace，不允许任意 Frontmatter 透传。 */
+export function validateOpenCodeComponent(context: PlatformComponentValidationContext): void {
+  /** fields 是 Scanner 已复制冻结的平台 namespace。 */
+  const fields = context.component.platforms.opencode ?? {};
+  for (const field of Object.keys(fields)) {
     if (!COMPONENT_FIELDS.has(field)) {
-      context.reportDiagnostic({
+      context.diagnostics.report({
         code: 'OPENCODE_COMPONENT_FIELD_UNKNOWN',
         severity: 'error',
         message: `Unknown OpenCode ${context.component.kind} field "${field}".`,
@@ -31,36 +36,27 @@ export function validateOpenCodeComponentFields(context: PlatformComponentValida
   }
 }
 
-/**
- * 把规范 Agent 能力映射为 OpenCode 工具开关。
- *
- * @param capabilities Agent 声明的规范能力。
- * @returns 每个稳定工具都显式允许或拒绝的确定性对象。
- */
+/** @returns canonical Agent capabilities 对应的完整 OpenCode 工具开关。 */
 function openCodeTools(capabilities: readonly AgentCapability[]): Readonly<Record<string, boolean>> {
-  /** 规范能力映射后的允许工具集合。 */
+  /** allowed 累积多个 capability 映射到的去重工具。 */
   const allowed = new Set<string>();
+  /** mapping 是 canonical capability 到 OpenCode 工具的稳定映射。 */
+  const mapping = {
+    'filesystem:read': ['read', 'glob', 'grep'],
+    'filesystem:write': ['edit'],
+    'search': ['glob', 'grep'],
+    'shell': ['bash'],
+    'network': ['webfetch'],
+    'delegate': ['task'],
+  } satisfies Record<AgentCapability, readonly string[]>;
   for (const capability of capabilities) {
-    /** tool 表示当前能力拥有的一个 OpenCode 工具。 */
-    for (const tool of ({
-      'filesystem:read': ['read', 'glob', 'grep'],
-      'filesystem:write': ['edit'],
-      'search': ['glob', 'grep'],
-      'shell': ['bash'],
-      'network': ['webfetch'],
-      'delegate': ['task'],
-    } satisfies Record<AgentCapability, readonly string[]>)[capability])
+    for (const tool of mapping[capability])
       allowed.add(tool);
   }
   return Object.freeze(Object.fromEntries(OPENCODE_TOOLS.map(tool => [tool, allowed.has(tool)])));
 }
 
-/**
- * 把规范 Agent 能力映射为 OpenCode permission 决策。
- *
- * @param tools 已完成能力映射的工具开关。
- * @returns 对具有副作用或外部访问能力的工具给出显式 allow/deny。
- */
+/** @returns 对有副作用或外部访问的 OpenCode 工具给出显式 allow/deny。 */
 function openCodePermissions(tools: Readonly<Record<string, boolean>>): Readonly<Record<string, string>> {
   return Object.freeze({
     edit: tools.edit ? 'allow' : 'deny',
@@ -70,96 +66,101 @@ function openCodePermissions(tools: Readonly<Record<string, boolean>>): Readonly
   });
 }
 
-/**
- * 把规范 Commands、Skills 与 Agents 转换为 OpenCode workspace 资源。
- *
- * @param context Platform generateBundle 生命周期上下文。
- * @returns 确定排序且尚未进入 DeliveryUnit Registry 的 Artifact 输入。
- */
-export function generateComponentArtifacts(context: PlatformGenerateContext): ArtifactInput[] {
-  /** 当前 Platform 累计生成的 Component Artifact。 */
-  const artifacts: ArtifactInput[] = [];
-  for (const command of context.project.commands) {
-    artifacts.push(bytesArtifact(`.opencode/commands/${command.id}.md`, markdownWithFrontmatter({
-      description: command.description,
-    }, command.body.replaceAll('{{arguments}}', '$ARGUMENTS'))));
-    context.reportCompatibility({
+/** 把 canonical Commands、Skills 与 Agents 转换为 OpenCode workspace Assets。 */
+export async function createOpenCodeComponents(
+  project: CanonicalProject,
+  assets: AssetService,
+): Promise<OpenCodeComponentPackage> {
+  /** output 只包含 Platform 自有 bytes 和 Core 授权的 Skill auxiliary refs。 */
+  const output: PackageAssetInput[] = [];
+  /** compatibility 精确覆盖三类 canonical Component。 */
+  const compatibility: CompatibilityInput[] = [];
+  for (const command of project.commands) {
+    /** Command Markdown 使用 OpenCode 原生 workspace 目录和参数占位符。 */
+    const asset = await assets.fromBytes({
+      bytes: markdownWithFrontmatter({ description: command.description }, command.body.replaceAll('{{arguments}}', '$ARGUMENTS')),
+      origin: { operation: 'component-command', subjects: [`command:${command.id}`] },
+    });
+    output.push(Object.freeze({ path: `.opencode/commands/${command.id}.md`, asset }));
+    compatibility.push(Object.freeze({
       subject: `command:${command.id}`,
       capability: 'component',
       level: 'native',
-      reason: 'OpenCode supports workspace Commands and the $ARGUMENTS placeholder.',
-    });
+      reason: 'OpenCode supports native workspace Commands and the $ARGUMENTS placeholder.',
+    }));
     if (command.argumentHint !== undefined) {
-      context.reportCompatibility({
+      compatibility.push(Object.freeze({
         subject: `command:${command.id}`,
-        capability: 'argumentHint',
+        capability: 'argument-hint',
         level: 'degraded',
-        transformation: 'The Command remains callable without argument hint UI.',
+        transformation: 'argument-hint-omitted',
         reason: 'OpenCode Command metadata has no verified argument hint field.',
-      });
+      }));
     }
   }
-
-  for (const skill of context.project.skills) {
-    artifacts.push(bytesArtifact(`.opencode/skills/${skill.id}/SKILL.md`, markdownWithFrontmatter({
-      name: skill.id,
-      description: skill.description,
-    }, skill.body)));
-    for (const auxiliary of skill.auxiliaryFiles) {
-      artifacts.push({
-        path: `.opencode/skills/${skill.id}/${auxiliary.path}`,
-        source: { type: 'file', path: auxiliary.sourcePath },
-        mode: auxiliary.mode,
-      });
-    }
-    context.reportCompatibility({
+  for (const skill of project.skills) {
+    /** Skill 主文档使用 OpenCode 原生 Agent Skill 结构。 */
+    const asset = await assets.fromBytes({
+      bytes: markdownWithFrontmatter({ name: skill.id, description: skill.description }, skill.body),
+      origin: { operation: 'component-skill', subjects: [`skill:${skill.id}`] },
+    });
+    output.push(Object.freeze({ path: `.opencode/skills/${skill.id}/SKILL.md`, asset }));
+    for (const auxiliary of skill.auxiliaryFiles)
+      output.push(Object.freeze({ path: `.opencode/skills/${skill.id}/${auxiliary.path}`, asset: auxiliary.asset }));
+    compatibility.push(Object.freeze({
       subject: `skill:${skill.id}`,
       capability: 'component',
       level: 'native',
-      reason: 'OpenCode supports workspace Agent Skills natively.',
-    });
+      reason: 'OpenCode supports native workspace Agent Skills.',
+    }));
     if (!skill.invocation.user || !skill.invocation.model) {
-      context.reportCompatibility({
+      compatibility.push(Object.freeze({
         subject: `skill:${skill.id}`,
         capability: 'invocation',
         level: 'degraded',
-        transformation: 'The Skill remains available to both users and the model.',
-        reason: 'OpenCode has no verified independent user/model invocation switches for Skills.',
-      });
+        transformation: 'invocation-switches-omitted',
+        reason: 'OpenCode has no verified independent user and model invocation switches for Skills.',
+      }));
     }
   }
-
-  for (const agent of context.project.agents) {
-    /** 根据规范能力创建精确的工具开关。 */
+  for (const agent of project.agents) {
+    /** tools 是 portable capability 的原生完整开关映射。 */
     const tools = openCodeTools(agent.capabilities);
-    artifacts.push(bytesArtifact(`.opencode/agents/${agent.id}.md`, markdownWithFrontmatter({
-      description: agent.description,
-      mode: 'subagent',
-      tools,
-      permission: openCodePermissions(tools),
-    }, agent.body)));
-    context.reportCompatibility({
-      subject: `agent:${agent.id}`,
-      capability: 'component',
-      level: 'native',
-      reason: 'OpenCode supports workspace Subagents natively.',
+    /** Agent Markdown 使用 OpenCode 原生 Subagent 配置。 */
+    const asset = await assets.fromBytes({
+      bytes: markdownWithFrontmatter({
+        description: agent.description,
+        mode: 'subagent',
+        tools,
+        permission: openCodePermissions(tools),
+      }, agent.body),
+      origin: { operation: 'component-agent', subjects: [`agent:${agent.id}`] },
     });
-    context.reportCompatibility({
-      subject: `agent:${agent.id}`,
-      capability: 'agent.capabilities',
-      level: 'transform',
-      transformation: 'Canonical capabilities become OpenCode tools and permission fields.',
-      reason: 'OpenCode can enforce the canonical capability boundary through native configuration.',
-    });
+    output.push(Object.freeze({ path: `.opencode/agents/${agent.id}.md`, asset }));
+    compatibility.push(
+      Object.freeze({
+        subject: `agent:${agent.id}`,
+        capability: 'component',
+        level: 'native',
+        reason: 'OpenCode supports native workspace Subagents.',
+      }),
+      Object.freeze({
+        subject: `agent:${agent.id}`,
+        capability: 'agent.capabilities',
+        level: 'transform',
+        transformation: 'native-tools-and-permissions',
+        reason: 'OpenCode enforces canonical capabilities through native tools and permission fields.',
+      }),
+    );
     if (agent.model !== 'inherit') {
-      context.reportCompatibility({
+      compatibility.push(Object.freeze({
         subject: `agent:${agent.id}`,
         capability: 'agent.model',
         level: 'degraded',
-        transformation: 'OpenCode chooses its current platform default model.',
-        reason: 'acplugin does not hard-code a changing OpenCode model ID for abstract model classes.',
-      });
+        transformation: 'platform-default-model',
+        reason: 'OpenCode has no stable mapping for canonical abstract model classes.',
+      }));
     }
   }
-  return artifacts;
+  return Object.freeze({ assets: Object.freeze(output), compatibility: Object.freeze(compatibility) });
 }

@@ -1,42 +1,42 @@
-# ADR-0002：Extension 贡献顺序等于配置顺序
+# ADR-0002：Extension Contribution 无序并由 Core 集中合并
 
 - 状态：已接受
 - 日期：2026-08-08
-- 适用范围：lifecycle API v1
+- 更新：2026-08-14
+- 适用范围：Kernel v2、lifecycle API v1
 
 ## 背景
 
-Platform Adapter 针对同一个可变 Platform Draft 串行运行。`getDocument()` 返回包含前序 Extension patch 的当前文档；`patchDocument()` 与 `emitArtifact()` 则提交带 owner 的新增贡献。
+Extension 只构建一次与 Platform 无关的不可变状态，并可为每个支持的平台提供一个 `PlatformContributor`。如果 Contributor 修改共享 Package 或观察前序 Contribution，配置顺序就会成为隐式依赖，冲突也会退化为 first-writer-wins。
 
-Add-only 与 owner 隔离可以阻止替换和静默 deep merge，但不能使 Adapter 执行天然可交换。Adapter 可以先观察前序贡献，再决定另一个字段的值。同步 owner-conflict 异常也可能被 Adapter 自己捕获，除非 Core 记住该贡献已经被拒绝。
+Kernel v2 需要的是相互独立的集成、可并行收集和确定性冲突。
 
 ## 决策
 
-1. resolved config 中 `extensions[]` 的顺序就是 Extension 贡献的语义顺序。
-2. Adapter 按该顺序串行执行，并可通过 `getDocument()` 观察此前已接受的贡献。
-3. lifecycle API v1 不增加 `order`、`enforce`、Extension 依赖图或并行 Adapter；调整配置数组就是显式排序机制。
-4. Add-only 与 owner 隔离继续是强制不变量。它们限制每个 Adapter 能改什么，但不承诺产物与执行顺序无关。
-5. `patchDocument()` 或 Artifact 贡献一旦被拒绝，即使 Adapter 捕获即时异常，Core 仍必须把当前 Platform 标为无效；最终有效性由 Core 决定。
-6. 报告和测试直接描述配置顺序语义。文档不得再以“贡献可交换”为不增加 `order/enforce` 的理由。
+1. Platform 创建一份冻结的 base Package；所有匹配的 Framework/Extension Contributor 都读取同一个 base snapshot。
+2. Contributor 不能观察其他 Contribution、其他 Extension state 或可变 Package。
+3. Core 并发收集 Extension Contribution，为每条贡献绑定 owner，按稳定 owner 身份排序，再执行一次集中式 add-only merge。
+4. Contribution 只能填写已声明且为空的 Document extension point、追加 owner 已授权的 Asset，并报告兼容性；不能替换或删除 base 内容、写入未声明字段、接管 Component 或覆盖其他 owner。
+5. 重复 Document 字段、Asset 路径、兼容性 tuple，以及大小写/Unicode 归一化等价路径都会确定性失败。配置顺序不是冲突解决机制。
+6. lifecycle API v1 不增加 `order`、`enforce`、Extension 依赖图、跨 Extension state 访问或 claim/suppress 协议。
 
 ## 影响
 
-- 保持当前实现模型与官方 Adapter 兼容。
-- 第三方作者只有一套确定、可检查的排序机制。
-- 调整 Extension 顺序可能有意改变产物，必须视为配置变化。
-- 同一 extension point 冲突会失败，不会退化为 first-writer-wins。
-- 未来若要求顺序无关，必须让所有 Adapter 读取同一份 pre-adapter snapshot、缓冲声明式贡献，并由 Core 以顺序无关方式集中合并与报告；这属于新的 lifecycle API 决策。
+- 调整相互独立的 Extension 顺序不会改变成功 Package 的字节。
+- Contributor 可以并发收集而不改变语义。
+- 冲突是显式架构错误，不会产生依赖顺序的输出。
+- 真正需要协作的能力必须进入共享 Framework contract 或 Platform extension point，不能隐藏在 Extension 顺序中。
 
 ## 未采用方案
 
-- 宣称 add-only 天然可交换：与 `getDocument()` 及 first-writer owner 事实冲突。
-- 增加 `enforce:'pre'|'post'`：引入第二套排序语言，却不能解决数据依赖。
-- 按 Extension 名称排序：虽然确定，但会忽略用户配置顺序并改变现有行为。
-- 1.0 引入 pre-adapter snapshot：需要缓冲贡献协议，并改变当前 Adapter 可观察内容。
+- 按配置顺序串行修改：会产生未声明依赖图和可观察的部分状态。
+- `enforce: 'pre' | 'post'`：增加排序词汇，却没有定义安全的数据依赖。
+- last-writer-wins：破坏 owner 隔离，并掩盖互不兼容的集成。
+- 直接替换 Platform 或 suppress Component：把权限模型扩张到 additive integration 之外。
 
 ## 证据
 
-- `packages/core/src/contracts.ts:266-283`
-- `packages/core/src/documents.ts:198-236,305-325`
-- `packages/core/src/lifecycle.ts:543-580`
-- 规范 §9.3 与 §9.4
+- `packages/core/src/resources/extension-provider.ts`
+- `packages/core/src/package/package-registry.ts`
+- `packages/core/src/kernel/build-session.ts`
+- `packages/core/src/kernel-types.ts`（`PlatformContributor`、`ContributionContext`、`PackageContribution`）

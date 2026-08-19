@@ -5,16 +5,19 @@ import matter from 'gray-matter';
 import semver from 'semver';
 import parseSpdxExpression from 'spdx-expression-parse';
 import { input } from '@inquirer/prompts';
-import mcp, { defineMcpServer } from '@tokenroll/acplugin-extension-mcp';
-import claudeCode from '@tokenroll/acplugin-platform-claude-code';
+import { publicPackageRange } from '../ecosystem-versions.js';
 import {
   defineConfig,
   runProject,
+} from '../index.js';
+import {
+  defineExtension,
+  definePlatform,
   stableJson,
   type AgentCapability,
   type Diagnostic,
   type PluginMetadata,
-} from '../index.js';
+} from '@acplugin/core';
 import {
   cleanupTempDir,
   downloadGitHubRepo,
@@ -48,16 +51,125 @@ const MIGRATION_VALIDATION_API = Symbol.for('tokenroll.acplugin.migration-valida
 /** 并发 Migration 共享同一组不可变公开 API 时用于延迟删除全局桥接。 */
 let activeValidationProxies = 0;
 
-/** 临时代理读取的正式主包、Claude Code Platform 与 MCP Extension 公开 API。 */
+/**
+ * 校验 Migration 生成的 plain MCP descriptor。
+ *
+ * 这不是正式 MCP Extension 的替代实现；它只证明 Migration 自己写出的 TypeScript
+ * 可以由 Core Module Service 执行，正式语义仍由生成工程安装的官方 Extension 校验。
+ *
+ * @param definition Migration 生成源码提交的远程 HTTP 描述。
+ */
+function validateMigrationMcpServer(definition: unknown): void {
+  if (definition === null || typeof definition !== 'object' || Array.isArray(definition))
+    throw new TypeError('Migration MCP descriptor must export an object.');
+  /** 原型约束阻止 Migration 产物借助类实例携带隐藏行为。 */
+  const prototype = Object.getPrototypeOf(definition);
+  if (prototype !== Object.prototype && prototype !== null)
+    throw new TypeError('Migration MCP descriptor must export a plain object.');
+  /** descriptor 的最小安全字段视图。 */
+  const candidate = definition as Record<string, unknown>;
+  if (Object.getOwnPropertySymbols(candidate).length > 0
+    || Object.values(Object.getOwnPropertyDescriptors(candidate)).some(descriptor => !('value' in descriptor)))
+    throw new TypeError('Migration MCP descriptor must not use symbols or accessors.');
+  if (candidate.transport !== 'http' || typeof candidate.url !== 'string')
+    throw new TypeError('Migration MCP descriptor must use the remote HTTP transport.');
+  /** Migration 只会自动生成无凭据的 HTTPS endpoint。 */
+  const endpoint = new URL(candidate.url);
+  if (endpoint.protocol !== 'https:' || endpoint.username || endpoint.password)
+    throw new TypeError('Migration MCP descriptor must use a credential-free HTTPS URL.');
+}
+
+/** Migration 提交前验证使用的无产物 Platform，不包含任何官方 Platform 逻辑。 */
+const migrationValidationPlatform = definePlatform({
+  // Migration may preserve verified Claude-specific fields, so Scanner must see the target ID.
+  id: 'claude-code',
+  apiVersion: '1',
+  deliveryType: 'plugin',
+  /** Migration 验证使用完整 v2 Session，但不实现任何官方 Platform 转换。 */
+  createSession: () => ({
+    /** 只声明 Scanner 已接受的 Component 与 metadata，不产生候选 Asset。 */
+    createPackage: ({ project }) => ({
+      documents: [],
+      assets: [],
+      compatibility: [...project.commands, ...project.skills, ...project.agents].map(component => ({
+        subject: `${component.kind}:${component.id}`,
+        capability: 'component',
+        level: 'native' as const,
+        reason: 'The migration validation Platform accepts canonical resources.',
+      })),
+      metadata: [
+        'name', 'version', 'description',
+        ...(project.metadata.displayName === undefined ? [] : ['displayName']),
+        ...(project.metadata.author === undefined
+          ? []
+          : [
+              'author.name',
+              ...(project.metadata.author.email === undefined ? [] : ['author.email']),
+              ...(project.metadata.author.url === undefined ? [] : ['author.url']),
+            ]),
+        ...(project.metadata.homepage === undefined ? [] : ['homepage']),
+        ...(project.metadata.repository === undefined ? [] : ['repository']),
+        ...(project.metadata.license === undefined ? [] : ['license']),
+        ...(project.metadata.keywords.length === 0 ? [] : ['keywords']),
+      ].map(field => ({
+        field,
+        disposition: 'emitted' as const,
+        output: `manifest/${field.replaceAll('.', '/')}`,
+        reason: 'The migration validation Platform accepts this metadata field.',
+      })),
+    }),
+    /** 使用固定主 Package 身份完成正式 lifecycle。 */
+    finalizePackage: () => ({ id: 'plugin', type: 'plugin' }),
+    /** Migration 私有 Platform 没有额外候选格式规则。 */
+    validatePackage: () => undefined,
+  }),
+});
+
+/** Migration 提交前执行自己生成的 MCP descriptor，并声明 mcp root 所有权。 */
+const migrationValidationMcp = defineExtension({
+  id: 'migration-validation-mcp',
+  apiVersion: '1',
+  resourceRoots: ['mcp'],
+  /** 每轮验证创建隔离的 descriptor Module Session。 */
+  createSession: () => ({
+    /** 通过 v2 SourceRef/ModuleService fresh evaluate 每个生成 descriptor。 */
+    async discover({ roots, sources, modules }) {
+      /** 配置声明的 mcp root 是当前 Extension 唯一可读来源。 */
+      const root = roots.mcp;
+      if (root === undefined)
+        return undefined;
+      /** mcp root 只接受一层稳定 Server 目录。 */
+      const entries = await sources.list(root);
+      /** count 只用于证明所有 descriptor 均已通过执行验证。 */
+      let count = 0;
+      for (const entry of entries) {
+        if (entry.type !== 'directory')
+          throw new TypeError('Migration MCP entries must be directories.');
+        /** 每个 Server 目录的固定作者入口。 */
+        const descriptor = await sources.file(entry.directory, 'mcp.ts');
+        /** 默认导出必须跨越正式 Module Host 数据边界。 */
+        const value = await modules.loadDefault({ id: entry.name, entry: descriptor });
+        validateMigrationMcpServer(value);
+        count += 1;
+      }
+      return Object.freeze({ count });
+    },
+    /** Migration descriptor 没有 Platform delivery subject，只验证模块本身。 */
+    validate: (_context, discovered) => ({ state: discovered, subjects: [] }),
+    /** 无 Contributor 时 Core 会跳过 build；该方法只满足完整 Session contract。 */
+    build: (_context, validated) => ({ state: validated }),
+    contributors: [],
+  }),
+});
+
+/** 临时代理读取的主包与 Migration 私有验证 API。 */
 interface MigrationValidationApi {
   /** 生成配置使用的公开恒等辅助函数。 */
   readonly defineConfig: typeof defineConfig;
-  /** 空 Component 工程显式选择 Claude Code 时使用的公开 Platform 工厂。 */
-  readonly claudeCode: typeof claudeCode;
-  /** 安全远程 MCP 描述使用的公开 Extension 工厂。 */
-  readonly mcp: typeof mcp;
-  /** 每个迁移后 mcp.ts 必须实际调用的品牌化定义工厂。 */
-  readonly defineMcpServer: typeof defineMcpServer;
+  /** 不生成产物、只驱动正式 Core Scanner 的 Migration 私有 Platform。 */
+  readonly migrationValidationPlatform: typeof migrationValidationPlatform;
+  /** 只通过 v2 Module Service 验证 Migration 生成 MCP descriptor 的私有 Extension。 */
+  readonly migrationValidationMcp: typeof migrationValidationMcp;
 }
 
 /** 控制旧 Claude 工程、Plugin 或 Marketplace 到规范工程的迁移。 */
@@ -827,14 +939,14 @@ function remoteMcpSource(server: MCPServer): string | undefined {
   }
   /** 按稳定格式组装的类型化 MCP 描述源码行。 */
   const descriptor = [
-    `import { defineMcpServer } from '@tokenroll/acplugin-extension-mcp';`,
+    `import type { McpServer } from '@tokenroll/acplugin-extension-mcp';`,
     '',
-    'export default defineMcpServer({',
+    'export default {',
     `  transport: 'http',`,
     `  url: ${JSON.stringify(endpoint.href)},`,
     ...(auth ? [`  auth: ${JSON.stringify(auth)},`] : []),
     ...(Object.keys(headers).length ? [`  headers: ${JSON.stringify(headers, null, 2).replaceAll('\n', '\n  ')},`] : []),
-    '});',
+    '} satisfies McpServer;',
     '',
   ];
   return descriptor.join('\n');
@@ -1306,7 +1418,7 @@ async function metadataFor(scan: ScanResult, options: MigrationOptions, items: M
     ...(homepage === undefined ? {} : { homepage }),
     ...(repository === undefined ? {} : { repository }),
     ...(license === undefined ? {} : { license }),
-    ...(keywords === undefined ? {} : { keywords }),
+    keywords: keywords ?? [],
   };
   items.push(migrationItem({ kind: 'metadata', id: name, source, destination: 'acplugin.config.ts' }, fields));
   return metadata;
@@ -1326,11 +1438,20 @@ async function metadataFor(scan: ScanResult, options: MigrationOptions, items: M
 async function validateCanonicalProject(
   outputRoot: string,
   usesMcp: boolean,
+  metadata: PluginMetadata,
 ): Promise<readonly Diagnostic[]> {
-  /** 只供本次配置加载解析两个正式包名的临时依赖根。 */
+  /** 只供本次配置和 descriptor 加载解析包名的临时依赖根。 */
   const nodeModules = path.join(outputRoot, 'node_modules');
-  /** 全局桥接只包含公开工厂，不暴露 Core Registry 或生命周期入口。 */
-  const api: MigrationValidationApi = Object.freeze({ defineConfig, claudeCode, mcp, defineMcpServer });
+  /** 最终生成配置在验证期间由等价元数据的私有验证配置暂时替代。 */
+  const configPath = path.join(outputRoot, 'acplugin.config.ts');
+  /** 验证后必须恢复的最终用户配置文本。 */
+  const generatedConfig = await fs.readFile(configPath, 'utf8');
+  /** 全局桥接不暴露 Core Registry，也不引用或内联任何官方集成实现。 */
+  const api: MigrationValidationApi = Object.freeze({
+    defineConfig,
+    migrationValidationPlatform,
+    migrationValidationMcp,
+  });
   Reflect.set(globalThis, MIGRATION_VALIDATION_API, api);
   activeValidationProxies += 1;
   try {
@@ -1346,23 +1467,11 @@ async function validateCanonicalProject(
 const api = globalThis[Symbol.for('tokenroll.acplugin.migration-validation-api')];
 if (!api) throw new Error('Migration validation API is unavailable.');
 export const defineConfig = api.defineConfig;
-`);
-    /** 独立 Platform 代理保持生成配置与正式 package 边界一致。 */
-    const platformPackage = path.join(nodeModules, '@tokenroll/acplugin-platform-claude-code');
-    await copyText(path.join(platformPackage, 'package.json'), stableJson({
-      name: '@tokenroll/acplugin-platform-claude-code',
-      version: '1.0.0',
-      type: 'module',
-      exports: './index.mjs',
-    }));
-    await copyText(path.join(platformPackage, 'index.mjs'), `
-const api = globalThis[Symbol.for('tokenroll.acplugin.migration-validation-api')];
-if (!api) throw new Error('Migration validation API is unavailable.');
-export const claudeCode = api.claudeCode;
-export default api.claudeCode;
+export const migrationValidationPlatform = api.migrationValidationPlatform;
+export const migrationValidationMcp = api.migrationValidationMcp;
 `);
     if (usesMcp) {
-      /** 临时 Extension 代理同时服务配置工厂和每个 mcp.ts 的定义工厂导入。 */
+      /** 临时 MCP 包只为生成源码中的 type-only import 提供可解析包身份。 */
       const extensionPackage = path.join(nodeModules, '@tokenroll/acplugin-extension-mcp');
       await copyText(path.join(extensionPackage, 'package.json'), stableJson({
         name: '@tokenroll/acplugin-extension-mcp',
@@ -1370,13 +1479,23 @@ export default api.claudeCode;
         type: 'module',
         exports: './index.mjs',
       }));
-      await copyText(path.join(extensionPackage, 'index.mjs'), `
-const api = globalThis[Symbol.for('tokenroll.acplugin.migration-validation-api')];
-if (!api) throw new Error('Migration validation API is unavailable.');
-export const defineMcpServer = api.defineMcpServer;
-export default api.mcp;
-`);
+      await copyText(path.join(extensionPackage, 'index.mjs'), 'export {};\n');
     }
+    /** 用相同元数据驱动 Core Scanner；正式 Platform/Extension 在安装依赖后自行验证。 */
+    await fs.writeFile(configPath, `
+import {
+  defineConfig,
+  migrationValidationMcp,
+  migrationValidationPlatform,
+} from '@tokenroll/acplugin';
+
+export default defineConfig({
+  ...${stableJson(metadata).trim()},
+  extensions: ${usesMcp ? '[migrationValidationMcp]' : '[]'},
+  platforms: [migrationValidationPlatform],
+  build: { strict: false },
+});
+`);
     /** 正式配置加载、Scanner、Extension 和全部配置 Platform validate 的公开结果。 */
     const result = await runProject({
       cwd: outputRoot,
@@ -1390,11 +1509,12 @@ export default api.mcp;
     const diagnostics: readonly Diagnostic[] = Object.freeze([{
       code: 'MIGRATION_PROJECT_VALIDATION_FAILED',
       severity: 'error',
-      phase: 'migration',
+      phase: 'validate',
       message: 'The generated project could not be loaded and validated through the public API.',
     }]);
     return diagnostics;
   } finally {
+    await fs.writeFile(configPath, generatedConfig);
     await fs.rm(nodeModules, { recursive: true, force: true });
     activeValidationProxies -= 1;
     if (activeValidationProxies === 0)
@@ -1578,13 +1698,13 @@ async function writeCanonicalProject(
   await copyText(path.join(outputRoot, 'acplugin.config.ts'), `${imports.join('\n')}\n\n${configLines.join('\n')}\n`);
   /** 新工程基础开发依赖及按需追加的官方 MCP Extension。 */
   const devDependencies: Record<string, string> = {
-    '@tokenroll/acplugin': '^0.0.1-beta',
-    '@tokenroll/acplugin-platform-claude-code': '^0.0.1-beta',
+    '@tokenroll/acplugin': publicPackageRange('@tokenroll/acplugin'),
+    '@tokenroll/acplugin-platform-claude-code': publicPackageRange('@tokenroll/acplugin-platform-claude-code'),
     'typescript': '^7.0.2',
     '@types/node': '^20.19.0',
   };
   if (usesMcp)
-    devDependencies['@tokenroll/acplugin-extension-mcp'] = '^0.0.1-beta';
+    devDependencies['@tokenroll/acplugin-extension-mcp'] = publicPackageRange('@tokenroll/acplugin-extension-mcp');
   await copyText(path.join(outputRoot, 'package.json'), stableJson({
     name: metadata.name,
     version: metadata.version,
@@ -1598,7 +1718,7 @@ async function writeCanonicalProject(
   await copyText(path.join(outputRoot, '.gitignore'), 'node_modules\ndist\n.acplugin-migration/unmapped/\n');
 
   // 只有正式公开 Pipeline 能证明生成配置与实际 Extension/Platform 契约共同成立。
-  return { items, diagnostics: await validateCanonicalProject(outputRoot, usesMcp) };
+  return { items, diagnostics: await validateCanonicalProject(outputRoot, usesMcp, metadata) };
 }
 
 /**

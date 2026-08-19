@@ -14,7 +14,7 @@
 
 1. `@tokenroll/acplugin` 只承担 CLI 和公开框架 SDK，不重新导出官方 Platform/Extension。
 2. 六个官方 Platform 分别发布为 `@tokenroll/acplugin-platform-<id>`，两个 Extension 继续使用 `@tokenroll/acplugin-extension-<name>`。
-3. 所有官方集成只从 `@tokenroll/acplugin` 导入公开契约，并把它声明为 peer dependency；生产源码不得导入私有 Core。
+3. 所有官方集成只从 `@tokenroll/acplugin/sdk` 导入公开契约，并把主包声明为 peer dependency；生产源码不得导入私有 Core。
 4. `platforms` 配置必填。主包不按缺省值或 ID 加载官方实现；`init` 通过显式依赖和 import 保留默认 Claude Code/Codex 的脚手架体验。
 5. 官方集成独立版本化，以 lifecycle `apiVersion` 和主包 peer range 表达兼容性。
 6. 第三方包无需注册、无需官方 scope，也不强制命名；只要使用公开工厂和契约即可参与同一 lifecycle。
@@ -38,7 +38,8 @@
 ## 证据
 
 - `packages/acplugin/src/index.ts`
-- `packages/acplugin/src/project-config.ts`
+- `packages/acplugin/src/project.ts`
+- `packages/acplugin/src/sdk.ts`
 - `packages/acplugin/tsdown.config.ts`
 - `packages/platforms/*/package.json`
 - `packages/extensions/*/package.json`

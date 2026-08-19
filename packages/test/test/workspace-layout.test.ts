@@ -8,12 +8,12 @@ const root = fileURLToPath(new URL('../../..', import.meta.url));
 
 /** 六个官方 Platform 的目录名、公开包名与当前独立版本。 */
 const platformPackages = [
-  ['claude-code', '@tokenroll/acplugin-platform-claude-code', '0.0.1-beta'],
-  ['codex', '@tokenroll/acplugin-platform-codex', '0.0.2-beta'],
-  ['cursor', '@tokenroll/acplugin-platform-cursor', '0.0.1-beta'],
-  ['antigravity', '@tokenroll/acplugin-platform-antigravity', '0.0.1-beta'],
-  ['opencode', '@tokenroll/acplugin-platform-opencode', '0.0.1-beta'],
-  ['pi', '@tokenroll/acplugin-platform-pi', '0.0.1-beta'],
+  ['claude-code', '@tokenroll/acplugin-platform-claude-code', '0.0.2-beta'],
+  ['codex', '@tokenroll/acplugin-platform-codex', '0.0.3-beta'],
+  ['cursor', '@tokenroll/acplugin-platform-cursor', '0.0.2-beta'],
+  ['antigravity', '@tokenroll/acplugin-platform-antigravity', '0.0.2-beta'],
+  ['opencode', '@tokenroll/acplugin-platform-opencode', '0.0.2-beta'],
+  ['pi', '@tokenroll/acplugin-platform-pi', '0.0.2-beta'],
 ] as const;
 
 /** 九个独立版本的正式公开包清单路径。 */

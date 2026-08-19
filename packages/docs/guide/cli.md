@@ -6,7 +6,7 @@
 pnpm exec acplugin init [directory] [options]
 ```
 
-常用选项：`--yes`、`--name`、`--display-name`、`--description`、`--platform <platforms...>`、`--hooks`、`--mcp`、`--install`、`--json`。默认脚手架选择 Claude Code 与 Codex；这不是运行时默认。
+常用选项：`--yes`、`--name`、`--display-name`、`--description`、`--platform <platforms...>`、`--hooks`、`--mcp`、`--node-runtime`、`--install`、`--json`。默认脚手架选择 Claude Code 与 Codex；Hooks/MCP Extension 都是显式 opt-in，`--node-runtime` 则生成 Core 内建约定入口，不添加 Extension。
 
 ## 项目流水线
 
@@ -24,10 +24,9 @@ pnpm exec acplugin dev
 | `-c, --config <path>` | 使用另一个 TypeScript 配置文件 |
 | `--platform <id...>` | 只运行配置中已实例化的平台子集 |
 | `--mode development\|production` | 传给函数式配置的模式 |
-| `--strict` / `--no-strict` | 覆盖本次兼容性严格度 |
 | `--json` | stdout 只输出一个稳定 JSON 报告 |
 
-未知、重复、空或未配置的 `--platform` 会失败。旧 `--target` 已删除，不是兼容 alias。
+未知、重复、空或未配置的 `--platform` 会失败。旧 `--target` 已删除，不是兼容 alias。项目构建的 strict 策略通过 `acplugin.config.ts` 中的 `build.strict` 或 Platform factory override 配置。
 
 ## Migration
 

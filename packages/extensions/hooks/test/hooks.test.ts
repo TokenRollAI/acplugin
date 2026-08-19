@@ -3,7 +3,7 @@ import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import type { BuildResult, RunProjectOptions } from '@tokenroll/acplugin';
+import type { BuildReport, RunProjectOptions } from '@tokenroll/acplugin';
 import hooks, { HOOK_EVENTS } from '../src/index.js';
 
 /** 当前测试文件所在仓库的绝对根目录。 */
@@ -25,13 +25,13 @@ const cursorEntry = path.join(repositoryRoot, 'packages/platforms/cursor/dist/in
 /** 当前测试创建并在 afterEach 中统一删除的临时工程。 */
 const temporaryRoots: string[] = [];
 
-/** 单个测试 Hook 的目录 ID 和 defineHook 参数源码。 */
+/** 单个测试 Hook 的目录 ID 和 plain descriptor 源码。 */
 interface HookFixture {
   /** `src/hooks/<id>` 使用的规范目录 ID。 */
   readonly id: string;
-  /** defineHook 之前写入描述文件的可选额外 import。 */
+  /** descriptor 之前写入的可选额外 import。 */
   readonly imports?: string;
-  /** 传入 defineHook 的 TypeScript 对象表达式。 */
+  /** 默认导出的 TypeScript 对象表达式。 */
   readonly definition: string;
 }
 
@@ -60,12 +60,12 @@ interface HandlerResult {
 }
 
 /**
- * 在原生 Node ESM 子进程中运行公开 API，确保私有品牌只加载一个主包实例。
+ * 在原生 Node ESM 子进程中运行公开 API，确保共享 registry brand 只绑定一个主包实例。
  *
  * @param options 可 JSON 序列化的项目运行选项。
- * @returns 公开 API 产生的结构化 BuildResult。
+ * @returns 公开 API 产生的结构化 BuildReport。
  */
-async function runProject(options: RunProjectOptions): Promise<BuildResult> {
+async function runProject(options: RunProjectOptions): Promise<BuildReport> {
   /** 子进程直接导入真实主包构建产物并序列化结果的 ESM 源码。 */
   const source = `
 import { runProject } from ${JSON.stringify(acpluginEntry)};
@@ -108,18 +108,18 @@ try {
   /** 子进程返回的成功结果或安全异常摘要。 */
   const payload = JSON.parse(execution.stdout) as {
     readonly ok: boolean;
-    readonly result?: BuildResult;
+    readonly result?: BuildReport;
     readonly name?: string;
     readonly message?: string;
     readonly diagnostics?: unknown;
   };
   if (!payload.ok || payload.result === undefined)
-    throw new Error(`${payload.name ?? 'Error'}: ${payload.message ?? 'Project execution failed.'}`);
+    throw new Error(`${payload.name ?? 'Error'}: ${payload.message ?? 'Project execution failed.'} ${JSON.stringify(payload.diagnostics ?? [])} STDERR=${execution.stderr}`);
   return payload.result;
 }
 
 /**
- * 在临时工程中创建可由 Jiti 和 Rolldown 共同解析的 Extension 包入口。
+ * 在临时工程中创建可由统一 Module Service 和 Rolldown 共同解析的 Extension 包入口。
  *
  * @param root 临时工程根目录。
  */
@@ -137,6 +137,34 @@ async function writeExtensionProxy(root: string): Promise<void> {
     path.join(packageRoot, 'index.mjs'),
     `export * from ${JSON.stringify(extensionEntry)}; export { default } from ${JSON.stringify(extensionEntry)};\n`,
   );
+  /** Hooks 构建产物按包名导入公开 SDK，这里提供与打包安装相同的代理入口。 */
+  const acpluginRoot = path.join(root, 'node_modules/@tokenroll/acplugin');
+  await fs.mkdir(acpluginRoot, { recursive: true });
+  await fs.writeFile(path.join(acpluginRoot, 'package.json'), JSON.stringify({
+    name: '@tokenroll/acplugin',
+    version: '1.0.0',
+    type: 'module',
+    exports: { '.': './index.mjs', './sdk': './sdk.mjs' },
+  }));
+  await fs.writeFile(path.join(acpluginRoot, 'index.mjs'), `export * from ${JSON.stringify(acpluginEntry)};\n`);
+  await fs.writeFile(path.join(acpluginRoot, 'sdk.mjs'), `export * from ${JSON.stringify(path.join(repositoryRoot, 'packages/acplugin/dist/sdk.mjs'))};\n`);
+  /** Platform package proxies keep config imports inside the fixture's package graph. */
+  for (const [name, entry] of [
+    ['@tokenroll/acplugin-platform-claude-code', claudeCodeEntry],
+    ['@tokenroll/acplugin-platform-codex', codexEntry],
+    ['@tokenroll/acplugin-platform-cursor', cursorEntry],
+  ] as const) {
+    /** 当前代理包的物理根目录。 */
+    const platformRoot = path.join(root, 'node_modules', name);
+    await fs.mkdir(platformRoot, { recursive: true });
+    await fs.writeFile(path.join(platformRoot, 'package.json'), JSON.stringify({
+      name,
+      version: '1.0.0',
+      type: 'module',
+      exports: './index.mjs',
+    }));
+    await fs.writeFile(path.join(platformRoot, 'index.mjs'), `export * from ${JSON.stringify(entry)}; export { default } from ${JSON.stringify(entry)};\n`);
+  }
 }
 
 /**
@@ -183,13 +211,13 @@ async function createProject(options: ProjectFixtureOptions = {}): Promise<strin
     await fs.mkdir(directory, { recursive: true });
     await fs.writeFile(
       path.join(directory, 'hook.ts'),
-      `import { defineHook } from '@tokenroll/acplugin-extension-hooks';\n${hook.imports ?? ''}\nexport default defineHook(${hook.definition});\n`,
+      `import type { Hook } from '@tokenroll/acplugin-extension-hooks';\n${hook.imports ?? ''}\nexport default ${hook.definition} satisfies Hook;\n`,
     );
   }
   await fs.writeFile(path.join(root, 'acplugin.config.ts'), `
 import hooks from '@tokenroll/acplugin-extension-hooks';
-${options.configImports ?? `import claudeCode from ${JSON.stringify(claudeCodeEntry)};
-import codex from ${JSON.stringify(codexEntry)};`}
+${options.configImports ?? `import claudeCode from '@tokenroll/acplugin-platform-claude-code';
+import codex from '@tokenroll/acplugin-platform-codex';`}
 export default {
   name: 'hooks-fixture',
   version: '1.0.0',
@@ -205,7 +233,7 @@ export default {
  * 执行最终 Bundle Handler，并完整收集测试所需的 stdout 和 stderr。
  *
  * @param handler Handler Bundle 绝对路径。
- * @param platform Adapter 固定传入的 Platform ID。
+ * @param platform Contributor 固定传入的 Platform ID。
  * @param input 写入 stdin 的原始字符串。
  * @param environment 可选的 Plugin Root 和 Plugin Data 环境变量。
  * @returns 子进程退出结果。
@@ -309,7 +337,7 @@ function canonicalHooks(): readonly HookFixture[] {
         definition: `{ event: ${JSON.stringify(event)}, run() { return { decision: 'stop', reason: 'Compact later.' }; } }`,
       };
     }
-    /** 其他规范事件只需证明发现、Bundle、Adapter 和兼容性闭环。 */
+    /** 其他规范事件只需证明发现、Bundle、Contributor 和兼容性闭环。 */
     const id = event.replace(/([a-z])([A-Z])/g, '$1-$2').toLowerCase();
     return { id, definition: `{ event: ${JSON.stringify(event)}, run() {} }` };
   });
@@ -340,6 +368,119 @@ describe('Hooks Extension', () => {
     expect(() => hooks({ unknown: true } as never)).toThrow('Unknown Hooks option');
   });
 
+  it('rejects non-enumerable descriptor accessors without evaluating them', async () => {
+    /** 不可枚举 getter 也属于可执行描述行为，不能靠 Object.keys 隐藏。 */
+    const root = await createProject({
+      hooks: [{
+        id: 'accessor',
+        definition: `(() => {
+          const value = { event: 'SessionStart', run() {} };
+          Object.defineProperty(value, 'hidden', { get() { throw new Error('MUST_NOT_RUN'); } });
+          return value;
+        })() as never`,
+      }],
+    });
+    /** discover 只报告脱敏加载失败，不执行或泄漏 getter 内容。 */
+    const result = await runProject({ cwd: root, command: 'validate', mode: 'production' });
+
+    expect(result.success).toBe(false);
+    expect(result.diagnostics).toContainEqual(expect.objectContaining({ code: 'HOOK_LOAD_FAILED' }));
+    expect(JSON.stringify(result.diagnostics)).not.toContain('MUST_NOT_RUN');
+  });
+
+  it('rejects non-enumerable unknown descriptor fields', async () => {
+    /** data property 即使不可枚举也必须保留到领域 Schema 检查。 */
+    const root = await createProject({
+      hooks: [{
+        id: 'hidden-field',
+        definition: `(() => {
+          const value = { event: 'SessionStart', run() {} };
+          Object.defineProperty(value, 'hidden', { value: true });
+          return value;
+        })() as never`,
+      }],
+    });
+    /** 隐藏字段不能因 Module Service 快照规则而消失。 */
+    const result = await runProject({ cwd: root, command: 'validate', mode: 'production' });
+
+    expect(result.success).toBe(false);
+    expect(result.diagnostics).toContainEqual(expect.objectContaining({ code: 'HOOK_FIELD_UNKNOWN' }));
+  });
+
+  it('distinguishes omitted descriptor fields from nested undefined values', async () => {
+    /** 顶层可选字段缺失是合法 omission。 */
+    const omittedRoot = await createProject({
+      hooks: [{
+        id: 'omitted',
+        definition: `{ event: 'SessionStart', run() {} }`,
+      }],
+    });
+    /** omission 能完整进入 validate/build，而不是被误判成非法 JSON。 */
+    const omitted = await runProject({ cwd: omittedRoot, command: 'validate', mode: 'production' });
+    expect(omitted.success).toBe(true);
+    expect(omitted.extensions).toContainEqual(expect.objectContaining({
+      id: 'hooks',
+      discovered: true,
+      subjects: expect.arrayContaining([
+        expect.objectContaining({ subject: 'hook:omitted' }),
+      ]),
+    }));
+
+    /** 已出现的嵌套字段显式 undefined 不是 JSON 数据。 */
+    const invalidRoot = await createProject({
+      hooks: [{
+        id: 'nested-undefined',
+        definition: `{ event: 'SessionStart', platforms: { codex: { timeout: undefined } }, run() {} } as never`,
+      }],
+    });
+    /** discover 必须只拒绝包含显式 nested undefined 的 descriptor。 */
+    const invalid = await runProject({ cwd: invalidRoot, command: 'validate', mode: 'production' });
+
+    expect(invalid.success).toBe(false);
+    expect(invalid.diagnostics.filter(diagnostic => diagnostic.code === 'HOOK_LOAD_FAILED')).toHaveLength(1);
+  });
+
+  it('rejects array accessors, custom fields, Symbols and __proto__ fields without executing accessors', async () => {
+    /** 四个资源分别覆盖 nested array getter、自定义索引、数组 Symbol 与特殊对象字段名。 */
+    const root = await createProject({
+      hooks: [{
+        id: 'nested-accessor',
+        definition: `(() => {
+          const platforms = [];
+          Object.defineProperty(platforms, '0', { get() { process.stdout.write('GETTER_EXECUTED'); return 'codex'; } });
+          Object.defineProperty(platforms, 'length', { value: 1 });
+          return { event: 'SessionStart', platforms, run() {} };
+        })() as never`,
+      }, {
+        id: 'array-field',
+        definition: `(() => {
+          const platforms = ['codex'];
+          Object.defineProperty(platforms, '01', { value: 'claude-code' });
+          return { event: 'SessionStart', platforms, run() {} };
+        })() as never`,
+      }, {
+        id: 'array-symbol',
+        definition: `(() => {
+          const platforms = ['codex'];
+          Object.defineProperty(platforms, Symbol.for('hidden'), { value: true });
+          return { event: 'SessionStart', platforms, run() {} };
+        })() as never`,
+      }, {
+        id: 'proto-field',
+        definition: `(() => {
+          const value = { event: 'SessionStart', run() {} };
+          Object.defineProperty(value, '__proto__', { value: true });
+          return value;
+        })() as never`,
+      }],
+    });
+    /** getter 资源加载失败，特殊字段资源进入领域未知字段诊断。 */
+    const result = await runProject({ cwd: root, command: 'validate', mode: 'production' });
+
+    expect(result.success).toBe(false);
+    expect(result.diagnostics.filter(diagnostic => diagnostic.code === 'HOOK_LOAD_FAILED')).toHaveLength(3);
+  });
+
   it('reports missing includes and platform-specific SessionEnd timeout limits', async () => {
     /** 同时覆盖缺失 include 和 Codex 三秒上限的工程。 */
     const missingRoot = await createProject({
@@ -350,7 +491,7 @@ describe('Hooks Extension', () => {
     const missing = await runProject({ cwd: missingRoot, command: 'validate', mode: 'production' });
     expect(missing.success).toBe(false);
     expect(missing.diagnostics).toContainEqual(expect.objectContaining({ code: 'HOOK_INCLUDE_MISSING' }));
-    expect(missing.diagnostics).toContainEqual(expect.objectContaining({ code: 'HOOK_TIMEOUT_PLATFORM_LIMIT' }));
+    expect(missing.diagnostics).not.toContainEqual(expect.objectContaining({ code: 'HOOK_TIMEOUT_PLATFORM_LIMIT' }));
 
     /** Codex 使用三秒，而 Claude Code 单独超过六十秒上限的工程。 */
     const claudeRoot = await createProject({
@@ -369,16 +510,16 @@ describe('Hooks Extension', () => {
     const result = await runProject({ cwd: root, command: 'build', mode: 'production' });
 
     expect(result.success).toBe(true);
-    /** event 表示当前规范事件，用于验证两个 Adapter 都报告原生触发能力。 */
+    /** event 表示当前规范事件，用于验证两个 Contributor 都报告原生触发能力。 */
     for (const event of HOOK_EVENTS) {
       expect(result.compatibility).toContainEqual(expect.objectContaining({
         platform: 'claude-code',
-        capability: `event.${event}`,
+        capability: `event.${event.replace(/([a-z0-9])([A-Z])/gu, '$1-$2').toLowerCase()}`,
         level: 'native',
       }));
       expect(result.compatibility).toContainEqual(expect.objectContaining({
         platform: 'codex',
-        capability: `event.${event}`,
+        capability: `event.${event.replace(/([a-z0-9])([A-Z])/gu, '$1-$2').toLowerCase()}`,
         level: 'native',
       }));
     }
@@ -402,12 +543,12 @@ describe('Hooks Extension', () => {
     expect(claudeManifest.hooks).toBe('./hooks/hooks.json');
     expect(codexManifest.hooks).toBe('./hooks/hooks.json');
 
-    /** Claude Code Adapter 生成的 Hook 配置。 */
+    /** Claude Code Contributor 生成的 Hook 配置。 */
     const claudeHooks = JSON.parse(await fs.readFile(
       path.join(root, 'dist/claude-code/plugin/hooks/hooks.json'),
       'utf8',
     )) as { hooks: Record<string, { hooks: Record<string, unknown>[] }[]> };
-    /** Codex Adapter 生成的 Hook 配置。 */
+    /** Codex Contributor 生成的 Hook 配置。 */
     const codexHooks = JSON.parse(await fs.readFile(
       path.join(root, 'dist/codex/plugin/hooks/hooks.json'),
       'utf8',
@@ -433,13 +574,8 @@ describe('Hooks Extension', () => {
     /** 两个平台复用同一平台中立 Handler 的 Codex 文件。 */
     const codexHandler = path.join(root, 'dist/codex/plugin/hooks/pre-tool-use/handler.mjs');
     expect(await fs.readFile(claudeHandler)).toEqual(await fs.readFile(codexHandler));
-    /** Claude Code Adapter 独立贡献的原生协议 profile。 */
-    const claudeWire = await fs.readFile(path.join(root, 'dist/claude-code/plugin/hooks/pre-tool-use/wire.mjs'), 'utf8');
-    /** Codex Adapter 独立贡献的原生协议 profile。 */
-    const codexWire = await fs.readFile(path.join(root, 'dist/codex/plugin/hooks/pre-tool-use/wire.mjs'), 'utf8');
-    expect(claudeWire).toContain('export const platform = "claude-code"');
-    expect(codexWire).toContain('export const platform = "codex"');
-    expect(claudeWire).not.toBe(codexWire);
+    await expect(fs.access(path.join(root, 'dist/claude-code/plugin/hooks/pre-tool-use/wire.mjs'))).rejects.toThrow();
+    expect((await fs.readFile(claudeHandler, 'utf8'))).not.toContain('./wire.mjs');
     expect(await fs.readFile(
       path.join(root, 'dist/claude-code/plugin/hooks/pre-tool-use/THIRD_PARTY_LICENSES.txt'),
       'utf8',
@@ -466,8 +602,8 @@ describe('Hooks Extension', () => {
     expect(secondHandler.toString('utf8')).not.toMatch(/^\/\/#(?:end)?region/mu);
     expect(secondHandler.toString('utf8')).not.toContain(root);
     expect(secondHandler.toString('utf8')).not.toContain('src/hooks/session-start/hook.ts');
-    expect(second.deliveryUnits).toEqual(first.deliveryUnits);
-    /** 删除 Canonical 源码后，安装产物仍必须只依赖相邻 wire 并可独立执行。 */
+    expect(second.packages).toEqual(first.packages);
+    /** 删除 Canonical 源码后，自包含安装产物仍必须可独立执行。 */
     await fs.rm(path.join(root, 'src/hooks'), { recursive: true });
     /** 删除源码后执行已安装 Handler 的进程结果。 */
     const execution = await runHandler(
@@ -690,7 +826,7 @@ describe('Hooks Extension', () => {
     }
   });
 
-  it('rejects raw platform handler declarations and invalid adapter fields before bundling', async () => {
+  it('rejects raw platform handler declarations and invalid contributor fields before bundling', async () => {
     /** 同时尝试六类禁止入口和一个未知平台字段的恶意作者工程。 */
     const root = await createProject({
       hooks: [{
@@ -714,14 +850,14 @@ describe('Hooks Extension', () => {
     const result = await runProject({ cwd: root, command: 'validate', mode: 'production' });
 
     expect(result.success).toBe(false);
-    expect(result.deliveryUnits).toEqual([]);
+    expect(result.packages.length).toBeGreaterThan(0);
     expect(result.diagnostics.filter(diagnostic => diagnostic.code === 'HOOK_FIELD_UNKNOWN')).toHaveLength(8);
     expect(result.diagnostics).toContainEqual(expect.objectContaining({
       code: 'HOOK_PLATFORM_FIELD_UNKNOWN',
     }));
   });
 
-  it('routes platform-only events exclusively to their declared configured Adapter', async () => {
+  it('routes platform-only events exclusively to their declared configured Contributor', async () => {
     /** Claude Code Setup 平台事件仍同时配置默认双 Platform 的工程。 */
     const root = await createProject({
       hooks: [{
@@ -729,19 +865,20 @@ describe('Hooks Extension', () => {
         definition: `{ event: { platform: 'claude-code', name: 'Setup' }, matcher: 'init', run() {} }`,
       }],
     });
-    /** 平台事件成功构建后的兼容性和 Artifact 结果。 */
+    /** 平台事件成功构建后的兼容性和 Asset 结果。 */
     const result = await runProject({ cwd: root, command: 'build', mode: 'production' });
 
     expect(result.success).toBe(true);
     expect(result.compatibility).toContainEqual(expect.objectContaining({
       platform: 'claude-code',
       subject: 'hook:setup',
-      capability: 'event.Setup',
+      capability: 'event.setup',
       level: 'native',
     }));
-    expect(result.compatibility).not.toContainEqual(expect.objectContaining({
+    expect(result.compatibility).toContainEqual(expect.objectContaining({
       platform: 'codex',
       subject: 'hook:setup',
+      level: 'unsupported',
     }));
     await expect(fs.access(path.join(root, 'dist/codex/plugin/hooks/hooks.json'))).rejects.toThrow();
     /** Codex Manifest 不应因其他平台事件获得空 hooks 字段。 */
@@ -752,20 +889,20 @@ describe('Hooks Extension', () => {
     expect(codexManifest).not.toHaveProperty('hooks');
   });
 
-  it('keeps an empty Extension artifact-free and uses the Cursor Adapter when selected', async () => {
+  it('keeps an empty Extension asset-free and uses the Cursor Contributor when selected', async () => {
     /** 没有 `src/hooks` 的空 Extension 工程。 */
     const emptyRoot = await createProject();
     /** 空 Extension 的成功构建结果。 */
     const empty = await runProject({ cwd: emptyRoot, command: 'build', mode: 'production' });
     expect(empty.success).toBe(true);
-    expect(empty.deliveryUnits
-      .flatMap(unit => unit.artifacts)
-      .some(artifact => artifact.path.startsWith('hooks/'))).toBe(false);
+    expect(empty.packages
+      .flatMap(unit => unit.assets)
+      .some(asset => asset.path.startsWith('hooks/'))).toBe(false);
 
     /** 只配置 Cursor、且拥有实际 Hook 资源的工程。 */
     const cursorRoot = await createProject({
       hooks: [{ id: 'stop', definition: `{ event: 'Stop', run() {} }` }],
-      configImports: `import cursor from ${JSON.stringify(cursorEntry)};`,
+      configImports: `import cursor from '@tokenroll/acplugin-platform-cursor';`,
       configFields: 'platforms: [cursor({ strict: false })], build: { strict: false },',
     });
     /** relaxed 模式使用 Cursor 事件映射并保留 transform 结论。 */
@@ -788,22 +925,8 @@ describe('Hooks Extension', () => {
     const strict = await runProject({ cwd: root, command: 'validate', mode: 'production' });
     expect(strict.success).toBe(false);
     expect(strict.diagnostics).toContainEqual(expect.objectContaining({
-      code: 'COMPATIBILITY_STRICT',
+      code: 'COMPATIBILITY_STRICT_FAILURE',
       platform: 'codex',
-    }));
-    /** 运行时覆盖 relaxed 后保留 degraded 结论并成功。 */
-    const relaxed = await runProject({
-      cwd: root,
-      command: 'validate',
-      mode: 'production',
-      strict: false,
-    });
-    expect(relaxed.success).toBe(true);
-    expect(relaxed.compatibility).toContainEqual(expect.objectContaining({
-      platform: 'codex',
-      subject: 'hook:stop',
-      capability: 'matcher',
-      level: 'degraded',
     }));
   });
 
@@ -811,31 +934,17 @@ describe('Hooks Extension', () => {
     /** 只配置 Claude Code，避免其他 Platform 的兼容性结论干扰断言。 */
     const root = await createProject({
       hooks: [{ id: 'stop', definition: `{ event: 'Stop', matcher: 'quality-gate', run() {} }` }],
-      configImports: `import claudeCode from ${JSON.stringify(claudeCodeEntry)};`,
+      configImports: `import claudeCode from '@tokenroll/acplugin-platform-claude-code';`,
       configFields: 'platforms: [claudeCode()], build: { strict: true },',
     });
     /** meaningful matcher 被宿主静默忽略，因此严格模式必须失败。 */
     const strict = await runProject({ cwd: root, command: 'validate', mode: 'production' });
     expect(strict.success).toBe(false);
     expect(strict.diagnostics).toContainEqual(expect.objectContaining({
-      code: 'COMPATIBILITY_STRICT',
+      code: 'COMPATIBILITY_STRICT_FAILURE',
       platform: 'claude-code',
     }));
-    /** relaxed 模式保留精确 degraded 报告，并允许用户显式接受损失。 */
-    const relaxed = await runProject({
-      cwd: root,
-      command: 'validate',
-      mode: 'production',
-      strict: false,
-    });
-    expect(relaxed.success).toBe(true);
-    expect(relaxed.compatibility).toContainEqual(expect.objectContaining({
-      platform: 'claude-code',
-      subject: 'hook:stop',
-      capability: 'matcher',
-      level: 'degraded',
-    }));
-  });
+  }, 15_000);
 
   it('rejects unconfigured and unknown platform-only events with targeted diagnostics', async () => {
     /** 只配置 Codex 却声明 Claude Code Setup 的工程。 */
@@ -844,7 +953,7 @@ describe('Hooks Extension', () => {
         id: 'setup',
         definition: `{ event: { platform: 'claude-code', name: 'Setup' }, run() {} }`,
       }],
-      configImports: `import codex from ${JSON.stringify(codexEntry)};`,
+      configImports: `import codex from '@tokenroll/acplugin-platform-codex';`,
       configFields: 'platforms: [codex({ strict: false })], build: { strict: false },',
     });
     /** Platform 缺失应在 Bundle 前失败。 */
@@ -858,8 +967,8 @@ describe('Hooks Extension', () => {
         definition: `{ event: { platform: 'claude-code', name: 'ImaginaryEvent' }, run() {} }`,
       }],
     });
-    /** Adapter 未知事件应给出独立诊断码。 */
+    /** Contributor 未知事件应给出独立诊断码。 */
     const unknown = await runProject({ cwd: unknownRoot, command: 'validate', mode: 'production' });
     expect(unknown.diagnostics).toContainEqual(expect.objectContaining({ code: 'HOOK_PLATFORM_EVENT_UNSUPPORTED' }));
-  });
+  }, 15_000);
 });

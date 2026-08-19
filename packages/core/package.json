@@ -10,6 +10,14 @@
     ".": {
       "types": "./dist/index.d.mts",
       "import": "./dist/index.mjs"
+    },
+    "./kernel-sdk": {
+      "types": "./dist/kernel-sdk.d.mts",
+      "import": "./dist/kernel-sdk.mjs"
+    },
+    "./kernel-author": {
+      "types": "./dist/kernel-author.d.mts",
+      "import": "./dist/kernel-author.mjs"
     }
   },
   "scripts": {
@@ -18,6 +26,9 @@
     "typecheck": "tsc -p tsconfig.json"
   },
   "dependencies": {
+    "@iarna/toml": "^2.2.5",
+    "chokidar": "^5.0.0",
+    "rolldown": "catalog:",
     "semver": "^7.8.5",
     "spdx-expression-parse": "^5.0.0",
     "yaml": "^2.9.0"

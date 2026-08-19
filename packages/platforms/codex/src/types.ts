@@ -1,4 +1,4 @@
-import type { JsonValue, PluginAuthor } from '@tokenroll/acplugin';
+import type { JsonValue, PluginAuthor } from '@tokenroll/acplugin/sdk';
 import type { CodexCategory, CodexMarketplaceInstallation } from './protocol.js';
 
 export type { CodexCategory, CodexMarketplaceInstallation } from './protocol.js';
@@ -35,20 +35,11 @@ export interface CodexMarketplaceOptions {
   readonly policy?: CodexMarketplacePolicyOptions;
 }
 
-/** Command 转换为 Codex Skill 时可选择的确定性 ID 策略。 */
-export type CodexCommandGeneratedSkillIdStrategy = 'plugin-prefixed';
-
-/** Codex 从 canonical Component 生成 Skill ID 时的 opt-in 策略。 */
-export interface CodexGeneratedSkillIdsOptions {
-  readonly command?: CodexCommandGeneratedSkillIdStrategy;
-}
-
 /** 创建 Codex Platform 时可声明的公开选项。 */
 export interface CodexPlatformOptions {
   readonly strict?: boolean;
   readonly interface?: CodexInterfaceOptions;
   readonly marketplace?: CodexMarketplaceOptions;
-  readonly generatedSkillIds?: CodexGeneratedSkillIdsOptions;
 }
 
 /** Codex Plugin 清单中面向安装界面的完整展示区域。 */

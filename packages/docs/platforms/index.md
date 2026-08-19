@@ -2,7 +2,7 @@
 
 六个官方 Platform 都是独立 package。工程只安装和实例化需要的目标平台。
 
-| Platform | Package | DeliveryUnit | Component 策略 |
+| Platform | Package | 主 Package | Component 策略 |
 | --- | --- | --- | --- |
 | [Claude Code](./claude-code.md) | `@tokenroll/acplugin-platform-claude-code` | Plugin / 可选 Marketplace | Command、Skill、Agent 原生 |
 | [Codex](./codex.md) | `@tokenroll/acplugin-platform-codex` | Plugin / 可选 Marketplace | Skill 原生，Command 转 Skill，Agent 降级为 Skill |

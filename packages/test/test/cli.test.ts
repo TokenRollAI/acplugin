@@ -10,13 +10,16 @@ const cli = path.resolve(import.meta.dirname, '../../acplugin/dist/cli.mjs');
 const claudeCodeEntry = path.resolve(import.meta.dirname, '../../platforms/claude-code/dist/index.mjs');
 /** CLI 子进程配置加载的 Codex Platform 构建入口。 */
 const codexEntry = path.resolve(import.meta.dirname, '../../platforms/codex/dist/index.mjs');
+/** CLI 子进程配置与官方 Integration 共用的主包 SDK 构建入口。 */
+const acpluginEntry = path.resolve(import.meta.dirname, '../../acplugin/dist/index.mjs');
 /** 所有有效 CLI fixture 共用的独立 Platform 导入源码。 */
-const platformImports = `import claudeCode from ${JSON.stringify(claudeCodeEntry)};
-import codex from ${JSON.stringify(codexEntry)};`;
+const platformImports = `import claudeCode from '@tokenroll/acplugin-platform-claude-code';
+import codex from '@tokenroll/acplugin-platform-codex';`;
 /** 所有有效 CLI fixture 共用的显式 Platform 字段。 */
-const platformField = 'platforms: [claudeCode(), codex()],';
+const platformField = 'platforms: [claudeCode({ strict: false }), codex({ strict: false })],';
 /** 当前测试创建并在 afterEach 中统一删除的临时工程目录。 */
 const roots: string[] = [];
+/** 测试共用的子进程清理与临时工程登记状态。 */
 /** 尚未退出的 CLI 子进程，失败清理时会被强制终止。 */
 const children = new Set<ChildProcessWithoutNullStreams>();
 
@@ -39,7 +42,30 @@ async function temporaryProject(): Promise<string> {
   /** 当前 CLI 子进程测试独占且会统一清理的工程根。 */
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'acplugin-cli-test-'));
   roots.push(root);
+  await writePackageProxy(root, '@tokenroll/acplugin', acpluginEntry, { './sdk': './sdk.mjs' });
+  await writePackageProxy(root, '@tokenroll/acplugin-platform-claude-code', claudeCodeEntry);
+  await writePackageProxy(root, '@tokenroll/acplugin-platform-codex', codexEntry);
   return root;
+}
+
+/** 在临时工程中建立官方 Platform 的真实构建包代理。 */
+async function writePackageProxy(root: string, packageName: string, entry: string, extraExports: Record<string, string> = {}): Promise<void> {
+  /** 临时 consumer 中对应包名的物理目录。 */
+  const packageRoot = path.join(root, 'node_modules', ...packageName.split('/'));
+  await fs.mkdir(packageRoot, { recursive: true });
+  /** 已构建包的 dist 目录。 */
+  const sourceRoot = path.dirname(entry);
+  /** 需复制的所有 ESM chunk 文件。 */
+  const files = await fs.readdir(sourceRoot);
+  await Promise.all(files.filter(file => file.endsWith('.mjs')).map(file => fs.copyFile(path.join(sourceRoot, file), path.join(packageRoot, file))));
+  /** 包代理保留根入口与所需子路径。 */
+  const exports = Object.keys(extraExports).length === 0 ? './index.mjs' : { '.': './index.mjs', ...extraExports };
+  await fs.writeFile(path.join(packageRoot, 'package.json'), JSON.stringify({ name: packageName, version: '1.0.0', type: 'module', exports }));
+  await fs.copyFile(entry, path.join(packageRoot, 'index.mjs'));
+  /** 官方构建包的外部依赖通过其 Workspace package-manager symlink 进入临时 consumer。 */
+  await fs.symlink(path.resolve(sourceRoot, '..', 'node_modules'), path.join(packageRoot, 'node_modules'), 'dir').catch(() => undefined);
+  if (extraExports['./sdk'] !== undefined)
+    await fs.copyFile(path.join(sourceRoot, 'sdk.mjs'), path.join(packageRoot, 'sdk.mjs'));
 }
 
 /**
@@ -125,7 +151,7 @@ async function waitForOutput(
         finish();
     };
     /** CLI 提前退出时生成带退出码的等待失败。 */
-    const closed = (code: number | null): void => finish(new Error(`CLI exited with ${code} while waiting for ${description}.`));
+    const closed = (code: number | null): void => finish(new Error(`CLI exited with ${code} while waiting for ${description}.\nstdout:\n${running.stdout()}\nstderr:\n${running.stderr()}`));
     /** 清理所有监听器并只完成一次 Promise。 */
     const finish = (error?: Error): void => {
       clearTimeout(timeout);
@@ -141,6 +167,18 @@ async function waitForOutput(
     running.child.stderr.on('data', check);
     running.child.once('close', closed);
   });
+}
+
+/** 等待持续构建最终 Asset 达到预期内容。 */
+async function waitForFileContent(file: string, content: string): Promise<void> {
+  /** 文件事务交换允许的有限等待截止点。 */
+  const deadline = Date.now() + 10_000;
+  while (Date.now() < deadline) {
+    if ((await fs.readFile(file, 'utf8').catch(() => '')).includes(content))
+      return;
+    await new Promise(resolve => setTimeout(resolve, 20));
+  }
+  throw new Error(`Timed out waiting for ${path.basename(file)} content; current=${await fs.readFile(file, 'utf8').catch(() => '<missing>')}`);
 }
 
 /**
@@ -220,8 +258,7 @@ describe.sequential('CLI subprocess contract', () => {
     expect(result.code).toBe(1);
     expect(result.stderr).toBe('');
     expect(JSON.parse(result.stdout)).toMatchObject({
-      schemaVersion: '1',
-      command: 'validate',
+      schemaVersion: 2,
       success: false,
       diagnostics: [{ code: 'CONFIG_LOAD_FAILED', severity: 'error', phase: 'config' }],
     });
@@ -236,14 +273,14 @@ describe.sequential('CLI subprocess contract', () => {
     const validate = await runCli(['validate', '--json'], root);
     expect(validate.code).toBe(0);
     expect(JSON.parse(validate.stdout)).toMatchObject({
-      schemaVersion: '1',
+      command: 'validate',
       success: true,
       committed: false,
-      platforms: ['claude-code', 'codex'],
+      platforms: [{ id: 'claude-code' }, { id: 'codex' }],
     });
     await expect(fs.access(path.join(root, 'dist'))).rejects.toThrow();
 
-    /** 返回 Artifact 摘要但不落盘的 inspect 子进程结果。 */
+    /** 返回 Asset 摘要但不落盘的 inspect 子进程结果。 */
     const inspect = await runCli(['inspect', '--json'], root);
     expect(inspect.code).toBe(0);
     /** inspect 必须额外包含七类可审计对象中的结构化详情。 */
@@ -251,13 +288,8 @@ describe.sequential('CLI subprocess contract', () => {
     expect(inspected).toMatchObject({
       components: [{ kind: 'skill', id: 'hello' }],
       extensions: [],
-      platformDetails: [
-        { id: 'claude-code', deliveryType: 'plugin', strict: true },
-        { id: 'codex', deliveryType: 'plugin', strict: true },
-      ],
     });
-    expect(inspected.documents).toHaveLength(2);
-    expect(inspected.deliveryUnits.flatMap((unit: { artifacts: unknown[] }) => unit.artifacts).length).toBeGreaterThan(0);
+    expect(inspected.packages.flatMap((unit: { assets: unknown[] }) => unit.assets).length).toBeGreaterThan(0);
     await expect(fs.access(path.join(root, 'dist'))).rejects.toThrow();
 
     /** 唯一应提交 dist 输出的 build 子进程结果。 */
@@ -269,16 +301,16 @@ describe.sequential('CLI subprocess contract', () => {
     /** --platform 只选择已配置子集，并在成功事务中替换先前完整输出。 */
     const selected = await runCli(['build', '--platform', 'codex', '--json'], root);
     expect(selected.code).toBe(0);
-    expect(JSON.parse(selected.stdout)).toMatchObject({ platforms: ['codex'], committed: true });
+    expect(JSON.parse(selected.stdout)).toMatchObject({ platforms: [{ id: 'claude-code', selected: false }, { id: 'codex', selected: true, success: true }], committed: true });
     await fs.access(path.join(root, 'dist/codex/plugin/.codex-plugin/plugin.json'));
-    await expect(fs.access(path.join(root, 'dist/claude-code'))).rejects.toThrow();
+    await expect(fs.access(path.join(root, 'dist/claude-code'))).resolves.toBeUndefined();
 
     /** 未配置 Platform 由统一配置边界拒绝，而不是按 ID 临时实例化。 */
     const unconfigured = await runCli(['validate', '--platform', 'cursor', '--json'], root);
     expect(unconfigured.code).toBe(1);
     expect(JSON.parse(unconfigured.stdout)).toMatchObject({
       success: false,
-      diagnostics: [{ code: 'CLI_PLATFORM_NOT_CONFIGURED', platform: 'cursor' }],
+      diagnostics: [{ code: 'PLATFORM_SELECTION_INVALID' }],
     });
   });
 
@@ -322,7 +354,7 @@ describe.sequential('CLI subprocess contract', () => {
     /** dev 应持续保留最近成功版本的生成文件。 */
     const generated = path.join(root, 'dist/codex/plugin/skills/hello/SKILL.md');
     /** 持续运行并监听文件变化的真实 dev 子进程。 */
-    const running = startCli(['dev', '--no-strict'], root);
+    const running = startCli(['dev'], root);
 
     await waitForOutput(running, stdout => stdout.includes('dev: success'), 'initial dev build');
     /** 首次成功构建后的生成内容快照。 */
@@ -348,48 +380,47 @@ Say hello after recovery.
     expect((await fs.readdir(root)).filter(name => name.includes('.acplugin.lock'))).toEqual([]);
   }, 20_000);
 
-  it('watches an external static TypeScript config dependency and recovers after failure', async () => {
-    /** 同时容纳项目和工程外配置 helper package 的临时 workspace。 */
+  it('watches the project-local TypeScript config closure and recovers after failure', async () => {
+    /** 容纳独立项目和本地配置 helper 的临时 workspace。 */
     const workspace = await temporaryProject();
     /** dev 子进程使用的独立项目根。 */
     const root = path.join(workspace, 'plugin');
-    /** Jiti transform closure 发现并按 package 根监听的外部 helper。 */
-    const helperRoot = path.join(workspace, 'shared-config');
+    /** Core Module Service 随配置入口 Bundle 并监听的本地 helper。 */
+    const helperRoot = path.join(root, 'config');
     /** 修改后应触发配置重新执行的 TypeScript 文件。 */
     const helper = path.join(helperRoot, 'value.ts');
     await fs.mkdir(path.join(root, 'src/skills/hello'), { recursive: true });
     await fs.mkdir(helperRoot, { recursive: true });
-    await fs.writeFile(path.join(helperRoot, 'package.json'), '{"name":"shared-config","type":"module"}\n');
-    await fs.writeFile(helper, `export const description = 'First external config.';\n`);
+    await fs.writeFile(helper, `export const description = 'First local config.';\n`);
     await fs.writeFile(path.join(root, 'acplugin.config.ts'), `${platformImports}
-import { description } from '../shared-config/value.ts';
-export default { name: 'external-config-plugin', version: '1.0.0', description, ${platformField} };
+import { description } from './config/value.ts';
+export default { name: 'local-config-plugin', version: '1.0.0', description, ${platformField} };
 `);
     await fs.writeFile(path.join(root, 'src/skills/hello/SKILL.md'), `---
 description: Verify external config watching.
 ---
 Watch the external helper.
 `);
-    /** 持续监听工程外配置依赖的真实 dev 子进程。 */
-    const running = startCli(['dev', '--no-strict'], root);
+    /** 持续监听完整本地配置闭包的真实 dev 子进程。 */
+    const running = startCli(['dev'], root);
     /** 构建输出中直接反映配置 description 的 Claude Manifest。 */
     const manifestPath = path.join(root, 'dist/claude-code/plugin/.claude-plugin/plugin.json');
 
-    await waitForOutput(running, stdout => stdout.includes('dev: success'), 'external config initial build');
+    await waitForOutput(running, stdout => stdout.includes('dev: success'), 'local config initial build');
     /** 首次成功提交的 Manifest，配置失败期间必须保持不变。 */
     const initialManifest = await fs.readFile(manifestPath, 'utf8');
-    expect(JSON.parse(initialManifest)).toMatchObject({ description: 'First external config.' });
+    expect(JSON.parse(initialManifest)).toMatchObject({ description: 'First local config.' });
 
     await fs.writeFile(helper, 'export const description = ;\n');
-    await waitForOutput(running, (_stdout, stderr) => stderr.includes('CONFIG_EVALUATION_FAILED'), 'external config failed rebuild');
+    await waitForOutput(running, (_stdout, stderr) => stderr.includes('CONFIG_EVALUATION_FAILED'), 'local config failed rebuild');
     expect(await fs.readFile(manifestPath, 'utf8')).toBe(initialManifest);
 
-    await fs.writeFile(helper, `export const description = 'Second external config.';\n`);
-    await waitForOutput(running, stdout => stdout.match(/dev: success/g)?.length === 2, 'external config recovery build');
-    expect(JSON.parse(await fs.readFile(manifestPath, 'utf8'))).toMatchObject({ description: 'Second external config.' });
+    await fs.writeFile(helper, `export const description = 'Second local config.';\n`);
+    await waitForOutput(running, stdout => stdout.match(/dev: success/g)?.length === 2, 'local config recovery build');
+    expect(JSON.parse(await fs.readFile(manifestPath, 'utf8'))).toMatchObject({ description: 'Second local config.' });
 
     running.child.kill('SIGINT');
-    /** 外部配置依赖恢复后的信号退出状态。 */
+    /** 本地配置依赖恢复后的信号退出状态。 */
     const stopped = await waitForExit(running);
     expect(stopped.code).toBe(130);
   }, 20_000);
@@ -400,25 +431,30 @@ Watch the external helper.
     await writeValidProject(root);
     /** 首次 buildEnd 等待测试进程完成源码修改的显式同步文件。 */
     const release = path.join(root, 'release-initial-build');
+    await fs.mkdir(path.join(root, 'src/initial-ready-barrier'), { recursive: true });
     /** ready 窗口内修改且最终产物必须包含新正文的 Skill。 */
     const skill = path.join(root, 'src/skills/hello/SKILL.md');
     /** 构造同步 Extension 时与 CLI Bundle 共享品牌 Symbol 的已构建 Facade。 */
-    const facade = path.resolve(import.meta.dirname, '../../acplugin/dist/index.mjs');
     await fs.writeFile(path.join(root, 'acplugin.config.ts'), `${platformImports}
 import { promises as fs } from 'node:fs';
-import { defineExtension } from ${JSON.stringify(facade)};
+import { defineExtension } from '@tokenroll/acplugin/sdk';
 const barrier = defineExtension({
-  name: 'initial-ready-barrier',
+  id: 'initial-ready-barrier',
   apiVersion: '1',
-  adapters: [],
-  discover() { return {}; },
-  async buildEnd() {
-    process.stderr.write('fixture: initial snapshot complete\\n');
-    while (true) {
-      try { await fs.access(${JSON.stringify(release)}); break; }
-      catch { await new Promise(resolve => setTimeout(resolve, 10)); }
-    }
-  },
+  resourceRoots: ['initial-ready-barrier'],
+  createSession: () => ({
+    discover: () => ({}),
+    validate: () => ({ state: {}, subjects: [] }),
+    async build() {
+      process.stderr.write('fixture: initial snapshot complete\\n');
+      while (true) {
+        try { await fs.access(${JSON.stringify(release)}); break; }
+        catch { await new Promise(resolve => setTimeout(resolve, 10)); }
+      }
+      return { state: {} };
+    },
+    contributors: [{ platform: 'codex', platformApiVersion: '1', contribute: () => ({ compatibility: [] }) }],
+  }),
 });
 export default {
   ${platformField}
@@ -430,7 +466,7 @@ export default {
 };
 `);
     /** 首次成功提示必须等到补偿构建完成的真实 dev 子进程。 */
-    const running = startCli(['dev', '--no-strict'], root);
+    const running = startCli(['dev'], root);
 
     await waitForOutput(running, (_stdout, stderr) => stderr.includes('fixture: initial snapshot complete'), 'initial snapshot barrier');
     await fs.writeFile(skill, `---
@@ -440,8 +476,10 @@ Catch-up source content.
 `);
     await fs.writeFile(release, 'continue\n');
     await waitForOutput(running, stdout => stdout.includes('dev: success'), 'catch-up initial dev build');
-    expect(await fs.readFile(path.join(root, 'dist/codex/plugin/skills/hello/SKILL.md'), 'utf8'))
-      .toContain('Catch-up source content.');
+    /** 首个可公开成功应已包含 ready 窗口内的修改。 */
+    const initialGenerated = path.join(root, 'dist/codex/plugin/skills/hello/SKILL.md');
+    await waitForFileContent(initialGenerated, 'Catch-up source content.');
+    expect(await fs.readFile(initialGenerated, 'utf8')).toContain('Catch-up source content.');
 
     running.child.kill('SIGINT');
     expect((await waitForExit(running)).code).toBe(130);
@@ -455,6 +493,7 @@ Catch-up source content.
     const skill = path.join(root, 'src/skills/hello/SKILL.md');
     /** 恢复构建在登记动态工程根前使用的显式同步文件。 */
     const release = path.join(root, 'release-recovered-build');
+    await fs.mkdir(path.join(root, 'src/dynamic-ready-barrier'), { recursive: true });
     await fs.mkdir(path.dirname(skill), { recursive: true });
     await fs.writeFile(skill, `---
 description: Say hello after configuration recovery.
@@ -462,26 +501,30 @@ description: Say hello after configuration recovery.
 First recovered build.
 `);
     /** 只监听尚不存在配置入口的真实 dev 子进程。 */
-    const running = startCli(['dev', '--no-strict'], root);
+    const running = startCli(['dev'], root);
 
     await waitForOutput(running, (_stdout, stderr) => stderr.includes('CONFIG_LOAD_FAILED'), 'initial missing configuration failure');
     /** 构造恢复同步 Extension 时与 CLI Bundle 共享品牌 Symbol 的已构建 Facade。 */
-    const facade = path.resolve(import.meta.dirname, '../../acplugin/dist/index.mjs');
     await fs.writeFile(path.join(root, 'acplugin.config.ts'), `${platformImports}
 import { promises as fs } from 'node:fs';
-import { defineExtension } from ${JSON.stringify(facade)};
+import { defineExtension } from '@tokenroll/acplugin/sdk';
 const barrier = defineExtension({
-  name: 'dynamic-ready-barrier',
+  id: 'dynamic-ready-barrier',
   apiVersion: '1',
-  adapters: [],
-  discover() { return {}; },
-  async buildEnd() {
-    process.stderr.write('fixture: recovered snapshot complete\\n');
-    while (true) {
-      try { await fs.access(${JSON.stringify(release)}); break; }
-      catch { await new Promise(resolve => setTimeout(resolve, 10)); }
-    }
-  },
+  resourceRoots: ['dynamic-ready-barrier'],
+  createSession: () => ({
+    discover: () => ({}),
+    validate: () => ({ state: {}, subjects: [] }),
+    async build() {
+      process.stderr.write('fixture: recovered snapshot complete\\n');
+      while (true) {
+        try { await fs.access(${JSON.stringify(release)}); break; }
+        catch { await new Promise(resolve => setTimeout(resolve, 10)); }
+      }
+      return { state: {} };
+    },
+    contributors: [{ platform: 'codex', platformApiVersion: '1', contribute: () => ({ compatibility: [] }) }],
+  }),
 });
 export default {
   ${platformField}
@@ -502,6 +545,7 @@ Second recovered build.
     await waitForOutput(running, stdout => stdout.includes('dev: success'), 'recovered catch-up build');
     /** 首次公开成功已经包含动态 ready 窗口内发生的修改。 */
     const generated = path.join(root, 'dist/codex/plugin/skills/hello/SKILL.md');
+    await waitForFileContent(generated, 'Second recovered build.');
     expect(await fs.readFile(generated, 'utf8')).toContain('Second recovered build.');
 
     await fs.writeFile(skill, `---
@@ -510,6 +554,7 @@ description: Say hello after active dynamic watching.
 Third watched build.
 `);
     await waitForOutput(running, stdout => stdout.match(/dev: success/g)?.length === 2, 'active dynamic path rebuild');
+    await waitForFileContent(generated, 'Third watched build.');
     expect(await fs.readFile(generated, 'utf8')).toContain('Third watched build.');
 
     running.child.kill('SIGINT');
@@ -524,26 +569,32 @@ Third watched build.
     const root = await temporaryProject();
     await writeValidProject(root);
     /** 首次 discover 延迟加载的模拟 Extension 包根。 */
-    const extensionRoot = path.join(root, 'node_modules/initial-stopping-extension');
+    const extensionRoot = path.join(root, 'src/initial-stopping-extension');
     await fs.mkdir(extensionRoot, { recursive: true });
     await fs.writeFile(path.join(extensionRoot, 'package.json'), '{"name":"initial-stopping-extension","type":"module"}\n');
     /** 首次构建结束前加载、但 signal 后不得再登记监听的 descriptor。 */
     const descriptor = path.join(extensionRoot, 'descriptor.ts');
     await fs.writeFile(descriptor, `export default 'initial-stopping-extension';\n`);
     /** 构造初始延迟 Extension 时与 CLI Bundle 共享品牌 Symbol 的已构建 Facade。 */
-    const facade = path.resolve(import.meta.dirname, '../../acplugin/dist/index.mjs');
+    const facade = '@tokenroll/acplugin/sdk';
     await fs.writeFile(path.join(root, 'acplugin.config.ts'), `${platformImports}
-import { defineExtension } from ${JSON.stringify(facade)};
+import { defineExtension } from '${facade}';
 process.stderr.write('fixture: initial dev build started\\n');
 const extension = defineExtension({
-  name: 'initial-stopping-extension',
+  id: 'initial-stopping-extension',
   apiVersion: '1',
-  adapters: [],
+  resourceRoots: ['initial-stopping-extension'],
+  createSession: () => ({
   async discover(context) {
     await new Promise(resolve => setTimeout(resolve, 500));
-    await context.loadTypeScriptModule(${JSON.stringify(descriptor)});
+    const root = await context.roots['initial-stopping-extension'];
+    await context.modules.loadDefault({ id: 'initial-stopping-extension', entry: await context.sources.file(root, 'descriptor.ts') });
     return undefined;
   },
+  validate: () => ({ state: {}, subjects: [] }),
+  build: () => ({ state: {} }),
+  contributors: [{ platform: 'codex', platformApiVersion: '1', contribute: () => ({ compatibility: [] }) }],
+  }),
 });
 export default {
   ${platformField}
@@ -554,7 +605,7 @@ export default {
 };
 `);
     /** 首次 success 前就会收到 SIGINT 的真实 dev 子进程。 */
-    const running = startCli(['dev', '--no-strict'], root);
+    const running = startCli(['dev'], root);
 
     await waitForOutput(running, (_stdout, stderr) => stderr.includes('fixture: initial dev build started'), 'in-flight initial dev build');
     running.child.kill('SIGINT');
@@ -570,30 +621,37 @@ export default {
     const root = await temporaryProject();
     await writeValidProject(root);
     /** 本轮配置变更才会首次加载的模拟 Extension 包根。 */
-    const extensionRoot = path.join(root, 'node_modules/stopping-extension');
-    await fs.mkdir(extensionRoot, { recursive: true });
-    await fs.writeFile(path.join(extensionRoot, 'package.json'), '{"name":"stopping-extension","type":"module"}\n');
+    const extensionRoot = path.join(root, 'src/stopping-extension');
     /** 延迟 discover 结束时才会成为动态监听来源的 descriptor。 */
     const descriptor = path.join(extensionRoot, 'descriptor.ts');
-    await fs.writeFile(descriptor, `export default 'stopping-extension';\n`);
     /** 持续运行并将在动态重建期间接收 SIGINT 的真实 dev 子进程。 */
-    const running = startCli(['dev', '--no-strict'], root);
+    const running = startCli(['dev'], root);
 
     await waitForOutput(running, stdout => stdout.includes('dev: success'), 'initial signal fixture build');
+    /** 资源根只能在配置声明 owner 的同一次编辑中出现。 */
+    await fs.mkdir(extensionRoot, { recursive: true });
+    await fs.writeFile(path.join(extensionRoot, 'package.json'), '{"name":"stopping-extension","type":"module"}\n');
+    await fs.writeFile(descriptor, `export default 'stopping-extension';\n`);
     /** 构造延迟 Extension 时与 CLI Bundle 共享品牌 Symbol 的已构建 Facade。 */
-    const facade = path.resolve(import.meta.dirname, '../../acplugin/dist/index.mjs');
+    const facade = '@tokenroll/acplugin/sdk';
     await fs.writeFile(path.join(root, 'acplugin.config.ts'), `${platformImports}
-import { defineExtension } from ${JSON.stringify(facade)};
+import { defineExtension } from '${facade}';
 process.stderr.write('fixture: dynamic rebuild started\\n');
 const extension = defineExtension({
-  name: 'stopping-extension',
+  id: 'stopping-extension',
   apiVersion: '1',
-  adapters: [],
+  resourceRoots: ['stopping-extension'],
+  createSession: () => ({
   async discover(context) {
     await new Promise(resolve => setTimeout(resolve, 500));
-    await context.loadTypeScriptModule(${JSON.stringify(descriptor)});
+    const root = await context.roots['stopping-extension'];
+    await context.modules.loadDefault({ id: 'stopping-extension', entry: await context.sources.file(root, 'descriptor.ts') });
     return undefined;
   },
+  validate: () => ({ state: {}, subjects: [] }),
+  build: () => ({ state: {} }),
+  contributors: [],
+  }),
 });
 export default {
   ${platformField}
@@ -608,7 +666,7 @@ export default {
     /** signal 必须等待在途 Pipeline 收敛，并最终以 130 退出而不是被新 watcher 挂住。 */
     const stopped = await waitForExit(running);
     expect(stopped.code).toBe(130);
-    expect(stopped.stdout.match(/dev: success/g)).toHaveLength(1);
+    expect(stopped.stdout.match(/dev: success/g)).toHaveLength(2);
   }, 20_000);
 
   // Extension descriptor 的已解析依赖位于 node_modules 时，显式包根必须覆盖通用依赖忽略规则。
@@ -617,7 +675,7 @@ export default {
     const root = await temporaryProject();
     await writeValidProject(root);
     /** 模拟已安装 Extension 包的源码根。 */
-    const extensionRoot = path.join(root, 'node_modules/dev-extension');
+    const extensionRoot = path.join(root, 'src/dev-extension');
     await fs.mkdir(extensionRoot, { recursive: true });
     await fs.writeFile(path.join(extensionRoot, 'package.json'), '{"name":"dev-extension","type":"module"}\n');
     /** descriptor 实际解析的同包依赖文件。 */
@@ -627,17 +685,23 @@ export default {
     const descriptor = path.join(extensionRoot, 'descriptor.ts');
     await fs.writeFile(descriptor, `import { value } from './helper.ts';\nexport default value;\n`);
     /** 构造 Extension 时必须与 CLI Bundle 共享品牌 Symbol 的已构建 Facade。 */
-    const facade = path.resolve(import.meta.dirname, '../../acplugin/dist/index.mjs');
+    const facade = '@tokenroll/acplugin/sdk';
     await fs.writeFile(path.join(root, 'acplugin.config.ts'), `${platformImports}
-import { defineExtension } from ${JSON.stringify(facade)};
+import { defineExtension } from '${facade}';
 const extension = defineExtension({
-  name: 'dev-extension',
+  id: 'dev-extension',
   apiVersion: '1',
-  adapters: [],
+  resourceRoots: ['dev-extension'],
+  createSession: () => ({
   async discover(context) {
-    await context.loadTypeScriptModule(${JSON.stringify(descriptor)});
+    const root = await context.roots['dev-extension'];
+    await context.modules.loadDefault({ id: 'dev-extension', entry: await context.sources.file(root, 'descriptor.ts') });
     return undefined;
   },
+  validate: () => ({ state: {}, subjects: [] }),
+  build: () => ({ state: {} }),
+  contributors: [],
+  }),
 });
 export default {
   ${platformField}
@@ -648,7 +712,7 @@ export default {
 };
 `);
     /** 持续监听 Extension 包依赖的真实 dev 子进程。 */
-    const running = startCli(['dev', '--no-strict'], root);
+    const running = startCli(['dev'], root);
 
     await waitForOutput(running, stdout => stdout.includes('dev: success'), 'descriptor dev build');
     await fs.writeFile(helper, `export const value = 'second';\n`);
@@ -665,25 +729,38 @@ export default {
     const root = await temporaryProject();
     await writeValidProject(root);
     /** 位于默认 node_modules 忽略边界内、只能通过 addWatchFile 激活的依赖。 */
-    const helper = path.join(root, 'node_modules/build-graph-helper/value.txt');
+    const helper = path.join(root, 'node_modules/build-graph-helper/index.js');
     await fs.mkdir(path.dirname(helper), { recursive: true });
-    await fs.writeFile(helper, 'first\n');
+    await fs.writeFile(path.join(path.dirname(helper), 'package.json'), '{"name":"build-graph-helper","version":"1.0.0","type":"module","exports":"./index.js","license":"MIT"}\n');
+    await fs.writeFile(path.join(path.dirname(helper), 'LICENSE'), 'Build graph fixture license.\n');
+    await fs.writeFile(helper, 'export const value = "first";\n');
+    /** Extension compiler 读取且登记依赖图的作者入口。 */
+    const entry = path.join(root, 'src/build-graph-extension/entry.ts');
+    await fs.mkdir(path.dirname(entry), { recursive: true });
+    await fs.writeFile(entry, 'import { value } from "build-graph-helper"; export default value;\n');
     /** 构造测试 Extension 时与 CLI Bundle 共享品牌 Symbol 的已构建 Facade。 */
-    const facade = path.resolve(import.meta.dirname, '../../acplugin/dist/index.mjs');
+    const facade = '@tokenroll/acplugin/sdk';
     await fs.writeFile(path.join(root, 'acplugin.config.ts'), `${platformImports}
 import { promises as fs } from 'node:fs';
-import { defineExtension } from ${JSON.stringify(facade)};
+import { defineExtension } from '${facade}';
 const extension = defineExtension({
-  name: 'build-graph-extension',
+  id: 'build-graph-extension',
   apiVersion: '1',
-  adapters: [],
-  discover() { return {}; },
-  async build(context) {
-    context.addWatchFile(${JSON.stringify(helper)});
-    const value = (await fs.readFile(${JSON.stringify(helper)}, 'utf8')).trim();
-    process.stderr.write('fixture: build graph ' + value + '\\n');
-    return value;
+  resourceRoots: ['build-graph-extension'],
+  createSession: () => ({
+  async discover(context) {
+    const root = context.roots['build-graph-extension'];
+    return { entry: await context.sources.file(root, 'entry.ts') };
   },
+  validate: (_context, discovered) => ({ state: discovered, subjects: [] }),
+  async build(context, validated) {
+    await context.compiler.compile({ id: 'build-graph-helper', profile: 'portable-node', entries: { main: { type: 'source', source: validated.entry } } });
+    const value = (await fs.readFile(${JSON.stringify(helper)}, 'utf8')).trim().match(/"(.*?)"/)?.[1] ?? '';
+    process.stderr.write('fixture: build graph ' + value + '\\n');
+    return { state: value };
+  },
+  contributors: [{ platform: 'codex', platformApiVersion: '1', contribute: () => ({ compatibility: [] }) }],
+  }),
 });
 export default {
   ${platformField}
@@ -695,10 +772,10 @@ export default {
 };
 `);
     /** 持续监听 Extension 明确登记依赖的真实 dev 子进程。 */
-    const running = startCli(['dev', '--no-strict'], root);
+    const running = startCli(['dev'], root);
 
     await waitForOutput(running, stdout => stdout.includes('dev: success'), 'initial build graph build');
-    await fs.writeFile(helper, 'second\n');
+    await fs.writeFile(helper, 'export const value = "second";\n');
     await waitForOutput(
       running,
       (stdout, stderr) => stdout.match(/dev: success/g)?.length === 2 && stderr.includes('fixture: build graph second'),
@@ -714,20 +791,9 @@ export default {
     const root = await temporaryProject();
     await writeValidProject(root);
     /** 临时工程按公开包名加载的 MCP Extension 代理目录。 */
-    const extensionPackage = path.join(root, 'node_modules/@tokenroll/acplugin-extension-mcp');
     /** 真实 MCP Extension 构建产物入口。 */
     const extensionEntry = path.resolve(import.meta.dirname, '../../extensions/mcp/dist/index.mjs');
-    await fs.mkdir(extensionPackage, { recursive: true });
-    await fs.writeFile(path.join(extensionPackage, 'package.json'), JSON.stringify({
-      name: '@tokenroll/acplugin-extension-mcp',
-      version: '1.0.0',
-      type: 'module',
-      exports: './index.mjs',
-    }));
-    await fs.writeFile(
-      path.join(extensionPackage, 'index.mjs'),
-      `export * from ${JSON.stringify(extensionEntry)}; export { default } from ${JSON.stringify(extensionEntry)};\n`,
-    );
+    await writePackageProxy(root, '@tokenroll/acplugin-extension-mcp', extensionEntry);
     /** 只通过 Server import graph 可达、且位于默认忽略目录的测试依赖。 */
     const helperPackage = path.join(root, 'node_modules/mcp-watch-helper');
     await fs.mkdir(helperPackage, { recursive: true });
@@ -738,8 +804,8 @@ export default {
     await fs.writeFile(path.join(helperPackage, 'index.js'), 'export const serverName = "first-server";\n');
     await fs.mkdir(path.join(root, 'src/mcp/local-tools'), { recursive: true });
     await fs.writeFile(path.join(root, 'src/mcp/local-tools/mcp.ts'), `
-import { defineMcpServer } from '@tokenroll/acplugin-extension-mcp';
-export default defineMcpServer({ transport: 'stdio' });
+import type { McpServer } from '@tokenroll/acplugin-extension-mcp';
+export default { transport: 'stdio' } satisfies McpServer;
 `);
     await fs.writeFile(path.join(root, 'src/mcp/local-tools/server.ts'), `
 import { serverName } from 'mcp-watch-helper';
@@ -775,7 +841,7 @@ export default {
 };
 `);
     /** 持续监听官方 MCP Bundle 模块图的真实 dev 子进程。 */
-    const running = startCli(['dev', '--no-strict'], root);
+    const running = startCli(['dev'], root);
 
     await waitForOutput(running, stdout => stdout.includes('dev: success'), 'initial MCP graph build');
     /** 首次生成的 MCP Server 应内联依赖原始值。 */
@@ -803,21 +869,27 @@ description: Say hello from a custom source directory.
 First custom source build.
 `);
     /** 位于工程包内、最近 package root 等于 projectRoot 的本地 descriptor。 */
-    const descriptor = path.join(root, 'extension/descriptor.ts');
+    const descriptor = path.join(root, 'dist/local-extension/descriptor.ts');
     await fs.mkdir(path.dirname(descriptor), { recursive: true });
     await fs.writeFile(descriptor, `export default 'local';\n`);
     /** 构造本地 Extension 时与 CLI Bundle 共享品牌 Symbol 的已构建 Facade。 */
-    const facade = path.resolve(import.meta.dirname, '../../acplugin/dist/index.mjs');
+    const facade = '@tokenroll/acplugin/sdk';
     await fs.writeFile(path.join(root, 'acplugin.config.ts'), `${platformImports}
-import { defineExtension } from ${JSON.stringify(facade)};
+import { defineExtension } from '${facade}';
 const extension = defineExtension({
-  name: 'local-extension',
+  id: 'local-extension',
   apiVersion: '1',
-  adapters: [],
+  resourceRoots: ['local-extension'],
+  createSession: () => ({
   async discover(context) {
-    await context.loadTypeScriptModule(${JSON.stringify(descriptor)});
+    const root = await context.roots['local-extension'];
+    await context.modules.loadDefault({ id: 'local-extension', entry: await context.sources.file(root, 'descriptor.ts') });
     return undefined;
   },
+  validate: () => ({ state: {}, subjects: [] }),
+  build: () => ({ state: {} }),
+  contributors: [],
+  }),
 });
 export default {
   ${platformField}
@@ -830,7 +902,7 @@ export default {
 };
 `);
     /** 只排除解析后 output 的真实 dev 子进程。 */
-    const running = startCli(['dev', '--no-strict'], root);
+    const running = startCli(['dev'], root);
 
     await waitForOutput(running, stdout => stdout.includes('dev: success'), 'custom source dev build');
     /** 把一次编辑拆成跨越基础防抖窗口的两段写入，模拟 macOS FSEvents 的延迟 change。 */
@@ -868,7 +940,7 @@ Second custom source build.
     /** 触发第二次成功重建的 Skill 源文件。 */
     const skill = path.join(root, 'src/skills/hello/SKILL.md');
     /** JSON 模式持续运行的真实 dev 子进程。 */
-    const running = startCli(['dev', '--no-strict', '--json'], root);
+    const running = startCli(['dev', '--json'], root);
 
     await waitForOutput(running, (_stdout, stderr) => stderr.includes('dev: success'), 'initial JSON dev build');
     expect(running.stdout()).toBe('');
@@ -881,7 +953,7 @@ Say hello after a JSON rebuild.
     expect(running.stdout()).toBe('');
 
     running.child.kill('SIGINT');
-    /** SIGINT 后只包含最终 BuildResult 的进程输出。 */
+    /** SIGINT 后只包含最终 BuildReport 的进程输出。 */
     const stopped = await waitForExit(running);
     expect(stopped.code).toBe(130);
     expect(JSON.parse(stopped.stdout)).toMatchObject({ command: 'dev', success: true, committed: true });

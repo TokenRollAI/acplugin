@@ -4,7 +4,6 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import hooks, {
   CLAUDE_CODE_PLATFORM_EVENTS,
-  defineHook,
   EXTENSION_NAME,
   HOOK_EVENTS,
 } from '@tokenroll/acplugin-extension-hooks';
@@ -36,25 +35,17 @@ async function sourceTree(directory: string): Promise<string> {
 }
 
 describe('official Hooks Extension ecosystem contract', () => {
-  it('exposes the canonical author API and all six official Platform Adapters', () => {
+  it('exposes the canonical author API and immutable Extension definition', () => {
     /** 从正式公开包创建的 Hooks Extension。 */
     const extension = hooks();
-    /** 通过公开 defineHook 创建的品牌化作者定义。 */
-    const definition = defineHook({
-      event: 'SessionStart',
-      /** 空实现只用于验证公开品牌和事件字段。 */
-      run() {},
-    });
-
     expect(EXTENSION_NAME).toBe('@tokenroll/acplugin-extension-hooks');
-    expect(extension.name).toBe(EXTENSION_NAME);
-    expect(extension.adapters.map(adapter => adapter.platform)).toEqual([
-      'claude-code', 'codex', 'cursor', 'antigravity', 'opencode', 'pi',
-    ]);
     expect(Object.isFrozen(extension)).toBe(true);
-    expect(Object.isFrozen(extension.adapters)).toBe(true);
-    expect(definition.event).toBe('SessionStart');
-    expect(Object.isFrozen(definition)).toBe(true);
+    expect(extension.id).toBe('hooks');
+    expect(extension.apiVersion).toBe('1');
+    expect(extension.resourceRoots).toEqual(['hooks']);
+    expect(extension.options).toEqual({});
+    expect(Object.isFrozen(extension.resourceRoots)).toBe(true);
+    expect(Object.isFrozen(extension.options)).toBe(true);
     expect(HOOK_EVENTS).toEqual([
       'SessionStart', 'SessionEnd', 'UserPromptSubmit', 'PreToolUse',
       'PermissionRequest', 'PostToolUse', 'PreCompact', 'PostCompact',
@@ -84,7 +75,7 @@ describe('official Hooks Extension ecosystem contract', () => {
 
     expect(manifest.name).toBe('@tokenroll/acplugin-extension-hooks');
     expect(manifest.peerDependencies).toEqual({ '@tokenroll/acplugin': 'workspace:^' });
-    expect(manifest.dependencies).toEqual({ rolldown: 'catalog:' });
+    expect(manifest.dependencies).toBeUndefined();
     expect(platforms.join('\n')).not.toContain('@tokenroll/acplugin-extension-hooks');
     expect(extensionSource).not.toMatch(/\b(?:AcpluginModule|ModuleGenerateContext|TargetContribution|TargetId)\b/);
     await expect(fs.access(path.join(repositoryRoot, 'packages/module-hooks'))).rejects.toThrow();

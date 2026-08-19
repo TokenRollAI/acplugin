@@ -7,7 +7,7 @@ import {
   PI_PLATFORM_ID,
 } from './constants.js';
 
-/** Hooks Extension 当前内置 Adapter 的 Platform ID。 */
+/** Hooks Extension 当前内置 Contributor 的 Platform ID。 */
 export type HookAdapterPlatform
   = | typeof CLAUDE_CODE_PLATFORM_ID
     | typeof CODEX_PLATFORM_ID
@@ -17,47 +17,33 @@ export type HookAdapterPlatform
     | typeof PI_PLATFORM_ID;
 
 /**
- * 创建由单个 Platform Adapter 贡献的 Hook wire profile。
+ * 创建内联到平台中立 Handler 的官方 Hook wire profiles。
  *
- * profile 与平台中立 Handler 相邻安装，独立负责原生 stdin 校验、camelCase
- * 输入转换和规范结果到平台 stdout JSON 的映射。即使两个首发平台当前共享
- * 多数 wire 形态，新增 Adapter 也不需要修改或重新构建共享 Handler。
+ * profiles 负责原生 stdin 校验、camelCase 输入转换、运行目录解析和规范结果
+ * 映射。它作为稳定虚拟模块进入同一个自包含 portable-node Bundle，因此运行时
+ * 不依赖 Contributor 后续补写的 JavaScript 文件。
  *
- * @param platform 当前贡献 profile 的官方 Platform ID。
- * @returns 可作为只读 `wire.mjs` Artifact 写入 Plugin 的 ESM 源码。
+ * @returns 可作为 Core Build Service 虚拟模块的 ESM 源码。
  */
-export function createWireSource(platform: HookAdapterPlatform): string {
-  /** 当前 Platform 优先读取的 Plugin 根环境变量。 */
-  const pluginRootEnvironment = platform === CLAUDE_CODE_PLATFORM_ID
-    ? 'CLAUDE_PLUGIN_ROOT'
-    : platform === CURSOR_PLATFORM_ID
-      ? 'CURSOR_PLUGIN_ROOT'
-      : platform === ANTIGRAVITY_PLATFORM_ID
-        ? 'ANTIGRAVITY_PLUGIN_ROOT'
-        : 'PLUGIN_ROOT';
-  /** 当前 Platform 兼容读取的 Plugin 根回退环境变量。 */
-  const fallbackPluginRootEnvironment = platform === CLAUDE_CODE_PLATFORM_ID
-    ? 'PLUGIN_ROOT'
-    : 'CLAUDE_PLUGIN_ROOT';
-  /** 当前 Platform 优先读取的可写数据目录环境变量。 */
-  const pluginDataEnvironment = platform === CLAUDE_CODE_PLATFORM_ID
-    ? 'CLAUDE_PLUGIN_DATA'
-    : 'PLUGIN_DATA';
-  /** 当前 Platform 兼容读取的可写数据目录回退环境变量。 */
-  const fallbackPluginDataEnvironment = platform === CLAUDE_CODE_PLATFORM_ID
-    ? 'PLUGIN_DATA'
-    : 'CLAUDE_PLUGIN_DATA';
+export function createWireSource(): string {
+  /** 每个平台只保存环境变量名称，任何环境值都留到 Plugin 真实运行时读取。 */
+  const platformProfiles: Record<HookAdapterPlatform, readonly [string, string, string, string]> = {
+    [CLAUDE_CODE_PLATFORM_ID]: ['CLAUDE_PLUGIN_ROOT', 'PLUGIN_ROOT', 'CLAUDE_PLUGIN_DATA', 'PLUGIN_DATA'],
+    [CODEX_PLATFORM_ID]: ['PLUGIN_ROOT', 'CLAUDE_PLUGIN_ROOT', 'PLUGIN_DATA', 'CLAUDE_PLUGIN_DATA'],
+    [CURSOR_PLATFORM_ID]: ['CURSOR_PLUGIN_ROOT', 'CLAUDE_PLUGIN_ROOT', 'PLUGIN_DATA', 'CLAUDE_PLUGIN_DATA'],
+    [ANTIGRAVITY_PLATFORM_ID]: ['ANTIGRAVITY_PLUGIN_ROOT', 'CLAUDE_PLUGIN_ROOT', 'PLUGIN_DATA', 'CLAUDE_PLUGIN_DATA'],
+    [OPENCODE_PLATFORM_ID]: ['PLUGIN_ROOT', 'CLAUDE_PLUGIN_ROOT', 'PLUGIN_DATA', 'CLAUDE_PLUGIN_DATA'],
+    [PI_PLATFORM_ID]: ['PLUGIN_ROOT', 'CLAUDE_PLUGIN_ROOT', 'PLUGIN_DATA', 'CLAUDE_PLUGIN_DATA'],
+  };
   return `
-export const platform = ${JSON.stringify(platform)};
+const PLATFORM_PROFILES = ${JSON.stringify(platformProfiles)};
 
-export function contextFor(environment) {
+export function contextFor(platform, environment) {
+  const profile = PLATFORM_PROFILES[platform];
+  if (!profile) throw new Error('PLATFORM_INVALID');
   return {
-    pluginRoot: environment[${JSON.stringify(pluginRootEnvironment)}]
-      || environment[${JSON.stringify(fallbackPluginRootEnvironment)}]
-      || '',
-    pluginData: environment[${JSON.stringify(pluginDataEnvironment)}]
-      || environment[${JSON.stringify(fallbackPluginDataEnvironment)}]
-      || '',
+    pluginRoot: environment[profile[0]] || environment[profile[1]] || '',
+    pluginData: environment[profile[2]] || environment[profile[3]] || '',
   };
 }
 
@@ -111,7 +97,7 @@ function validateInput(raw, expectedEvent) {
   }
 }
 
-export function inputFor(raw, expectedEvent, declaredEvent) {
+export function inputFor(platform, raw, expectedEvent, declaredEvent) {
   if (platform !== 'claude-code' && platform !== 'codex') {
     raw = {
       ...raw,
@@ -146,7 +132,7 @@ function addContext(output, event, additionalContext) {
   output.hookSpecificOutput = { hookEventName: event, additionalContext };
 }
 
-export function outputFor(event, result) {
+export function outputFor(platform, event, result) {
   if (!result) return undefined;
   if (platform === 'opencode' || platform === 'pi') return { event, ...result };
   const output = {};

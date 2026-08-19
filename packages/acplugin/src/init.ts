@@ -2,8 +2,9 @@ import { spawn } from 'node:child_process';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { checkbox, input } from '@inquirer/prompts';
+import { publicPackageRange } from './ecosystem-versions.js';
 
-/** 控制 `acplugin init` 的交互方式、工程元数据和可选官方 Extension。 */
+/** 控制 `acplugin init` 的交互方式、工程元数据和可选框架能力。 */
 export interface InitOptions {
   /** 解析目标目录的工作目录，默认为当前进程目录。 */
   cwd?: string;
@@ -23,6 +24,8 @@ export interface InitOptions {
   hooks?: boolean;
   /** 是否在生成配置中启用官方 MCP Extension。 */
   mcp?: boolean;
+  /** 是否生成 Core 内建 Node Runtime 的约定入口模板。 */
+  nodeRuntime?: boolean;
   /** 是否在脚手架完成后运行 pnpm install。 */
   install?: boolean;
 }
@@ -55,12 +58,12 @@ const DEFAULT_PLATFORMS: readonly InitPlatformId[] = ['claude-code', 'codex'];
 
 /** 每个独立版本化官方 Platform 的 package、配置工厂导出名与脚手架依赖范围。 */
 const PLATFORM_PACKAGES: Readonly<Record<InitPlatformId, { packageName: string; factory: string; version: string }>> = {
-  'claude-code': { packageName: '@tokenroll/acplugin-platform-claude-code', factory: 'claudeCode', version: '^0.0.1-beta' },
-  'codex': { packageName: '@tokenroll/acplugin-platform-codex', factory: 'codex', version: '^0.0.2-beta' },
-  'cursor': { packageName: '@tokenroll/acplugin-platform-cursor', factory: 'cursor', version: '^0.0.1-beta' },
-  'antigravity': { packageName: '@tokenroll/acplugin-platform-antigravity', factory: 'antigravity', version: '^0.0.1-beta' },
-  'opencode': { packageName: '@tokenroll/acplugin-platform-opencode', factory: 'openCode', version: '^0.0.1-beta' },
-  'pi': { packageName: '@tokenroll/acplugin-platform-pi', factory: 'pi', version: '^0.0.1-beta' },
+  'claude-code': { packageName: '@tokenroll/acplugin-platform-claude-code', factory: 'claudeCode', version: publicPackageRange('@tokenroll/acplugin-platform-claude-code') },
+  'codex': { packageName: '@tokenroll/acplugin-platform-codex', factory: 'codex', version: publicPackageRange('@tokenroll/acplugin-platform-codex') },
+  'cursor': { packageName: '@tokenroll/acplugin-platform-cursor', factory: 'cursor', version: publicPackageRange('@tokenroll/acplugin-platform-cursor') },
+  'antigravity': { packageName: '@tokenroll/acplugin-platform-antigravity', factory: 'antigravity', version: publicPackageRange('@tokenroll/acplugin-platform-antigravity') },
+  'opencode': { packageName: '@tokenroll/acplugin-platform-opencode', factory: 'openCode', version: publicPackageRange('@tokenroll/acplugin-platform-opencode') },
+  'pi': { packageName: '@tokenroll/acplugin-platform-pi', factory: 'pi', version: publicPackageRange('@tokenroll/acplugin-platform-pi') },
 };
 
 /** Plugin 名称接受的小写 kebab-case 格式。 */
@@ -167,10 +170,15 @@ export default defineConfig({
  * @param mcp 是否加入官方 MCP Extension 依赖。
  * @returns 以换行结尾的格式化 JSON。
  */
-function packageSource(name: string, platforms: readonly InitPlatformId[], hooks: boolean, mcp: boolean): string {
+function packageSource(
+  name: string,
+  platforms: readonly InitPlatformId[],
+  hooks: boolean,
+  mcp: boolean,
+): string {
   /** 根据 Extension 选择动态扩展的开发依赖映射。 */
   const devDependencies: Record<string, string> = {
-    '@tokenroll/acplugin': '^0.0.1-beta',
+    '@tokenroll/acplugin': publicPackageRange('@tokenroll/acplugin'),
     '@types/node': '^20.19.0',
     'typescript': '^7.0.2',
   };
@@ -180,9 +188,9 @@ function packageSource(name: string, platforms: readonly InitPlatformId[], hooks
     devDependencies[definition.packageName] = definition.version;
   }
   if (hooks)
-    devDependencies['@tokenroll/acplugin-extension-hooks'] = '^0.0.1-beta';
+    devDependencies['@tokenroll/acplugin-extension-hooks'] = publicPackageRange('@tokenroll/acplugin-extension-hooks');
   if (mcp)
-    devDependencies['@tokenroll/acplugin-extension-mcp'] = '^0.0.1-beta';
+    devDependencies['@tokenroll/acplugin-extension-mcp'] = publicPackageRange('@tokenroll/acplugin-extension-mcp');
   return `${JSON.stringify({
     name,
     version: '0.1.0',
@@ -290,17 +298,25 @@ export async function initializeProject(options: InitOptions): Promise<InitResul
   let hooksEnabled = options.hooks ?? false;
   /** 新工程是否启用 MCP Extension。 */
   let mcpEnabled = options.mcp ?? false;
-  if (!options.yes && process.stdin.isTTY && options.hooks === undefined && options.mcp === undefined) {
-    /** 用户在统一 Extension 复选提示中选择的功能。 */
+  /** 新工程是否生成 Core 内建 Node Runtime 模板。 */
+  let nodeRuntimeEnabled = options.nodeRuntime ?? false;
+  if (!options.yes
+    && process.stdin.isTTY
+    && options.hooks === undefined
+    && options.mcp === undefined
+    && options.nodeRuntime === undefined) {
+    /** 用户在统一可选能力提示中选择的功能。 */
     const selected = await checkbox({
-      message: 'Optional Extensions',
+      message: 'Optional Features',
       choices: [
         { name: 'Hooks', value: 'hooks' },
         { name: 'MCP', value: 'mcp' },
+        { name: 'Node Runtime', value: 'node-runtime' },
       ],
     });
     hooksEnabled = selected.includes('hooks');
     mcpEnabled = selected.includes('mcp');
+    nodeRuntimeEnabled = selected.includes('node-runtime');
   }
 
   /** 默认 Skill 的目录，也是 mkdir 一次创建整个工程树的锚点。 */
@@ -310,6 +326,8 @@ export async function initializeProject(options: InitOptions): Promise<InitResul
     await fs.mkdir(path.join(directory, 'src', 'hooks'), { recursive: true });
   if (mcpEnabled)
     await fs.mkdir(path.join(directory, 'src', 'mcp'), { recursive: true });
+  if (nodeRuntimeEnabled)
+    await fs.mkdir(path.join(directory, 'src', 'runtime'), { recursive: true });
   /** 初始化结果中稳定呈现的全部脚手架文件路径。 */
   const files = [
     'acplugin.config.ts',
@@ -317,11 +335,24 @@ export async function initializeProject(options: InitOptions): Promise<InitResul
     'tsconfig.json',
     '.gitignore',
     `src/skills/${name}/SKILL.md`,
+    ...(nodeRuntimeEnabled ? ['src/runtime/main.ts'] : []),
   ];
   // 使用 `wx` 并行写入，既减少脚手架耗时，也避免意外覆盖并发创建的文件。
   await Promise.all([
-    fs.writeFile(path.join(directory, 'acplugin.config.ts'), configSource({ name, displayName, description: description.trim(), platforms, hooks: hooksEnabled, mcp: mcpEnabled }), { flag: 'wx' }),
-    fs.writeFile(path.join(directory, 'package.json'), packageSource(name, platforms, hooksEnabled, mcpEnabled), { flag: 'wx' }),
+    fs.writeFile(path.join(directory, 'acplugin.config.ts'), configSource({
+      name,
+      displayName,
+      description: description.trim(),
+      platforms,
+      hooks: hooksEnabled,
+      mcp: mcpEnabled,
+    }), { flag: 'wx' }),
+    fs.writeFile(path.join(directory, 'package.json'), packageSource(
+      name,
+      platforms,
+      hooksEnabled,
+      mcpEnabled,
+    ), { flag: 'wx' }),
     fs.writeFile(path.join(directory, 'tsconfig.json'), `${JSON.stringify({
       compilerOptions: {
         target: 'ES2022',
@@ -340,6 +371,14 @@ description: Describe when and why to use ${displayName}.
 ---
 Replace this text with the focused workflow ${displayName} should perform.
 `, { flag: 'wx' }),
+    ...(nodeRuntimeEnabled
+      ? [
+          fs.writeFile(path.join(directory, 'src/runtime/main.ts'), `import process from 'node:process';
+
+process.stdout.write('ACPlugin Node runtime is ready.\\n');
+`, { flag: 'wx' }),
+        ]
+      : []),
   ]);
 
   /** 仅在用户显式请求时执行的依赖安装结果。 */

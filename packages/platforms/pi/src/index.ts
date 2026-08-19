@@ -1,29 +1,30 @@
-import { definePlatform, type AcpluginPlatform, type JsonObject } from '@tokenroll/acplugin';
 import {
-  generateComponentArtifacts,
+  definePlatform,
+  type AcpluginPlatform,
+  type JsonObject,
+} from '@tokenroll/acplugin/sdk';
+import {
+  createPiComponents,
+  hasGeneratedSkills,
   validateGeneratedSkillIds,
-  validatePiComponentFields,
+  validatePiComponent,
 } from './components.js';
-import { createPackageDocument, serializeDocuments, validatePlatformOptions } from './manifest.js';
+import { createPackageDocument, validatePlatformOptions } from './manifest.js';
 import type { PiPlatformOptions } from './types.js';
-import { validatePiBundle } from './validator.js';
+import { validatePiPackage } from './validator.js';
 
 export type { PiPackageOptions, PiPlatformOptions } from './types.js';
 
 /** Pi Platform 的稳定开放 ID。 */
 export const PLATFORM_ID = 'pi' as const;
+
 /** Pi Platform 实现的 Core API 版本。 */
 export const PLATFORM_API_VERSION = '1' as const;
 
-/**
- * 创建独立且可由 Core 品牌校验的 Pi Platform。
- *
- * @param options 严格度覆盖和 npm package 选项。
- * @returns Pi package 交付实现。
- */
+/** 创建只通过 Package API 交付 npm Package 的 Pi Platform。 */
 export function pi(options: PiPlatformOptions = {}): AcpluginPlatform {
   validatePlatformOptions(options);
-  /** strict 属于 Core 策略，其余字段作为 Platform 生命周期专属配置保存。 */
+  /** strict 由 Core 解释，其余选项复制、深冻后进入 Platform Session。 */
   const { strict, ...platformOptions } = options;
   return definePlatform({
     id: PLATFORM_ID,
@@ -31,25 +32,37 @@ export function pi(options: PiPlatformOptions = {}): AcpluginPlatform {
     deliveryType: 'package',
     ...(strict === undefined ? {} : { strict }),
     options: platformOptions as unknown as JsonObject,
-    validateComponentFields: validatePiComponentFields,
-    /** prepare 先验证 fallback Skill ID，再创建可由 Hooks Adapter patch 的 package Document。 */
-    prepare: (context) => {
-      validateGeneratedSkillIds(context);
-      return { documents: [createPackageDocument(context)], artifacts: [] };
+    /** Pi 不声明 Node Runtime 能力，Core 会对每个 Runtime 报告 unsupported。 */
+    createSession({ options: sessionOptions }) {
+      return {
+        validateComponent: validatePiComponent,
+        /** base Package 包含 Prompt/Skill Assets 和唯一 npm Manifest Document。 */
+        async createPackage({ project, assets, diagnostics }) {
+          /** idsValid 防止 native/fallback Skill namespace 有歧义时签发 Assets。 */
+          const idsValid = validateGeneratedSkillIds(project, diagnostics);
+          /** components 只在 namespace 完整时创建。 */
+          const components = idsValid
+            ? await createPiComponents(project, assets)
+            : { assets: Object.freeze([]), compatibility: Object.freeze([]) };
+          /** manifest 根据真实 canonical 资源声明 discovery roots。 */
+          const manifest = createPackageDocument({
+            metadata: project.metadata,
+            options: sessionOptions,
+            hasSkills: hasGeneratedSkills(project),
+            hasPrompts: project.commands.length > 0,
+          });
+          return {
+            documents: [manifest.document],
+            assets: components.assets,
+            compatibility: components.compatibility,
+            metadata: manifest.metadata,
+          };
+        },
+        /** Core 自动继承 base Assets 和无序 Hooks Contribution。 */
+        finalizePackage: () => ({ id: 'package', type: 'package' }),
+        validatePackage: validatePiPackage,
+      };
     },
-    /** generateBundle 生成 package 资源并序列化固定 package.json。 */
-    generateBundle: context => ({
-      id: 'package',
-      role: 'primary',
-      type: 'package',
-      artifacts: [
-        ...context.artifacts,
-        ...generateComponentArtifacts(context),
-        ...serializeDocuments(context.documents),
-      ],
-    }),
-    /** 最终候选必须满足 npm/Pi discovery 边界且无 workspace 泄漏。 */
-    validateBundle: validatePiBundle,
   });
 }
 

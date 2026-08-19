@@ -2,17 +2,15 @@ import {
   definePlatform,
   type AcpluginPlatform,
   type JsonObject,
-} from '@tokenroll/acplugin';
-import { generateComponentArtifacts, validateClaudeComponentFields } from './components.js';
+} from '@tokenroll/acplugin/sdk';
+import { createClaudeComponents, validateClaudeComponent } from './components.js';
 import {
-  createManifestDocument,
-  marketplaceArtifacts,
-  MARKETPLACE_MANIFEST_PATH,
-  serializeDocuments,
+  createMarketplaceAssets,
+  createPluginDocument,
   validatePlatformOptions,
 } from './manifest.js';
 import type { ClaudeCodeMarketplaceOptions, ClaudeCodePlatformOptions } from './types.js';
-import { validateClaudeBundle } from './validator.js';
+import { validateClaudePackage } from './validator.js';
 
 export type {
   ClaudeCodeMarketplaceOptions,
@@ -22,64 +20,63 @@ export type {
 
 /** Claude Code Platform 的稳定开放 ID。 */
 export const PLATFORM_ID = 'claude-code' as const;
+
 /** Claude Code Platform 实现的 Core API 版本。 */
 export const PLATFORM_API_VERSION = '1' as const;
 
-/**
- * 创建独立且可由 Core 品牌校验的 Claude Code Platform。
- *
- * @param options 严格度覆盖和 Claude Code Marketplace 选项。
- * @returns Claude Code Plugin 交付实现。
- */
+/** 创建只通过 Package API 交付 Claude Code Plugin 的 Platform。 */
 export function claudeCode(options: ClaudeCodePlatformOptions = {}): AcpluginPlatform {
   validatePlatformOptions(options);
-  /** strict 属于 Core 策略，其余字段作为 Platform 生命周期专属配置保存。 */
+  /** strict 由 Core 解释，其余选项进入复制、深冻的 Platform session 数据。 */
   const { strict, ...platformOptions } = options;
   return definePlatform({
     id: PLATFORM_ID,
     apiVersion: PLATFORM_API_VERSION,
     deliveryType: 'plugin',
+    capabilities: { nodeRuntime: { target: 'node20', format: 'esm', root: 'plugin' } },
     ...(strict === undefined ? {} : { strict }),
     options: platformOptions as unknown as JsonObject,
-    validateComponentFields: validateClaudeComponentFields,
-    /** prepare 创建 Platform 自有 Manifest，扩展点随后由 Core 接管。 */
-    prepare: context => ({ documents: [createManifestDocument(context)], artifacts: [] }),
-    /** generateBundle 只读取完成 Adapter 合并后的不可变 Draft。 */
-    generateBundle: (context) => {
-      /** Platform 转换后新增的 Commands、Skills 与 Agents。 */
-      const componentArtifacts = generateComponentArtifacts(context);
+    /** 每次 BuildSession 独立捕获 Core 已复制的只读 Platform options。 */
+    createSession({ options: sessionOptions }) {
       return {
-        id: 'plugin',
-        role: 'primary',
-        type: 'plugin',
-        artifacts: [
-          ...context.artifacts,
-          ...componentArtifacts,
-          ...serializeDocuments(context.documents),
-        ],
+        validateComponent: validateClaudeComponent,
+        /** base Package 同时声明结构化 Document、Component Assets 和完整报告输入。 */
+        async createPackage({ project, assets }) {
+          /** components 是 canonical Resource 到 Claude 原生文件的纯转换结果。 */
+          const components = await createClaudeComponents(project, assets);
+          /** manifest 由 Core codec 负责序列化，Extension 只能填写两个声明点。 */
+          const manifest = createPluginDocument({
+            metadata: project.metadata,
+            options: sessionOptions,
+            components: {
+              commands: project.commands.length,
+              skills: project.skills.length,
+              agents: project.agents.length,
+            },
+          });
+          return {
+            documents: [manifest.document],
+            assets: components.assets,
+            compatibility: components.compatibility,
+            metadata: manifest.metadata,
+          };
+        },
+        /** 主 Package 身份固定，全部 base/contribution 内容由 Core 自动继承。 */
+        finalizePackage: () => ({ id: 'plugin', type: 'plugin' }),
+        validatePackage: validateClaudePackage,
+        /** 可选 Marketplace 只能从已验证 primary 和当前回调新签发 Asset 派生。 */
+        async createDistributions(context) {
+          /** marketplace 必须来自 session 的防御性副本，不能闭包读取作者原对象。 */
+          const marketplace = sessionOptions.marketplace as ClaudeCodeMarketplaceOptions | undefined;
+          if (marketplace === undefined)
+            return Object.freeze([]);
+          return Object.freeze([{
+            id: 'marketplace',
+            type: 'marketplace' as const,
+            assets: await createMarketplaceAssets(context, marketplace),
+          }]);
+        },
       };
-    },
-    validateBundle: validateClaudeBundle,
-    /** Marketplace 可选分发始终复用已经验证的完整主 Plugin。 */
-    generateDistributions: async (context, primaryUnits) => {
-      /** 工厂未声明 marketplace 时不生成空壳 Distribution。 */
-      const marketplace = context.options.marketplace as ClaudeCodeMarketplaceOptions | undefined;
-      if (marketplace === undefined)
-        return [];
-      if (primaryUnits.length === 0)
-        throw new Error('Claude Code Marketplace requires at least one validated primary Plugin.');
-      /** 任一主 Plugin 都不能预先占用 Distribution 根清单的保留语义。 */
-      if (primaryUnits.some(primary => primary.artifacts.some(artifact => artifact.path === MARKETPLACE_MANIFEST_PATH))) {
-        context.reportDiagnostic({
-          code: 'CLAUDE_MARKETPLACE_PATH_CONFLICT',
-          severity: 'error',
-          message: 'The primary Plugin already contains the reserved Marketplace manifest path.',
-        });
-        return [];
-      }
-      /** 单项保持根布局，多项由 Platform 确定性放入各自 Plugin 子目录。 */
-      const artifacts = await marketplaceArtifacts(context, marketplace, primaryUnits);
-      return [{ id: 'marketplace', role: 'distribution', type: 'marketplace', artifacts }];
     },
   });
 }

@@ -1,12 +1,22 @@
 import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vitest/config';
 
-/** Pi 单测让公开主包与私有 Core 共享同一源码品牌实例。 */
+/** Pi 单测让公开 SDK 与私有 Core 共享同一源码品牌实例。 */
 export default defineConfig({
   resolve: {
-    alias: {
-      '@acplugin/core': fileURLToPath(new URL('../../core/src/index.ts', import.meta.url)),
-      '@tokenroll/acplugin': fileURLToPath(new URL('../../acplugin/src/index.ts', import.meta.url)),
-    },
+    alias: [
+      {
+        find: /^@tokenroll\/acplugin\/sdk$/,
+        replacement: fileURLToPath(new URL('../../acplugin/src/sdk.ts', import.meta.url)),
+      },
+      {
+        find: /^@acplugin\/core\/kernel-sdk$/,
+        replacement: fileURLToPath(new URL('../../core/src/kernel-sdk.ts', import.meta.url)),
+      },
+      {
+        find: /^@acplugin\/core$/,
+        replacement: fileURLToPath(new URL('../../core/src/index.ts', import.meta.url)),
+      },
+    ],
   },
 });

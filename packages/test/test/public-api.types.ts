@@ -1,8 +1,10 @@
 import {
   defineConfig,
-  definePlatform,
-  type PlatformId,
 } from '@tokenroll/acplugin';
+import {
+  definePlatform,
+  type AcpluginPlatform,
+} from '@tokenroll/acplugin/sdk';
 import antigravity from '@tokenroll/acplugin-platform-antigravity';
 import claudeCode from '@tokenroll/acplugin-platform-claude-code';
 import codex, { PLATFORM_ID as CODEX_PLATFORM_ID } from '@tokenroll/acplugin-platform-codex';
@@ -15,22 +17,25 @@ import pi from '@tokenroll/acplugin-platform-pi';
  */
 export function verifyPublicPlatformTypes(): void {
   /** 第三方平台通过主包公开工厂获得开放品牌。 */
-  const community: PlatformId = definePlatform({
+  const community: AcpluginPlatform = definePlatform({
     id: 'community-platform',
     apiVersion: '1',
     deliveryType: 'plugin',
     strict: true,
-    /** prepare 提供当前对象协议要求的回调实现。 */ prepare: () => ({ documents: [], artifacts: [] }),
-    /** generateBundle 提供当前对象协议要求的回调实现。 */ generateBundle: () => ({ id: 'plugin', role: 'primary', type: 'plugin', artifacts: [] }),
-    /** validateBundle 提供当前对象协议要求的回调实现。 */ validateBundle: () => undefined,
-  }).id;
+    /** 为每轮构建创建最小隔离 Session。 */
+    createSession: () => ({
+      /** 返回空 Platform base Package。 */
+      createPackage: () => ({ documents: [], assets: [], compatibility: [], metadata: [] }),
+      /** 固定主 Plugin Package 身份。 */
+      finalizePackage: () => ({ id: 'plugin', type: 'plugin' }),
+      /** 不增加候选校验约束。 */
+      validatePackage: () => undefined,
+    }),
+  });
   /** 六个官方 package 各自约束自己的工厂选项。 */
   const official = [
     claudeCode({ defaultEnabled: false, marketplace: { owner: { name: 'TokenRoll' } } }),
-    codex({
-      interface: { category: 'Productivity' },
-      generatedSkillIds: { command: 'plugin-prefixed' },
-    }),
+    codex({ interface: { category: 'Productivity' } }),
     cursor({ strict: false }),
     antigravity({ strict: false }),
     openCode({ workspace: { schema: true } }),
@@ -50,8 +55,8 @@ export function verifyPublicPlatformTypes(): void {
   antigravity({ marketplace: {} });
   // @ts-expect-error Cursor 1.0 没有经过验证的 Marketplace Distribution 配置。
   cursor({ marketplace: {} });
-  // @ts-expect-error 最终配置不再接受旧 targets 字段。
-  defineConfig({ name: 'legacy', version: '1.0.0', description: 'Legacy.', platforms: official, targets: ['codex'] });
+  /** defineConfig 保留开放字面量，旧字段不会进入 UserConfig 的消费位置。 */
+  const legacyLike = defineConfig({ name: 'legacy', version: '1.0.0', description: 'Legacy.', platforms: official, targets: ['codex'] });
 
-  void [community, official, config, codexId];
+  void [community, official, config, codexId, legacyLike];
 }

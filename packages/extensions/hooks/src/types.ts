@@ -1,6 +1,6 @@
-import type { JsonValue, PlatformId } from '@tokenroll/acplugin';
+import type { JsonValue } from '@tokenroll/acplugin/sdk';
 
-/** acplugin 1.0 在所有官方 Adapter 之间保持稳定语义的 Hook 事件。 */
+/** acplugin 1.0 在所有官方 Contributor 之间保持稳定语义的 Hook 事件。 */
 export const HOOK_EVENTS = [
   'SessionStart',
   'SessionEnd',
@@ -42,14 +42,14 @@ export const CLAUDE_CODE_PLATFORM_EVENTS = [
 /** 规范 Hook 事件名称联合类型。 */
 export type HookEvent = typeof HOOK_EVENTS[number];
 
-/** 当前 Claude Code Adapter 能识别的平台专属事件名称。 */
+/** 当前 Claude Code Contributor 能识别的平台专属事件名称。 */
 export type ClaudeCodePlatformHookEvent = typeof CLAUDE_CODE_PLATFORM_EVENTS[number];
 
 /** 把非规范事件显式限定到一个 Platform，避免悄然污染可移植事件集合。 */
 export interface PlatformHookEvent {
   /** 唯一接收该事件的 Platform ID。 */
   readonly platform: string;
-  /** 由对应 Adapter Schema 识别的平台原生事件名。 */
+  /** 由对应 Contributor Schema 识别的平台原生事件名。 */
   readonly name: string;
 }
 
@@ -133,7 +133,7 @@ export type HookInput<Event extends HookEventDeclaration = HookEventDeclaration>
 /** 由生成的 Handler 提供给用户实现的只读运行时上下文。 */
 export interface HookRuntimeContext {
   /** 当前实际触发 Handler 的 Platform。 */
-  readonly platform: PlatformId;
+  readonly platform: string;
   /** 已安装 Plugin 的只读根目录。 */
   readonly pluginRoot: string;
   /** 平台为 Plugin 提供的可写持久数据目录。 */
@@ -200,7 +200,7 @@ export interface HookResultByEvent {
 export type HookResult<Event extends HookEventDeclaration = HookEventDeclaration>
   = void | (Event extends HookEvent ? HookResultByEvent[Event] : HookAdvisoryResult);
 
-/** Claude Code Adapter 允许覆盖的单 Hook 平台字段。 */
+/** Claude Code Contributor 允许覆盖的单 Hook 平台字段。 */
 export interface ClaudeCodeHookOptions {
   /** 覆盖当前 Hook 的 Claude Code matcher。 */
   readonly matcher?: string;
@@ -210,13 +210,13 @@ export interface ClaudeCodeHookOptions {
   readonly statusMessage?: string;
 }
 
-/** Codex Adapter 允许覆盖的单 Hook 平台字段。 */
+/** Codex Contributor 允许覆盖的单 Hook 平台字段。 */
 export interface CodexHookOptions extends ClaudeCodeHookOptions {
   /** 调整 Codex 在溢写前直接注入模型的上下文 Token 上限。 */
   readonly additionalContextLimit?: number;
 }
 
-/** Cursor、Antigravity、OpenCode 与 Pi Adapter 共享的受控执行选项。 */
+/** Cursor、Antigravity、OpenCode 与 Pi Contributor 共享的受控执行选项。 */
 export interface PortableHookOptions {
   /** 覆盖当前 Hook 的工具或事件匹配表达式。 */
   readonly matcher?: string;
@@ -226,7 +226,7 @@ export interface PortableHookOptions {
   readonly statusMessage?: string;
 }
 
-/** Hook 的平台专属补充字段；已知 Platform 获得精确类型，其他键由 Adapter 验证。 */
+/** Hook 的平台专属补充字段；已知 Platform 获得精确类型，其他键由 Contributor 验证。 */
 export type HookPlatformOptions = Readonly<{
   readonly 'claude-code'?: ClaudeCodeHookOptions;
   readonly 'codex'?: CodexHookOptions;
@@ -236,59 +236,21 @@ export type HookPlatformOptions = Readonly<{
   readonly 'pi'?: PortableHookOptions;
 }> & Readonly<Record<string, unknown>>;
 
-/** 由 defineHook 注入且不出现在作者输入中的私有品牌。 */
-const hookBrand: unique symbol = Symbol('acplugin.hook');
-
-/** 单个 `src/hooks/<id>/hook.ts` 默认导出的完整 Hook 定义。 */
-export interface HookDefinition<Event extends HookEventDeclaration = HookEventDeclaration> {
-  /** 仅由 defineHook 注入的名义类型品牌。 */
-  readonly [hookBrand]: true;
+/** 单个 `src/hooks/<id>/hook.ts` 默认导出的完整 Hook 契约。 */
+export interface Hook<Event extends HookEventDeclaration = HookEventDeclaration> {
   /** 需要订阅的规范事件或显式平台限定事件。 */
   readonly event: Event;
-  /** 所有 Adapter 默认继承的匹配表达式。 */
+  /** 所有 Contributor 默认继承的匹配表达式。 */
   readonly matcher?: string;
-  /** 所有 Adapter 默认继承的 Handler 超时秒数。 */
+  /** 所有 Contributor 默认继承的 Handler 超时秒数。 */
   readonly timeout?: number;
   /** 平台支持时显示的 Handler 状态消息。 */
   readonly statusMessage?: string;
-  /** 按 Platform ID 补充且由对应 Adapter Schema 验证的字段。 */
+  /** 按 Platform ID 补充且由对应 Contributor Schema 验证的字段。 */
   readonly platforms?: HookPlatformOptions;
   /** 处理 camelCase 输入并返回对应事件的规范结果。 */
   readonly run: (
     input: HookInput<Event>,
     context: HookRuntimeContext,
   ) => HookResult<Event> | Promise<HookResult<Event>>;
-}
-
-/** 配置作者声明的 Hook 字段，不包含框架私有品牌。 */
-export type HookDefinitionInput<Event extends HookEventDeclaration = HookEventDeclaration>
-  = Omit<HookDefinition<Event>, typeof hookBrand>;
-
-/**
- * 为 Hook 定义提供事件级类型推断，并注入不可枚举的运行时品牌。
- *
- * @param definition 配置作者提供的事件、匹配字段和处理函数。
- * @returns 冻结且只能由当前包识别的完整 Hook 定义。
- */
-export function defineHook<const Event extends HookEventDeclaration>(
-  definition: HookDefinitionInput<Event>,
-): HookDefinition<Event> {
-  /** 使用浅副本隔离作者随后对原始定义对象的字段替换。 */
-  const hook = { ...definition } as HookDefinitionInput<Event> & { [hookBrand]?: true };
-  Object.defineProperty(hook, hookBrand, { value: true, enumerable: false });
-  return Object.freeze(hook) as HookDefinition<Event>;
-}
-
-/**
- * 判断未知导出是否由当前包的 defineHook 工厂创建。
- *
- * @param value TypeScript 描述文件加载后的未知默认导出。
- * @returns 私有品牌存在且基础对象形态有效时返回 true。
- */
-export function isHookDefinition(value: unknown): value is HookDefinition {
-  if (value === null || typeof value !== 'object')
-    return false;
-  /** 读取私有 Symbol 品牌所需的安全索引视图。 */
-  const candidate = value as Record<PropertyKey, unknown>;
-  return candidate[hookBrand] === true;
 }

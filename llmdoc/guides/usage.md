@@ -13,15 +13,15 @@ pnpm install
 pnpm build
 ```
 
-`init` can add the official Hooks and MCP Extensions with `--hooks` and `--mcp`. Without `--platform`, its scaffolding selection is Claude Code and Codex; it still writes both Platform dependencies, imports, and config entries explicitly. Select any supported set instead:
+`init` can add the official Hooks and MCP Extensions with `--hooks` and `--mcp`; `--node-runtime` generates a built-in conventional `src/runtime/main.ts` entry without adding another package or factory. Without `--platform`, its scaffolding selection is Claude Code and Codex; it still writes both Platform dependencies, imports, and config entries explicitly. Select any supported set instead:
 
 ```bash
 pnpm dlx @tokenroll/acplugin init my-plugin --yes \
   --platform claude-code codex cursor antigravity opencode pi \
-  --hooks --mcp
+  --hooks --mcp --node-runtime
 ```
 
-Every selected Platform is an independent package. An enabled Extension similarly adds its dependency, import, config entry, and empty source directory; `init` never invents a Hook handler or MCP server. The build runtime has no default package discovery or installation behavior.
+Every selected Platform is an independent package. An enabled Extension similarly adds its dependency, import, config entry, and empty source directory; `init` never invents a Hook handler or MCP server. The built-in Runtime template is actual neutral executable source and relies on Core's default `src/runtime` discovery. The build runtime has no default package discovery or installation behavior.
 
 Known `init` input errors use the stable `INIT_INVALID` diagnostic and preserve a safe actionable reason. The specialized error class remains internal and is not exported from the public facade.
 
@@ -44,7 +44,7 @@ export default defineConfig({
 });
 ```
 
-There is no Instructions Component. Hooks and MCP directories are accepted only when their official Extension is enabled.
+There is no Instructions Component. Hooks and MCP directories are accepted only when their official Extension is enabled. `src/runtime` belongs to Core: direct TS/JS files are entries by convention, while `runtime.entries` can replace discovery and `runtime: false` can disable it.
 
 The TypeScript config and enabled Hook/MCP descriptors are trusted executable project code. Review them like build scripts. Legacy Migration sources are scanned as untrusted data and are not executed as descriptors.
 
@@ -58,11 +58,11 @@ pnpm exec acplugin dev
 ```
 
 - `validate` generates and materializes every selected Platform in temporary storage without changing `dist`.
-- `inspect` adds Artifact details without changing `dist`.
-- `build` atomically replaces the complete managed output only after every Platform succeeds.
-- `dev` watches config, Jiti-transformed local config imports, canonical resources, Public, descriptors, and registered bundle imports. External transformed helpers are watched at their nearest package root. Native ESM imports that bypass Jiti transformation and runtime-computed dynamic targets are not precisely discoverable; keep them below the project root or connect their package through a transformed helper. Dev coalesces changes, closes watcher-readiness gaps with a catch-up build, and retains the last successful output after a failed rebuild.
+- `inspect` adds Package and Asset details without changing `dist`.
+- `build` atomically replaces the complete managed Package set only after every selected Platform succeeds.
+- `dev` watches config, canonical resources, Public, descriptors, and the actual Core Module/Build Service graph, including plugin, license, and tsconfig dependencies. Resolved dependencies contribute package roots. Managed bundles reject runtime-computed imports that Rolldown cannot represent in the static module graph. Dev coalesces changes, closes watcher-readiness gaps with a catch-up build, and retains the last successful output after a failed rebuild.
 
-Common options are `--config`, `--platform <id...>`, `--mode`, `--no-strict`, and `--json`. Strict mode is on by default. For example, a Codex build containing an Agent fails because Codex can only receive an explicit degraded Skill fallback; use `--no-strict` when that result is intentional.
+Common options are `--config`, `--platform <id...>`, `--mode`, and `--json`. Strict mode is on by default and is configured through `build.strict` or a Platform factory override. For example, a Codex build containing an Agent fails because Codex can only receive an explicit degraded Skill fallback; use `codex({ strict: false })` when that result is intentional.
 
 To configure Platforms in an existing project, install and import each package explicitly:
 
@@ -86,13 +86,7 @@ export default defineConfig({
 
 `platforms` is required and `--platform <id...>` only filters IDs already instantiated in that list. The main package does not re-export official factories or provide Platform subpaths. OpenCode output is a workspace overlay and Pi output is an npm package. They are not mislabeled as static Plugins. See the [Platform support matrix](../reference/conversion-matrix.md) before enabling strict multi-Platform builds.
 
-Codex transforms Commands into explicit `command-<id>` Skills by default. When a consumer specifically requires Plugin-visible generated IDs, opt in per Codex Platform instance:
-
-```ts
-codex({ generatedSkillIds: { command: 'plugin-prefixed' } })
-```
-
-For Plugin `my-plugin`, Command `bootstrap` then becomes `my-plugin-bootstrap`. This does not change the canonical Command ID, other Platforms, or the default Codex output.
+Codex transforms Commands into explicit `<plugin-name>-<id>` Skills. For Plugin `my-plugin`, Command `bootstrap` becomes `my-plugin-bootstrap`; this does not change the canonical Command ID or other Platforms.
 
 ## Public files
 

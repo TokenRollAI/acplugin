@@ -2,7 +2,7 @@ import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { ProjectConfigError, runProject, serializeBuildResult, type PlatformId } from '@tokenroll/acplugin';
+import { runProject, serializeBuildReport } from '@tokenroll/acplugin';
 import claudeCode from '@tokenroll/acplugin-platform-claude-code';
 import codex from '@tokenroll/acplugin-platform-codex';
 import cursor from '@tokenroll/acplugin-platform-cursor';
@@ -19,7 +19,7 @@ const roots: string[] = [];
 interface OutputFileSnapshot {
   /** 使用 POSIX 分隔符的 dist 相对路径。 */
   readonly path: string;
-  /** 只保留 Artifact 契约关心的权限位。 */
+  /** 只保留 Asset 契约关心的权限位。 */
   readonly mode: number;
   /** 未文本化的真实文件字节。 */
   readonly bytes: Buffer;
@@ -108,7 +108,7 @@ describe('unified pipeline', () => {
     await expect(fs.access(path.join(root, 'dist'))).rejects.toThrow();
   });
 
-  it('keeps the complete dist tree, Artifact hashes, and report bytes stable across roots and unrelated environment values', async () => {
+  it('keeps the complete dist tree, Asset hashes, and report bytes stable across roots and unrelated environment values', async () => {
     /** 相同字节工程使用的两个不同绝对根。 */
     const firstRoot = await project();
     /** 与第一个工程字节相同但绝对位置不同的第二个根。 */
@@ -123,8 +123,8 @@ describe('unified pipeline', () => {
       /** 第二个根和无关环境输入下的内置构建报告。 */
       const second = await runProject({ cwd: secondRoot, command: 'build', mode: 'production' });
 
-      expect(second.deliveryUnits).toEqual(first.deliveryUnits);
-      expect(serializeBuildResult(second)).toBe(serializeBuildResult(first));
+      expect(second.packages).toEqual(first.packages);
+      expect(serializeBuildReport(second)).toBe(serializeBuildReport(first));
       expect(await outputTree(path.join(secondRoot, 'dist'))).toEqual(await outputTree(path.join(firstRoot, 'dist')));
     } finally {
       if (previousEnvironment === undefined)
@@ -152,7 +152,7 @@ describe('unified pipeline', () => {
     const failed = await runProject({ cwd: root, command: 'build', mode: 'production' });
 
     expect(failed).toMatchObject({ success: false, committed: false });
-    expect(failed.diagnostics).toContainEqual(expect.objectContaining({ code: 'COMPATIBILITY_STRICT', platform: codex().id }));
+    expect(failed.diagnostics).toContainEqual(expect.objectContaining({ code: 'COMPATIBILITY_STRICT_FAILURE', platform: codex().id }));
     expect(await fs.readFile(manifest, 'utf8')).toBe(previous);
   });
 
@@ -163,13 +163,16 @@ describe('unified pipeline', () => {
     await fs.writeFile(path.join(root, 'src/agents/reviewer.md'), '---\ndescription: Review changes.\n---\nReview changes carefully.\n');
 
     /** 严格模式下预期失败的 Codex 验证结果。 */
-    const strict = await runProject({ cwd: root, command: 'validate', mode: 'production', platforms: [codex().id], strict: true });
+    const strict = await runProject({ cwd: root, command: 'validate', mode: 'production', platforms: [codex({ strict: true }).id] });
     expect(strict.success).toBe(false);
-    expect(strict.diagnostics).toContainEqual(expect.objectContaining({ code: 'COMPATIBILITY_STRICT' }));
+    expect(strict.diagnostics).toContainEqual(expect.objectContaining({ code: 'COMPATIBILITY_STRICT_FAILURE' }));
 
     /** 宽松模式下保留降级结论但成功的 Codex 验证结果。 */
-    const relaxed = await runProject({ cwd: root, command: 'validate', mode: 'production', platforms: [codex().id], strict: false });
-    expect(relaxed.success).toBe(true);
+    await fs.writeFile(path.join(root, 'acplugin.config.ts'), `const platforms = globalThis[Symbol.for('tokenroll.acplugin.build-test-platforms')];
+export default { name: 'hello-plugin', version: '1.0.0', description: 'Hello plugin.', platforms: [platforms.claudeCode(), platforms.codex({ strict: false })] };`);
+    /** 使用新配置重新解析宽松 Codex Platform。 */
+    const relaxed = await runProject({ cwd: root, command: 'validate', mode: 'production', platforms: [codex({ strict: false }).id] });
+    expect(relaxed.success, JSON.stringify(relaxed.diagnostics)).toBe(true);
     expect(relaxed.compatibility).toContainEqual(expect.objectContaining({ subject: 'agent:reviewer', level: 'degraded' }));
   });
 
@@ -177,10 +180,10 @@ describe('unified pipeline', () => {
     /** Platform 子集边界测试使用的最小工程。 */
     const root = await project();
     /** 三种非法选择对应的稳定诊断码。 */
-    const cases: readonly { platforms: readonly PlatformId[]; code: string }[] = [
-      { platforms: [] as const, code: 'CLI_PLATFORM_SELECTION_EMPTY' },
-      { platforms: [codex().id, codex().id], code: 'CLI_PLATFORM_SELECTION_DUPLICATE' },
-      { platforms: [cursor().id], code: 'CLI_PLATFORM_NOT_CONFIGURED' },
+    const cases: readonly { platforms: readonly string[] }[] = [
+      { platforms: [] as const },
+      { platforms: [codex().id, codex().id] },
+      { platforms: [cursor().id] },
     ];
 
     /** item 表示当前待验证的非法 Platform 子集。 */
@@ -190,8 +193,10 @@ describe('unified pipeline', () => {
         command: 'validate',
         mode: 'production',
         platforms: item.platforms,
-      })).rejects.toSatisfy((error: unknown) => error instanceof ProjectConfigError
-        && error.diagnostics.some(diagnostic => diagnostic.code === item.code));
+      })).resolves.toMatchObject({
+        success: false,
+        diagnostics: [expect.objectContaining({ code: 'PLATFORM_SELECTION_INVALID' })],
+      });
     }
   });
 });

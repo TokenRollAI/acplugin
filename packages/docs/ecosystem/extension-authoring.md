@@ -1,29 +1,56 @@
 # Extension 开发
 
-Extension 表达横向作者能力，并通过一个或多个 `ExtensionPlatformAdapter` 参与对应 Platform Draft。
+Extension 表达横向作者能力：发现并验证自己的资源，使用 Core Host 只构建一次不可变 Built State，再通过明确的 `PlatformContributor` add-only 参与目标 Package。
 
 ```ts
-import { defineExtension } from '@tokenroll/acplugin';
+import { defineExtension } from '@tokenroll/acplugin/sdk';
 
 export function notices() {
   return defineExtension({
-    name: 'example-notices',
+    id: 'example-notices',
     apiVersion: '1',
-    discover: async () => ({ enabled: true }),
-    validate: (_context, discovered) => discovered,
-    build: (_context, validated) => validated,
-    adapters: [],
+    options: {},
+    resourceRoots: ['notices'],
+    createSession() {
+      return {
+        discover: async () => ({ enabled: true }),
+        validate: async (_context, discovered) => ({
+          state: discovered,
+          subjects: [{ subject: 'notices:default', capabilities: ['delivery'] }],
+        }),
+        build: async (_context, validated) => ({ state: validated }),
+        contributors: [{
+          platform: 'example',
+          platformApiVersion: '1',
+          async contribute(context, built) {
+            const notice = await context.assets.fromBytes({
+              bytes: built.enabled ? 'Enabled\n' : 'Disabled\n',
+              origin: { operation: 'render-notice', subjects: ['notices:default'] },
+            });
+            return {
+              assets: [{ path: 'NOTICE.txt', asset: notice }],
+              compatibility: [{
+                subject: 'notices:default',
+                capability: 'delivery',
+                level: 'native',
+                reason: 'The target installs the notice as a native file.',
+              }],
+            };
+          },
+        }],
+      };
+    },
   });
 }
 ```
 
-完整 Extension 应定义自己的作者目录、验证和 built state，再为明确支持的 Platform 提供 Adapter。Adapter 可：
+每个 Contributor 都读取同一个冻结的 Platform base Package。它可以：
 
-- 读取 Platform 已公开的只读 Document；
-- 向声明的 extension point add-only patch 新字段；
-- 追加 owner 为自身的 Artifact；
-- 报告兼容性与诊断。
+- 读取已公开的 Document 与 extension point；
+- 填写一个仍为空且已声明的字段；
+- 追加由当前 Extension owner 创建或获授权的 Asset；
+- 精确覆盖 `validate()` 声明的兼容性 tuple。
 
-Adapter 不能替换 Platform、完整 Document 或已有字段，也不能读取其他 Extension state。Extension 没有依赖图或 enforce/order API；配置顺序是固定执行顺序，但不能用它建立覆盖语义。两个 owner 写同字段或同 Artifact path 会稳定冲突，而不是 last-writer-wins。
+Contributor 不能观察其他 Contribution 或 Extension state，不能替换/删除 Platform 内容，也不能 claim/suppress Canonical Component。Core 并发收集贡献，按 owner 稳定排序并集中合并；同字段或同路径竞争稳定失败，不使用配置顺序解决冲突。
 
-查看 [`defineExtension()`](/api/@tokenroll/acplugin/functions/defineExtension.md) 和 [`ExtensionPlatformAdapter`](/api/@tokenroll/acplugin/interfaces/ExtensionPlatformAdapter.md)。
+`discover` 使用 `context.sources`/`context.modules`；`build` 使用 `context.compiler`、`context.assets` 与 `context.execution`。Extension 不获得物理 workDir 写权限，不得直接依赖 Rolldown、建立 watcher、写中间文件或写入 `dist`。编译边界见 [统一 Rolldown Compiler](./build-service.md)。

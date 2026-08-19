@@ -18,6 +18,7 @@ jobs:
           node-version: 22.18.0
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - run: pnpm run versions:check
       - run: pnpm run lint
       - run: pnpm run typecheck
 

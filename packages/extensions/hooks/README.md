@@ -1,10 +1,10 @@
 # @tokenroll/acplugin-extension-hooks
 
-Portable Hook authoring plus six official Platform adapters for `@tokenroll/acplugin`.
+Portable Hook authoring plus six official Platform Contributors for `@tokenroll/acplugin`.
 
 Requires Node.js `^20.19.0 || ^22.13.0 || >=23.5.0`.
 
-`统一书写 Hook，并由官方 Adapter 构建为六个平台各自支持的静态或运行时产物。`
+`统一书写 Hook，通过 Core Compiler 只构建一次，再由官方 Contributor 交付为六个平台各自支持的静态或运行时能力。`
 
 ```bash
 pnpm add -D @tokenroll/acplugin \
@@ -27,14 +27,14 @@ export default defineConfig({
 });
 ```
 
-Each Hook is a branded TypeScript descriptor at `src/hooks/<id>/hook.ts`:
+Each Hook is a plain ESM default export at `src/hooks/<id>/hook.ts`:
 
-`每个 Hook 使用独立一级目录，并通过 defineHook 获得事件级输入和结果类型。`
+`每个 Hook 使用独立一级目录，并通过 satisfies 获得事件级输入和结果类型。`
 
 ```ts
-import { defineHook } from '@tokenroll/acplugin-extension-hooks';
+import type { Hook } from '@tokenroll/acplugin-extension-hooks';
 
-export default defineHook({
+export default {
   event: 'PreToolUse',
   matcher: 'Bash|Write|Edit',
   timeout: 10,
@@ -46,7 +46,7 @@ export default defineHook({
       ? { decision: 'allow' }
       : { decision: 'deny', reason: `Denied on ${context.platform}.` };
   },
-});
+} satisfies Hook<'PreToolUse'>;
 ```
 
 The canonical events are `SessionStart`, `SessionEnd`, `UserPromptSubmit`, `PreToolUse`, `PermissionRequest`, `PostToolUse`, `PreCompact`, `PostCompact`, `SubagentStart`, `SubagentStop`, and `Stop`.
@@ -56,18 +56,20 @@ Platform-only events stay explicitly scoped and never expand that union:
 `平台专属事件必须显式限定；其他 Platform 不会获得产物或兼容性结论。`
 
 ```ts
-export default defineHook({
+import type { Hook } from '@tokenroll/acplugin-extension-hooks';
+
+export default {
   event: { platform: 'claude-code', name: 'Setup' },
   matcher: 'init',
   run() {},
-});
+} satisfies Hook;
 ```
 
-ACPlugin bundles each implementation once as a platform-neutral Node 20 ESM `hooks/<id>/handler.mjs`. Each Adapter emits an adjacent `wire.mjs` that owns its native stdin schema, camelCase conversion, runtime root/data environment mapping, and stdout mapping. The shared Handler validates event-specific results, keeps stdin/stdout within 1 MiB, and emits only stable error codes. Third-party code included in a Handler receives a deterministic `THIRD_PARTY_LICENSES.txt`.
+ACPlugin's Core `portable-node` Compiler bundles each implementation once as a self-contained, platform-neutral Node 20 ESM `hooks/<id>/handler.mjs`. Verified wire profiles are compiled into the same file and own native stdin schemas, camelCase conversion, runtime root/data environment mapping, and stdout mapping. The Handler validates event-specific results, keeps stdin/stdout within 1 MiB, emits only stable error codes, and requires no adjacent runtime JavaScript. Third-party code included in a Handler receives a deterministic `THIRD_PARTY_LICENSES.txt`.
 
-`作者不能声明原始 shell、绝对 executable、HTTP、prompt、agent 或 MCP-tool Handler；平台 wire 协议完全由 Adapter 管理。`
+`作者不能声明原始 shell、绝对 executable、HTTP、prompt、agent 或 MCP-tool Handler；平台 wire 协议完全由对应 Contributor 管理。`
 
-Claude Code uses shell-free exec form (`command: "node"` plus `args`). Codex currently receives a fixed framework-generated command string because its public Hook schema does not expose `args`. A meaningful matcher is reported as `degraded` whenever the selected host silently ignores it, including Claude Code `UserPromptSubmit`/`Stop` and Codex `UserPromptSubmit`/`Stop`; empty Hooks produce no artifacts.
+Claude Code uses shell-free exec form (`command: "node"` plus `args`). Codex currently receives a fixed framework-generated command string because its public Hook schema does not expose `args`. A meaningful matcher is reported as `degraded` whenever the selected host silently ignores it, including Claude Code `UserPromptSubmit`/`Stop` and Codex `UserPromptSubmit`/`Stop`; empty Hooks produce no Assets.
 
 Portable event support:
 
@@ -80,7 +82,7 @@ Portable event support:
 | OpenCode | `SessionStart`, `UserPromptSubmit`, `PreToolUse`, `PostToolUse`, `PostCompact` | — | `SessionEnd`, `Stop` | remaining 4 events |
 | Pi | `SessionStart`, `SessionEnd`, `UserPromptSubmit`, `PreToolUse`, `PostToolUse`, `PreCompact`, `PostCompact` | — | `Stop` | `PermissionRequest`, `SubagentStart`, `SubagentStop` |
 
-Strict mode rejects degraded or unsupported outcomes; relaxed mode emits only verified runtimes and preserves the full structured report. Empty Hooks produce no Artifact.
+Strict mode rejects degraded or unsupported outcomes; relaxed mode emits only verified runtimes and preserves the full structured report. Empty Hooks produce no Asset.
 
 Contracts were last rechecked on 2026-08-06 against [Claude Code Hooks](https://code.claude.com/docs/en/hooks), [Codex Hooks](https://learn.chatgpt.com/docs/hooks), [Cursor Hooks](https://cursor.com/docs/agent/hooks), [Antigravity Plugins](https://antigravity.google/docs/plugins?app=cli), [OpenCode Plugins](https://opencode.ai/docs/plugins/), and [Pi Extensions](https://pi.dev/docs/latest/extensions).
 

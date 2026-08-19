@@ -42,7 +42,7 @@ The repository setting **Actions → General → Workflow permissions → Allow 
    pnpm run release:verify
    ```
 
-`release:verify` packs all nine packages in a temporary directory, runs type-resolution and package-lint checks on the actual tarballs, validates manifests and contents, verifies peer rewriting and private Symbol-brand interoperability through one main-package peer instance, then installs and builds a six-Platform/two-Extension scaffold in a clean external consumer. For the main package it parses the packed ESM graph, proves the CLI-to-Migration edge remains lazy, checks every external import against declared runtime dependencies, and rejects normal runtime dependencies on official integrations. It never publishes. CI passes `--tarball-dir <empty-directory>` to retain the exact verified files for the separate Node 20.19 consumer job; local calls can use the same option when tarballs need to be retained for release.
+`release:verify` packs all nine packages in a temporary directory, runs type-resolution and package-lint checks on the actual tarballs, validates manifests and contents, verifies peer rewriting and shared registry-brand interoperability through one main-package peer instance, then installs and builds a six-Platform/two-Extension scaffold in a clean external consumer. The consumer executes the Core Runtime output and proves Claude Code/Codex receive identical bytes. For the main package it parses the packed ESM graph, proves the CLI-to-Migration edge remains lazy, checks every external import against declared runtime dependencies, and rejects both external and bundled official integrations. It never publishes. CI passes `--tarball-dir <empty-directory>` to retain the exact verified files for the separate Node 20.19 consumer job; local calls can use the same option when tarballs need to be retained for release.
 
 Commit the exact verified release preparation before publishing. Do not rebuild from another revision after verification.
 
@@ -65,13 +65,7 @@ npm publish <tarball-path> --access public --otp <OTP>
 npm view <package-name>@<version> version
 ```
 
-For the first publication of the nine `0.0.1-beta` packages, a maintainer may use the simplified root command:
-
-```bash
-pnpm run publish:beta
-```
-
-The root `prepublish:beta` first runs a frozen install and `release:preflight`. The preflight performs lint and typecheck, builds the workspace once, runs tests with package pre/post scripts disabled, validates Docs/Playground without rebuilding the workspace, and finishes with `release:verify`. `pnpm -r publish` then selects only the public `@tokenroll/*` packages, pins the npmjs Registry and the `beta` tag, and lets every public package rebuild itself through `prepublishOnly` immediately before packing. This command is limited to the initial nine-package `0.0.1-beta` cohort; it must not be reused for stable or independently versioned incremental releases, or invoked by a Workflow.
+The initial cohort has already been published, so the repository intentionally has no root command that publishes every public package. Run `release:preflight`, then publish only the selected, already verified tarballs with the explicit command above.
 
 If publication is interrupted, query every planned exact version and continue only with missing versions whose peer dependencies are already available. npm versions are immutable and must not be republished.
 

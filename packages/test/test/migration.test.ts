@@ -657,7 +657,7 @@ Review code.
     expect(descriptor).toContain('from \'@tokenroll/acplugin-extension-mcp\'');
     expect(descriptor).toContain('"env":"DOCS_TOKEN"');
     expect(descriptor).toContain('"env": "TENANT_ID"');
-    expect(manifest.devDependencies['@tokenroll/acplugin-extension-mcp']).toBe('^0.0.1-beta');
+    expect(manifest.devDependencies['@tokenroll/acplugin-extension-mcp']).toBe('^0.0.2-beta');
     await expect(fs.access(path.join(root, 'migrated/node_modules'))).rejects.toThrow();
   });
 });

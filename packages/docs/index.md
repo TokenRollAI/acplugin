@@ -39,7 +39,7 @@ features:
 
 ## 一个工程，明确的交付边界
 
-ACPlugin 把平台中立的作者资源交给显式配置的 Platform，并通过 Extension Adapter 添加横向能力。先从[快速开始](/guide/getting-started)了解工程结构，或直接查看[公开 API](/api/)。
+ACPlugin 把平台中立的作者资源交给显式配置的 Platform，并通过无序、add-only Extension Contribution 添加横向能力。先从[快速开始](/guide/getting-started)了解工程结构，或直接查看[公开 API](/api/)。
 
 <div class="acp-home-intro">
   <p class="acp-kicker">🍌 One source, many deliveries</p>

@@ -129,6 +129,11 @@ function compatibilityLookupKey(platform, subject, capability) {
   return `${platform}\0${subject}\0${capability}`;
 }
 
+/** 把 canonical Hook 事件名转换为报告 capability 后缀。 */
+function hookEventCapability(event) {
+  return event.replace(/([a-z0-9])([A-Z])/gu, '$1-$2').toLowerCase();
+}
+
 /** 读取 UTF-8 文件。 */
 async function readText(file) {
   return fs.readFile(file, 'utf8');
@@ -161,7 +166,7 @@ async function listFiles(directory, prefix = '') {
   for (const entry of entries) {
     /** 当前条目的绝对路径。 */
     const absolute = path.join(directory, entry.name);
-    /** Artifact Registry 使用的 POSIX 相对路径。 */
+    /** Package Asset 使用的 POSIX 相对路径。 */
     const relative = prefix === '' ? entry.name : `${prefix}/${entry.name}`;
     assert(!entry.isSymbolicLink(), `Playground output contains unexpected symlink ${relative}.`);
     if (entry.isDirectory())
@@ -265,51 +270,55 @@ function expectedNonNativeEntries() {
   addExpected(expected, 'opencode', 'degraded', 'agent:reflector', 'agent.model');
 
   for (const platform of ['antigravity', 'codex', 'cursor', 'opencode'])
-    addExpected(expected, platform, 'degraded', 'command:init', 'argumentHint');
-  /** 依赖 Agent 降级后必须传播到对应 Command 的稳定映射。 */
+    addExpected(expected, platform, 'degraded', 'command:init', 'argument-hint');
+  /** 依赖 Agent 的 Component 降级后必须传播到转换型 Command。 */
   const dependencyCommands = {
     prune: 'reflector',
     update: 'investigator',
     upgrade: 'recorder',
   };
-  for (const platform of ['antigravity', 'codex', 'cursor', 'pi']) {
-    for (const [command, agent] of Object.entries(dependencyCommands))
-      addExpected(expected, platform, 'degraded', `command:${command}`, `dependency:agent:${agent}`);
+  for (const platform of ['antigravity', 'codex', 'pi']) {
+    for (const command of Object.keys(dependencyCommands))
+      addExpected(expected, platform, 'degraded', `command:${command}`, 'component');
   }
-  for (const [command, agent] of Object.entries(dependencyCommands).filter(([id]) => id !== 'upgrade'))
-    addExpected(expected, 'opencode', 'degraded', `command:${command}`, `dependency:agent:${agent}`);
 
   for (const platform of platforms) {
     for (const [id, event] of Object.entries(hookEvents)) {
       /** 当前事件在目标 Platform 的精确支持等级。 */
       const level = hookEventLevels[platform][id];
       if (level === 'degraded' || level === 'unsupported')
-        addExpected(expected, platform, level, `hook:${id}`, `event.${event}`);
+        addExpected(expected, platform, level, `hook:${id}`, `event.${hookEventCapability(event)}`);
     }
   }
   for (const platform of ['antigravity', 'cursor', 'opencode', 'pi']) {
     for (const hook of ['pre-tool-use', 'session-start'])
-      addExpected(expected, platform, 'degraded', `hook:${hook}`, 'statusMessage');
+      addExpected(expected, platform, 'degraded', `hook:${hook}`, 'status-message');
   }
 
   for (const platform of ['antigravity', 'cursor']) {
     addExpected(expected, platform, 'unsupported', 'mcp:local-tools', 'transport.stdio');
-    addExpected(expected, platform, 'degraded', 'mcp:oauth-docs', 'auth.oauth.scopes');
+    addExpected(expected, platform, 'degraded', 'mcp:oauth-docs', 'auth.oauth');
   }
   addExpected(expected, 'pi', 'unsupported', 'mcp:local-tools', 'transport.stdio');
   for (const id of ['oauth-docs', 'protected-docs', 'public-docs'])
     addExpected(expected, 'pi', 'unsupported', `mcp:${id}`, 'transport.http');
-  assert(expected.size === 84, 'Playground verifier has an inconsistent non-native policy table.');
+  for (const platform of ['antigravity', 'cursor', 'opencode', 'pi'])
+    addExpected(expected, platform, 'unsupported', 'runtime:playground', 'node20-esm');
+  assert(expected.size === 83, 'Playground verifier has an inconsistent non-native policy table.');
   return expected;
 }
 
-/** 校验报告结构、兼容性矩阵、诊断和 DeliveryUnit 覆盖。 */
+/** 校验报告结构、兼容性矩阵、诊断和 Package 覆盖。 */
 function verifyReport(report, command) {
+  assert(report.schemaVersion === 2, 'Playground report does not use schema v2.');
   assert(report.success === true, `Playground ${command} did not succeed.`);
   assert(report.command === command, `Playground ${command} report has the wrong command.`);
   assert(report.committed === (command === 'build'), `Playground ${command} has the wrong committed state.`);
-  assert(JSON.stringify(report.platforms) === JSON.stringify(platforms), 'Playground report has the wrong Platform set.');
-  assert(report.compatibility.length === 211, 'Playground compatibility coverage changed unexpectedly.');
+  assert(JSON.stringify(report.platforms.map(platform => platform.id)) === JSON.stringify(platforms), 'Playground report has the wrong Platform set.');
+  assert(report.platforms.every(platform => platform.selected && platform.success), 'Playground report contains an unsuccessful Platform.');
+  assert(report.runtimes.length === 1 && report.runtimes[0].id === 'playground' && report.runtimes[0].built, 'Playground Runtime report is incomplete.');
+  assert(report.compatibility.length === 210, 'Playground compatibility coverage changed unexpectedly.');
+  assert(report.metadata.length === 66, 'Playground metadata coverage changed unexpectedly.');
 
   /** 所有 compatibility 条目的唯一查询索引。 */
   const compatibility = new Map();
@@ -339,19 +348,30 @@ function verifyReport(report, command) {
     'pi': { command: 'transform', skill: 'native', agent: 'degraded' },
   };
   for (const platform of platforms) {
-    for (const command of commands)
-      expectLevel(platform, `command:${command}`, 'component', componentLevels[platform].command);
+    for (const command of commands) {
+      /** 转换型 Command 会继承 fallback Agent 的 Component 降级。 */
+      const level = command !== 'init' && ['antigravity', 'codex', 'pi'].includes(platform)
+        ? 'degraded'
+        : componentLevels[platform].command;
+      expectLevel(platform, `command:${command}`, 'component', level);
+    }
     expectLevel(platform, 'skill:project-workflow', 'component', componentLevels[platform].skill);
     for (const agent of agents)
       expectLevel(platform, `agent:${agent}`, 'component', componentLevels[platform].agent);
     for (const [id, event] of Object.entries(hookEvents))
-      expectLevel(platform, `hook:${id}`, `event.${event}`, hookEventLevels[platform][id]);
+      expectLevel(platform, `hook:${id}`, `event.${hookEventCapability(event)}`, hookEventLevels[platform][id]);
+    expectLevel(
+      platform,
+      'runtime:playground',
+      'node20-esm',
+      platform === 'claude-code' || platform === 'codex' ? 'native' : 'unsupported',
+    );
   }
 
   /** 每个平台必须精确报告的 MCP 能力键与等级。 */
   const mcpLevels = {
     'antigravity': [
-      ['local-tools', 'transport.stdio', 'unsupported'], ['oauth-docs', 'auth.oauth.scopes', 'degraded'],
+      ['local-tools', 'transport.stdio', 'unsupported'], ['oauth-docs', 'auth.oauth', 'degraded'],
       ['oauth-docs', 'transport.http', 'native'], ['protected-docs', 'auth.bearer', 'native'],
       ['protected-docs', 'transport.http', 'native'], ['public-docs', 'auth.none', 'native'],
       ['public-docs', 'transport.http', 'native'],
@@ -369,7 +389,7 @@ function verifyReport(report, command) {
       ['public-docs', 'transport.http', 'native'],
     ],
     'cursor': [
-      ['local-tools', 'transport.stdio', 'unsupported'], ['oauth-docs', 'auth.oauth.scopes', 'degraded'],
+      ['local-tools', 'transport.stdio', 'unsupported'], ['oauth-docs', 'auth.oauth', 'degraded'],
       ['oauth-docs', 'transport.http', 'native'], ['protected-docs', 'auth.bearer', 'native'],
       ['protected-docs', 'transport.http', 'native'], ['public-docs', 'auth.none', 'native'],
       ['public-docs', 'transport.http', 'native'],
@@ -406,13 +426,7 @@ function verifyReport(report, command) {
     assert(expectedNonNative.has(key), `Playground report contains unexpected non-native entry ${key.replaceAll('\0', ' / ')}.`);
 
   /** 允许的非兼容性诊断及其精确数量。 */
-  const diagnosticCounts = {
-    ANTIGRAVITY_METADATA_OMITTED: 8,
-    COMPATIBILITY_RELAXED: 84,
-    CURSOR_METADATA_AUTHOR_URL_OMITTED: 1,
-    METADATA_OMITTED: 18,
-    PI_METADATA_DISPLAY_NAME_OMITTED: 1,
-  };
+  const diagnosticCounts = { COMPATIBILITY_RELAXED: 83 };
   /** 按稳定 code 汇总报告诊断。 */
   const actualDiagnosticCounts = Object.fromEntries(Object.entries(Object.groupBy(report.diagnostics, item => item.code))
     .map(([code, items]) => [code, items.length]));
@@ -432,24 +446,25 @@ function verifyReport(report, command) {
     'opencode\0workspace\0primary\0workspace',
     'pi\0package\0primary\0package',
   ];
-  /** 实际 DeliveryUnit 的结构化身份。 */
-  const actualUnits = report.deliveryUnits.map(unit => `${unit.platform}\0${unit.id}\0${unit.role}\0${unit.type}`);
-  assert(JSON.stringify(actualUnits) === JSON.stringify(expectedUnits), 'Playground DeliveryUnit topology changed unexpectedly.');
+  /** 实际 Package 的结构化身份。 */
+  const actualUnits = report.packages.map(unit => `${unit.platform}\0${unit.id}\0${unit.role}\0${unit.type}`);
+  assert(JSON.stringify(actualUnits) === JSON.stringify(expectedUnits), 'Playground Package topology changed unexpectedly.');
+  assert(report.packages.every(unit => unit.validated), 'Playground report contains an unvalidated Package.');
 }
 
-/** 校验报告 Artifact 清单与 dist 中实际文件精确一致。 */
+/** 校验报告 Asset 清单与 dist 中实际文件精确一致。 */
 async function verifyArtifactClosure(report) {
   /** dist 只能包含本次选择的六个平台目录。 */
   const platformDirectories = (await fs.readdir(outputRoot)).sort(compareCodeUnits);
   assert(JSON.stringify(platformDirectories) === JSON.stringify(platforms), 'Managed dist contains a stale or missing Platform directory.');
-  for (const unit of report.deliveryUnits) {
+  for (const unit of report.packages) {
     /** 当前交付单元的真实安装根。 */
     const directory = path.join(outputRoot, unit.platform, unit.id);
-    /** 文件系统实际 materialize 的 Artifact 路径。 */
+    /** 文件系统实际 materialize 的 Asset 路径。 */
     const actual = (await listFiles(directory)).sort(compareCodeUnits);
-    /** 报告中经过 owner/hash 校验的 Artifact 路径。 */
-    const reported = unit.artifacts.map(artifact => artifact.path).sort(compareCodeUnits);
-    assert(JSON.stringify(actual) === JSON.stringify(reported), `${unit.platform}/${unit.id} files do not match the BuildResult Artifact registry.`);
+    /** 报告中经过 owner/hash 校验的 Asset 路径。 */
+    const reported = unit.assets.map(asset => asset.path).sort(compareCodeUnits);
+    assert(JSON.stringify(actual) === JSON.stringify(reported), `${unit.platform}/${unit.id} files do not match the BuildReport Asset registry.`);
   }
 }
 
@@ -470,8 +485,8 @@ async function verifyCanonicalOutputs() {
     'antigravity': id => `skills/command-${id}/SKILL.md`,
     /** Claude Code 保留原生 Command。 */
     'claude-code': id => `commands/${id}.md`,
-    /** Codex 把 Command 转换为 Skill。 */
-    'codex': id => `skills/command-${id}/SKILL.md`,
+    /** Codex 把 Command 转换为 Plugin-prefixed Skill。 */
+    'codex': id => `skills/acplugin-playground-${id}/SKILL.md`,
     /** Cursor 保留原生 Command。 */
     'cursor': id => `commands/${id}.md`,
     /** OpenCode 把 Command 写入工作区目录。 */
@@ -587,7 +602,7 @@ async function verifyManifestsAndDistributions() {
   assert(cursor.logo === './assets/acplugin.svg' && cursor.minClientVersions.cursor === '1.0.0', 'Cursor Platform options were not emitted.');
   /** Antigravity 只允许已确认的最小 Manifest。 */
   const antigravity = await readJson(path.join(outputRoot, 'antigravity/plugin/plugin.json'));
-  assert(JSON.stringify(antigravity) === '{"name":"acplugin-capability-playground"}', 'Antigravity manifest contains an unverified field.');
+  assert(JSON.stringify(antigravity) === '{"name":"acplugin-playground"}', 'Antigravity manifest contains an unverified field.');
   /** OpenCode Workspace Config 由 schema 与 MCP add-only patch 组成。 */
   const openCode = await readJson(path.join(outputRoot, 'opencode/workspace/opencode.json'));
   assert(openCode.$schema === 'https://opencode.ai/config.json' && Object.keys(openCode.mcp).length === 4, 'OpenCode workspace config is incomplete.');
@@ -617,7 +632,7 @@ async function verifyManifestsAndDistributions() {
       const primary = await fs.readFile(path.join(primaryRoot, file));
       /** Marketplace 中对应文件的字节。 */
       const distributed = await fs.readFile(path.join(marketplaceRoot, file));
-      assert(primary.equals(distributed), `${platform} Marketplace changed inherited Artifact ${file}.`);
+      assert(primary.equals(distributed), `${platform} Marketplace changed inherited Asset ${file}.`);
     }
   }
 }
@@ -650,7 +665,7 @@ function hookInput(event) {
   return { ...input, stop_hook_active: true, last_assistant_message: 'Done.' };
 }
 
-/** 校验 Hook 配置引用、支持矩阵、运行文件和真实 Handler/wire 协议。 */
+/** 校验 Hook 配置引用、支持矩阵、自包含运行文件和真实平台协议。 */
 async function verifyHooks() {
   /** 每个平台的 Hook 运行文件根。 */
   const hookRoots = {
@@ -672,23 +687,19 @@ async function verifyHooks() {
   };
   for (const platform of platforms) {
     for (const [id, event] of Object.entries(hookEvents)) {
-      /** unsupported 事件不得留下 Handler、wire 或配置引用。 */
+      /** unsupported 事件不得留下 Handler 或配置引用。 */
       const supported = hookEventLevels[platform][id] !== 'unsupported';
       /** 当前 Platform 中 handler 的绝对路径。 */
       const handler = path.join(hookRoots[platform], id, 'handler.mjs');
-      /** 当前 Platform 中 wire profile 的绝对路径。 */
-      const wire = path.join(hookRoots[platform], id, 'wire.mjs');
       assert(await exists(handler) === supported, `${platform} has wrong Handler presence for ${id}.`);
-      assert(await exists(wire) === supported, `${platform} has wrong wire presence for ${id}.`);
       assert(configurationText[platform].includes(id) === supported, `${platform} has wrong Hook config reference for ${id}.`);
       if (!supported)
         continue;
-      /** Handler 必须是可执行文件，wire 必须是普通只读数据代码。 */
+      /** 自包含 Handler 必须是唯一且可执行的 JavaScript 运行文件。 */
       const handlerMode = (await fs.stat(handler)).mode & 0o777;
-      /** 当前 wire 文件的权限位。 */
-      const wireMode = (await fs.stat(wire)).mode & 0o777;
-      assert(handlerMode === 0o755 && wireMode === 0o644, `${platform} ${id} has wrong runtime modes.`);
-      /** 使用真实平台 wire 执行当前 Handler。 */
+      assert(handlerMode === 0o755, `${platform} ${id} has wrong runtime mode.`);
+      assert(!await exists(path.join(hookRoots[platform], id, 'wire.mjs')), `${platform} ${id} leaked a runtime external.`);
+      /** 使用内联的真实平台 profile 执行当前 Handler。 */
       const execution = await runProtocol(handler, [platform], JSON.stringify(hookInput(event)), {
         ANTIGRAVITY_PLUGIN_ROOT: hookRoots[platform],
         CLAUDE_PLUGIN_DATA: path.join(hookRoots[platform], '.data'),
@@ -731,7 +742,7 @@ async function verifyMcp() {
   assert(openCode['protected-docs'].headers.Authorization === 'Bearer {env:PLAYGROUND_MCP_TOKEN}', 'OpenCode Bearer env reference is incorrect.');
   assert(claude['oauth-docs'].oauth.scopes === 'resources:read templates:read', 'Claude Code OAuth scopes are incorrect.');
   assert(JSON.stringify(codex['oauth-docs'].scopes) === '["resources:read","templates:read"]', 'Codex OAuth scopes are incorrect.');
-  assert(JSON.stringify(openCode['oauth-docs'].oauth.scopes) === '["resources:read","templates:read"]', 'OpenCode OAuth scopes are incorrect.');
+  assert(openCode['oauth-docs'].oauth.scope === 'resources:read templates:read', 'OpenCode OAuth scopes are incorrect.');
   assert(cursor['oauth-docs'].scopes === undefined && antigravity['oauth-docs'].scopes === undefined, 'A degraded MCP adapter emitted unsupported OAuth scopes.');
   assert(claude['local-tools'].type === 'stdio' && codex['local-tools'].command === 'node' && openCode['local-tools'].type === 'local', 'Supported local MCP descriptors are incomplete.');
   assert(cursor['local-tools'] === undefined && antigravity['local-tools'] === undefined, 'Remote-only MCP adapter emitted local stdio configuration.');
@@ -778,6 +789,38 @@ async function verifyMcp() {
   }
 }
 
+/** 校验 Node Runtime 的双平台同字节交付、权限、真实执行与 unsupported 空产物。 */
+async function verifyNodeRuntime() {
+  /** Claude Code 交付的 Runtime 可执行文件。 */
+  const claude = path.join(outputRoot, 'claude-code/plugin/runtime/playground/main.mjs');
+  /** Codex 交付的同一 Runtime 可执行文件。 */
+  const codex = path.join(outputRoot, 'codex/plugin/runtime/playground/main.mjs');
+  /** 两个平台文件必须逐字节相同，不能在 Adapter 阶段改写。 */
+  const [claudeBytes, codexBytes] = await Promise.all([fs.readFile(claude), fs.readFile(codex)]);
+  assert(claudeBytes.equals(codexBytes), 'Node Runtime Bundle differs between Claude Code and Codex.');
+  for (const runtime of [claude, codex]) {
+    assert(((await fs.stat(runtime)).mode & 0o777) === 0o755, 'Executable Node Runtime has the wrong mode.');
+    assert(!await exists(path.join(path.dirname(runtime), 'THIRD_PARTY_LICENSES.txt')), 'Dependency-free Node Runtime emitted a spurious license inventory.');
+    /** 当前平台安装文件的真实 Node 子进程执行结果。 */
+    const execution = await runProtocol(runtime, [], '');
+    assert(execution.code === 0 && execution.stderr === '', 'Node Runtime failed its real execution smoke.');
+    assert(execution.stdout === '{"framework":"acplugin","status":"ready"}\n', 'Node Runtime emitted an unexpected result.');
+  }
+  /** 首期没有稳定 Plugin-local Node 契约的平台输出根。 */
+  const unsupported = {
+    antigravity: 'antigravity/plugin',
+    cursor: 'cursor/plugin',
+    opencode: 'opencode/workspace',
+    pi: 'pi/package',
+  };
+  for (const [platform, unit] of Object.entries(unsupported)) {
+    assert(
+      !await exists(path.join(outputRoot, unit, 'runtime/playground/main.mjs')),
+      `${platform} emitted an unsupported Node Runtime Asset.`,
+    );
+  }
+}
+
 /** 扫描稳定报告与所有生成文件，拒绝绝对路径和 Secret 值泄漏。 */
 async function verifyStableOutputSafety(report) {
   /** 报告不得包含宿主路径或构建期 Secret 值。 */
@@ -794,29 +837,31 @@ async function verifyStableOutputSafety(report) {
 
 /** 运行完整 Playground validate、双 build、内容协议和确定性检查。 */
 async function main() {
-  /** 真实 validate 产生但不提交的完整 BuildResult。 */
+  /** 真实 validate 产生但不提交的完整 BuildReport。 */
   const validation = await runCli('validate');
   verifyReport(validation, 'validate');
   /** 第一次真实 build 负责提交随后检查的六平台输出。 */
   const firstBuild = await runCli('build');
   verifyReport(firstBuild, 'build');
   /** validate/build 除命令和提交状态外必须拥有相同的稳定结构。 */
-  for (const field of ['compatibility', 'diagnostics', 'documents', 'extensions', 'metadata', 'platformDetails', 'platforms'])
+  for (const field of ['compatibility', 'components', 'diagnostics', 'extensions', 'metadata', 'platforms', 'runtimes'])
     assert(JSON.stringify(validation[field]) === JSON.stringify(firstBuild[field]), `validate/build differ in stable report field ${field}.`);
-  /** command 会改变临时 Hook workDir，但不能改变交付结构、size、mode 或 owner。 */
-  const deliveryShape = report => report.deliveryUnits.map(unit => ({
+  /** command 会改变临时工作目录，但不能改变 Package 结构、size、mode、origin 或 owner。 */
+  const packageShape = report => report.packages.map(unit => ({
     platform: unit.platform,
     id: unit.id,
     role: unit.role,
     type: unit.type,
-    artifacts: unit.artifacts.map(({ sha256: _sha256, ...artifact }) => artifact),
+    validated: unit.validated,
+    assets: unit.assets.map(({ sha256: _sha256, ...asset }) => asset),
   }));
-  assert(JSON.stringify(deliveryShape(validation)) === JSON.stringify(deliveryShape(firstBuild)), 'validate/build differ in DeliveryUnit structure.');
+  assert(JSON.stringify(packageShape(validation)) === JSON.stringify(packageShape(firstBuild)), 'validate/build differ in Package structure.');
   await verifyArtifactClosure(firstBuild);
   await verifyCanonicalOutputs();
   await verifyManifestsAndDistributions();
   await verifyHooks();
   await verifyMcp();
+  await verifyNodeRuntime();
   await verifyStableOutputSafety(firstBuild);
 
   /** 第一次构建后完整产物树的权限与字节快照。 */

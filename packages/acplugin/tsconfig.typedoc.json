@@ -1,0 +1,5 @@
+{
+  "extends": "./tsconfig.json",
+  "include": ["src/**/*.ts", "typedoc-entry.ts"],
+  "exclude": ["test/**/*.ts"]
+}

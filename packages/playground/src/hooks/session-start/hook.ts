@@ -1,7 +1,7 @@
-import { defineHook } from '@tokenroll/acplugin-extension-hooks';
+import type { Hook } from '@tokenroll/acplugin-extension-hooks';
 
 /** 展示会话开始扩展点；只追加能力模板的边界说明。 */
-export default defineHook({
+export default {
   event: 'SessionStart',
   statusMessage: 'Loading the ACPlugin playground boundary.',
   /** 明确继续会话，并提供可移植的上下文和 advisory 结果。 */
@@ -13,4 +13,4 @@ export default defineHook({
       systemMessage: 'ACPlugin playground template loaded.',
     };
   },
-});
+} satisfies Hook<'SessionStart'>;

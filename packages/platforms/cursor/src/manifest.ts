@@ -1,12 +1,10 @@
-import {
-  bytesArtifact,
-  stableJson,
-  type ArtifactInput,
-  type DraftDocument,
-  type JsonObject,
-  type PlatformPrepareContext,
-} from '@tokenroll/acplugin';
-import { hasComponents } from './components.js';
+import type {
+  CanonicalProject,
+  JsonObject,
+  MetadataDispositionInput,
+  PackageDocumentInput,
+  PluginMetadata,
+} from '@tokenroll/acplugin/sdk';
 import type { CursorPlatformOptions, CursorPluginManifest } from './types.js';
 
 /** Cursor Plugin 清单的稳定逻辑 Document ID。 */
@@ -15,29 +13,17 @@ export const PLUGIN_MANIFEST_ID = 'plugin-manifest';
 /** Cursor Plugin 清单相对于安装根的固定路径。 */
 export const PLUGIN_MANIFEST_PATH = '.cursor-plugin/plugin.json';
 
-/** Cursor Platform 写入 Artifact 时使用的固定 owner。 */
-const PLATFORM_OWNER = 'platform:cursor' as const;
-
 /** Cursor 与 Core 共同采用的完整语义版本规则。 */
 export const SEMVER_PATTERN: RegExp = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-[\dA-Za-z-]+(?:\.[\dA-Za-z-]+)*)?$/u;
 
-/**
- * 判断值是否为非空字符串。
- *
- * @param value Platform 工厂收到的未知候选。
- * @returns 可安全进入官方 Manifest 时返回 true。
- */
+/** @returns 候选是否为非空字符串。 */
 function isNonEmptyString(value: unknown): value is string {
   return typeof value === 'string' && value.trim().length > 0;
 }
 
-/**
- * 校验 Cursor Platform 工厂只接收官方 Schema 对应字段。
- *
- * @param options 用户声明的 Cursor Platform 选项。
- */
+/** 校验 Cursor Platform 工厂只接收官方 Schema 对应字段。 */
 export function validatePlatformOptions(options: CursorPlatformOptions): void {
-  /** Cursor Platform 对外开放的精确顶层字段。 */
+  /** allowed 是 Cursor 工厂公开且经验证的精确字段集合。 */
   const allowed = new Set(['strict', 'publisher', 'logo', 'category', 'tags', 'minClientVersions']);
   for (const field of Object.keys(options)) {
     if (!allowed.has(field))
@@ -45,7 +31,6 @@ export function validatePlatformOptions(options: CursorPlatformOptions): void {
   }
   if (options.strict !== undefined && typeof options.strict !== 'boolean')
     throw new TypeError('Cursor strict must be a boolean.');
-  /** field 表示当前可选普通字符串配置。 */
   for (const field of ['publisher', 'logo', 'category'] as const) {
     if (options[field] !== undefined && !isNonEmptyString(options[field]))
       throw new TypeError(`Cursor ${field} must be a non-empty string.`);
@@ -61,7 +46,6 @@ export function validatePlatformOptions(options: CursorPlatformOptions): void {
       || Array.isArray(options.minClientVersions) || Object.keys(options.minClientVersions).length === 0) {
       throw new TypeError('Cursor minClientVersions must be a non-empty object.');
     }
-    /** [client, version] 表示当前最低客户端版本约束。 */
     for (const [client, version] of Object.entries(options.minClientVersions)) {
       if (!isNonEmptyString(client) || typeof version !== 'string' || !SEMVER_PATTERN.test(version))
         throw new TypeError('Cursor minClientVersions must map non-empty client IDs to semantic versions.');
@@ -69,15 +53,19 @@ export function validatePlatformOptions(options: CursorPlatformOptions): void {
   }
 }
 
-/**
- * 创建只包含官方字段和实际 Component Glob 的 Cursor Plugin 清单。
- *
- * @param context Platform prepare 阶段的规范工程与报告上下文。
- * @returns 可供 Extension add-only patch 的初始清单。
- */
-function createPluginManifest(context: PlatformPrepareContext): CursorPluginManifest {
-  /** 所有平台共享且已由 Core 验证的 Plugin 元数据。 */
-  const metadata = context.project.metadata;
+/** @returns canonical project 是否包含指定 Component kind。 */
+function hasComponents(project: CanonicalProject, kind: 'command' | 'skill' | 'agent'): boolean {
+  return kind === 'command'
+    ? project.commands.length > 0
+    : kind === 'skill'
+      ? project.skills.length > 0
+      : project.agents.length > 0;
+}
+
+/** @returns 统一元数据和 Cursor 选项组成的官方 Plugin Manifest。 */
+function pluginManifest(project: CanonicalProject, options: Readonly<JsonObject>): CursorPluginManifest {
+  /** metadata 已由 Core config resolver 完整验证。 */
+  const metadata = project.metadata;
   return {
     name: metadata.name,
     version: metadata.version,
@@ -85,102 +73,77 @@ function createPluginManifest(context: PlatformPrepareContext): CursorPluginMani
     ...(metadata.displayName === undefined ? {} : { displayName: metadata.displayName }),
     ...(metadata.author === undefined
       ? {}
-      : { author: { name: metadata.author.name, ...(metadata.author.email === undefined ? {} : { email: metadata.author.email }) } }),
+      : {
+          author: {
+            name: metadata.author.name,
+            ...(metadata.author.email === undefined ? {} : { email: metadata.author.email }),
+          },
+        }),
     ...(metadata.homepage === undefined ? {} : { homepage: metadata.homepage }),
     ...(metadata.repository === undefined ? {} : { repository: metadata.repository }),
     ...(metadata.license === undefined ? {} : { license: metadata.license }),
-    ...(metadata.keywords === undefined ? {} : { keywords: metadata.keywords }),
-    ...(context.options.publisher === undefined ? {} : { publisher: context.options.publisher as string }),
-    ...(context.options.logo === undefined ? {} : { logo: context.options.logo as string }),
-    ...(context.options.category === undefined ? {} : { category: context.options.category as string }),
-    ...(context.options.tags === undefined ? {} : { tags: context.options.tags as readonly string[] }),
-    ...(context.options.minClientVersions === undefined
+    ...(metadata.keywords.length === 0 ? {} : { keywords: metadata.keywords }),
+    ...(options.publisher === undefined ? {} : { publisher: options.publisher as string }),
+    ...(options.logo === undefined ? {} : { logo: options.logo as string }),
+    ...(options.category === undefined ? {} : { category: options.category as string }),
+    ...(options.tags === undefined ? {} : { tags: options.tags as readonly string[] }),
+    ...(options.minClientVersions === undefined
       ? {}
-      : { minClientVersions: context.options.minClientVersions as Readonly<Record<string, string>> }),
-    ...(hasComponents(context.project, 'command') ? { commands: './commands/*.md' } : {}),
-    ...(hasComponents(context.project, 'skill') ? { skills: './skills/*/SKILL.md' } : {}),
-    ...(hasComponents(context.project, 'agent') ? { agents: './agents/*.md' } : {}),
+      : {
+          minClientVersions: options.minClientVersions as Readonly<Record<string, string>>,
+        }),
+    ...(hasComponents(project, 'command') ? { commands: './commands/*.md' } : {}),
+    ...(hasComponents(project, 'skill') ? { skills: './skills/*/SKILL.md' } : {}),
+    ...(hasComponents(project, 'agent') ? { agents: './agents/*.md' } : {}),
   };
 }
 
-/**
- * 报告统一元数据在 Cursor Plugin 清单中的最终去向。
- *
- * @param context Platform prepare 阶段的元数据报告出口。
- */
-function reportMetadata(context: PlatformPrepareContext): void {
-  /** 当前工程中始终存在并写入清单的必填元数据字段。 */
-  const required = ['name', 'version', 'description'] as const;
-  /** field 表示当前必填字段，用于报告稳定输出位置。 */
-  for (const field of required) {
-    context.reportMetadata({
-      field,
-      disposition: 'emitted',
-      output: `${PLUGIN_MANIFEST_PATH}.${field}`,
-      reason: `Cursor plugin.json supports ${field}.`,
-    });
+/** @returns 当前工程实际 metadata 的完整 emitted/omitted disposition。 */
+function metadataDispositions(metadata: PluginMetadata): readonly MetadataDispositionInput[] {
+  /** outputs 精确对应 Core 使用的字段粒度和最终 Manifest 位置。 */
+  const outputs: [string, string | undefined][] = [
+    ['name', `${PLUGIN_MANIFEST_PATH}/name`],
+    ['version', `${PLUGIN_MANIFEST_PATH}/version`],
+    ['description', `${PLUGIN_MANIFEST_PATH}/description`],
+  ];
+  for (const field of ['displayName', 'homepage', 'repository', 'license'] as const) {
+    if (metadata[field] !== undefined)
+      outputs.push([field, `${PLUGIN_MANIFEST_PATH}/${field}`]);
   }
-  /** Cursor 原生输出的统一可选元数据。 */
-  const emitted = ['displayName', 'homepage', 'repository', 'license', 'keywords'] as const;
-  /** field 表示当前实际声明的可选字段。 */
-  for (const field of emitted) {
-    if (context.project.metadata[field] !== undefined) {
-      context.reportMetadata({
-        field,
-        disposition: 'emitted',
-        output: `${PLUGIN_MANIFEST_PATH}.${field}`,
-        reason: `Cursor plugin.json supports ${field}.`,
-      });
-    }
+  if (metadata.author !== undefined) {
+    outputs.push(['author.name', `${PLUGIN_MANIFEST_PATH}/author/name`]);
+    if (metadata.author.email !== undefined)
+      outputs.push(['author.email', `${PLUGIN_MANIFEST_PATH}/author/email`]);
+    if (metadata.author.url !== undefined)
+      outputs.push(['author.url', undefined]);
   }
-  if (context.project.metadata.author !== undefined) {
-    context.reportMetadata({
-      field: 'author',
-      disposition: 'emitted',
-      output: `${PLUGIN_MANIFEST_PATH}.author`,
-      reason: 'Cursor plugin.json supports author name and email.',
-    });
-    if (context.project.metadata.author.url !== undefined) {
-      context.reportDiagnostic({
-        code: 'CURSOR_METADATA_AUTHOR_URL_OMITTED',
-        severity: 'warning',
-        message: 'Cursor author.url is omitted because the official author Schema accepts only name and email.',
-        fieldPath: ['author', 'url'],
-      });
-    }
-  }
+  if (metadata.keywords.length > 0)
+    outputs.push(['keywords', `${PLUGIN_MANIFEST_PATH}/keywords`]);
+  return Object.freeze(outputs.map(([field, output]) => Object.freeze({
+    field,
+    disposition: output === undefined ? 'omitted' as const : 'emitted' as const,
+    ...(output === undefined ? {} : { output }),
+    reason: output === undefined
+      ? 'Cursor plugin.json author accepts only name and email.'
+      : `Cursor plugin.json supports ${field}.`,
+  })));
 }
 
-/**
- * 创建 Cursor Platform 的初始 Plugin Manifest Document。
- *
- * @param context Platform prepare 生命周期上下文。
- * @returns 只开放 Hooks 与 MCP 根字段的单一 Document。
- */
-export function createManifestDocument(context: PlatformPrepareContext): DraftDocument {
-  reportMetadata(context);
-  return {
+/** 创建由 Core codec 序列化且只开放 Hooks/MCP 的 Cursor Plugin Document。 */
+export function createPluginDocument(input: {
+  readonly project: CanonicalProject;
+  readonly options: Readonly<JsonObject>;
+}): { readonly document: PackageDocumentInput; readonly metadata: readonly MetadataDispositionInput[] } {
+  /** document 是 Cursor base Package 的唯一结构化清单。 */
+  const document: PackageDocumentInput = Object.freeze({
     id: PLUGIN_MANIFEST_ID,
     path: PLUGIN_MANIFEST_PATH,
     format: 'json',
-    owner: PLATFORM_OWNER,
-    value: createPluginManifest(context) as unknown as JsonObject,
-    extensionPoints: [['hooks'], ['mcpServers']],
-  };
-}
-
-/**
- * 将完成 Extension patch 的 Cursor Document 序列化为 Artifact。
- *
- * @param documents 当前 Platform Draft 中由 Core 冻结的完整文档列表。
- * @returns 包含固定 Plugin 清单路径的序列化 Artifact。
- */
-export function serializeDocuments(documents: readonly DraftDocument[]): ArtifactInput[] {
-  /** 按逻辑 ID 查找而不是根据物理路径猜测语义的 Plugin 清单。 */
-  const manifest = documents.find(document => document.id === PLUGIN_MANIFEST_ID);
-  if (!manifest || manifest.path !== PLUGIN_MANIFEST_PATH || manifest.format !== 'json')
-    throw new Error('Cursor Platform Draft is missing its canonical Plugin Manifest Document.');
-  if (documents.length !== 1)
-    throw new Error('Cursor Platform received an unknown Document.');
-  return [bytesArtifact(PLUGIN_MANIFEST_PATH, stableJson(manifest.value))];
+    value: pluginManifest(input.project, input.options) as unknown as JsonObject,
+    extensionPoints: Object.freeze([
+      Object.freeze(['hooks'] as const),
+      Object.freeze(['mcpServers'] as const),
+    ]),
+  });
+  return Object.freeze({ document, metadata: metadataDispositions(input.project.metadata) });
 }

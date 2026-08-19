@@ -30,6 +30,6 @@ Plugin 包含 `.cursor-plugin/plugin.json`、`commands/`、`skills/` 与 `agents
 - Skill 无法关闭显式 user invocation 时 degraded。
 - Agent model 或 capability 无法精确强制时 degraded。
 
-Hooks/MCP 的具体事件或 transport 支持由对应 Extension Adapter 报告，Platform 只提供受控 Manifest 扩展点。
+Hooks/MCP 的具体事件或 transport 支持由对应 Extension Contributor 报告，Platform 只提供受控 Manifest 扩展点。
 
 [Cursor package API](/api/@tokenroll/acplugin-platform-cursor/)

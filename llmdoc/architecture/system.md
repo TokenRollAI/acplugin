@@ -2,101 +2,101 @@
 
 > [中文对照](system.zh-CN.md)
 
-## Pipeline
+## Product boundary
+
+ACPlugin is a Rolldown-powered AI Plugin framework and CLI. It combines project scaffolding with a build system that remains in the project for validation, development, packaging, compatibility reporting, and managed output updates.
+
+The public package boundary is deliberately split:
+
+- `@tokenroll/acplugin` is the author facade, CLI, Project API, report API, init, and isolated Migration entry.
+- Six `@tokenroll/acplugin-platform-*` packages own target-specific Package formats.
+- `@tokenroll/acplugin-extension-hooks` and `@tokenroll/acplugin-extension-mcp` own optional horizontal authoring formats.
+- `@acplugin/core` is private and is bundled into the main package.
+
+Configuration authors import from `@tokenroll/acplugin`. Trusted Platform and Extension implementations import contracts from `@tokenroll/acplugin/sdk`. The main package never bundles, discovers, or re-exports official integrations.
+
+Configuration, descriptor, Platform, and Extension modules execute as trusted build-time code in the host Node.js process; they are not process sandboxes. Core service capabilities govern which sources and outputs can enter managed Packages and reports, not what a malicious integration could read through Node.js itself. Factory results carry a `Symbol.for(...)` shared registry brand so root, SDK, and CLI bundle chunks recognize the lifecycle definition. This brand is interoperable identity metadata, not a private Symbol, capability token, or security boundary.
+
+## Fixed lifecycle
 
 ```text
-acplugin.config.ts
-  → resolve/validate config
-  → initialize Platforms and Extensions
-  → Extension discover, then canonical Component/Public scan
-  → Extension validate/build
-  → Platform prepare
-  → Extension Platform Adapters
-  → Platform generate/validate/distribute
-  → immutable DeliveryUnit/Artifact graph
-  → compatibility strictness
-  → validate-only materialization or managed output transaction
-  → stable report
+config load/resolve
+→ Platform and Extension Session setup
+→ canonical/Public/Runtime/Extension resource discovery
+→ immutable CanonicalProject assembly
+→ Platform Component and Extension validation
+→ Extension and Core Runtime compilation
+→ Platform.createPackage
+→ Framework and Extension Contributor collection
+→ Core add-only merge
+→ Platform.finalizePackage
+→ primary candidate materialization and validation
+→ optional Distribution creation and validation
+→ compatibility and metadata finalization
+→ aggregate materialization validation
+→ managed output transaction
+→ reverse Session close
 ```
 
-`validate`, `inspect`, and `build` run this same pipeline. Only report detail and commit behavior differ. `dev` creates a fresh pipeline per coalesced rebuild, includes Extension-reported bundle module graphs, performs a catch-up build after watcher readiness, and keeps the last successful complete output after failures.
+Core is the only scheduler. Platform Package pipelines are isolated from one another, while stable registries make diagnostics and reports independent of concurrent completion order. Every initialized Session is closed exactly once in reverse order after success or failure; close receives only a sanitized outcome summary.
 
-## Core package
+## Core service ownership
 
-`packages/core/src/` owns:
+Core owns the physical filesystem and process capabilities:
 
-- `types.ts`: public config, Component, Artifact, compatibility, and report contracts;
-- `contracts.ts`: branded Platform, Extension, Adapter, and lifecycle APIs;
-- `config.ts`: strict config normalization and safe project-relative directories;
-- `scanner.ts`: canonical Markdown/Public discovery, Frontmatter validation, dependency graph checks, and Extension-directory gating;
-- `diagnostics.ts`: stable sorted diagnostics and compatibility strictness;
-- `artifacts.ts`: ownership, hashing, file-source roots, modes, and collision checks;
-- `documents.ts`: add-only logical Document extension points and final serialization;
-- `delivery-units.ts`: primary/distribution ownership and immutable Artifact registration;
-- `lifecycle.ts`: fixed Platform/Extension orchestration and final report creation;
-- `transaction.ts`: validation materialization and whole-`dist` lock/backup/swap/recovery;
-- `serialization.ts`: deterministic JSON/YAML/Markdown serialization.
+- `SourceRegistry` issues owner-scoped `SourceFileRef` and `SourceDirectoryRef` values after path, type, symlink, case, and Unicode checks.
+- `ModuleHost` evaluates trusted TypeScript/JavaScript config and descriptors and registers their module graphs for dev.
+- `CompilerHost` is the only Rolldown owner. `portable-node` provides the framework contract for Hooks, local MCP, and built-in Runtime; `managed-rolldown` exposes a bounded Rolldown surface to integrations.
+- `ExecutionHost` runs only current-session generated Node Assets with bounded input, output, timeout, cwd, and environment.
+- `AssetRegistry` signs Source, Generated, and Bytes Assets, enforces grants, and records mode, hash, size, owner, and structured origin.
+- `WatchRegistry`, the Package candidate materializer, compatibility registry, and output transaction remain Core-only.
 
-Artifacts reject absolute/traversal paths, symlinks, unsupported modes, source escapes, and exact/case-insensitive/Unicode-normalized collisions.
+Platforms and Extensions never receive a physical work directory or direct `dist` access through the framework contract. They express managed output through Core-issued references and owner-scoped services; this output boundary does not turn trusted Integration code into a process sandbox.
 
-## Platform and Extension lifecycle
+## Resources and Project
+
+The framework-owned resource model contains:
+
+- Commands from `src/commands/<id>.md`;
+- Skills from `src/skills/<id>/SKILL.md` plus exact auxiliary files;
+- Agents from `src/agents/<id>.md`;
+- Public files from `public` or explicit copy rules;
+- built-in Node Runtime entries from direct `src/runtime` TS/JS files or explicit `runtime.entries`.
+
+Hooks and MCP are Extension-owned roots. A root containing author files without its owning Extension is a configuration error. Instructions are intentionally not a canonical Component.
+
+The graph assembler freezes one `CanonicalProject`. Component dependency validation rejects missing, self, and cyclic dependencies before Package creation. Runtime is compiled once by Core only when a selected Platform declares the exact Plugin-local Node 20 ESM capability.
+
+## Platform Packages and Contributions
+
+A Platform Session owns:
+
+1. optional Component field validation;
+2. `createPackage()` for base Documents, Assets, compatibility, and metadata dispositions;
+3. `finalizePackage()` for primary Package identity and optional additional Platform Assets;
+4. `validatePackage()` against the fully materialized candidate;
+5. optional `createDistributions()` from an already validated primary Package.
+
+An Extension validates and builds one platform-neutral state. Its `PlatformContributor` instances all read the same immutable Platform base Package and return independent `PackageContribution` values. A Contribution may add fields only at declared empty Document extension points, add Assets owned by that Extension, and report compatibility. It cannot read another Extension state, observe another Contribution, replace a Document, delete output, or claim a Component.
+
+Core validates all Contributions, then performs one deterministic add-only merge. Conflicting Document fields or Package paths fail regardless of Extension configuration order.
+
+## Output, reports, and dev
+
+Package candidates are materialized only under Core-owned temporary roots. Platform validation therefore sees the exact file tree that would be installed. Distribution Assets inherit the validated primary Asset identity unless the Platform explicitly adds a newly signed Asset.
+
+`BuildReport` schema version 2 contains Components, Runtimes, Extensions, Platform status, Packages, Asset provenance, compatibility, metadata dispositions, and stage-bound diagnostics. It contains no bytes, timestamps, environment values, project absolute paths, or temporary roots.
+
+The managed output transaction treats the selected Platform set as one replacement:
 
 ```text
-configResolved → buildStart → Extension discover → Core scan → Extension validate/build
-→ Platform prepare → Adapter apply → Platform generate/validate/distribute → buildEnd
+lock → recover → stage → validate → backup → swap → cleanup
 ```
 
-Platforms run in config order; Extensions run in config order and do not form a hidden dependency graph. Each Extension writes only its Core-provided work directory and returns platform-neutral Built State. Its Adapter can only read declared Documents, add fields at Platform-owned extension points, emit owned Artifacts, and report compatibility. Platforms retain complete lifecycle, Manifest, schema, validation, and distribution ownership.
+Any failure keeps the last complete output. `DevSession` remains Core-owned: it maintains one active build round, coalesces pending changes, reconciles the latest module/source graph, keeps the last successful output after failure, and drains safely on close or process signals.
 
-`buildEnd` runs in reverse initialized order after success or failure. On a candidate commit, the transaction keeps the prior output as a rollback backup while reverse cleanup runs. A cleanup failure is reported, passed to remaining cleanup hooks, and rolls the swap back to the previous complete output. Failures before the swap reach cleanup through the normal error path.
+The fixed transaction lock record is published complete with a no-replace hard link. Short-lived lock-metadata operations are serialized by unique PID/token guard intents, so stale recovery cannot rename a live replacement observed after an earlier read; dead guard paths are exact, never-reused identities. Stale recovery also compares inode/content metadata and bytes. This schema-3 protocol does not claim concurrent lock interoperability with pre-schema-3 beta processes.
 
-## Official Platform packages
+## Migration isolation
 
-`packages/platforms/claude-code/` emits native Commands, Skills, Agents, `.claude-plugin/plugin.json`, and optional Marketplace distributions.
-
-`packages/platforms/codex/` emits native Skills, Command fallback Skills, Agent fallback Skills, invocation policy metadata, `.codex-plugin/plugin.json`, and optional Marketplace distributions. Generated identities are reserved case-insensitively; collisions fail visibly.
-
-`packages/platforms/cursor/` emits a static Cursor Plugin with native Commands, Skills, and Subagents. Its Manifest is validated against a pinned complete official Schema fixture; model and non-readonly capability losses are reported rather than guessed.
-
-`packages/platforms/antigravity/` emits a static Plugin with native Skills, Command fallback Skills, Agent guidance Skills, and the smallest publicly verified `plugin.json`. Metadata without a confirmed Manifest field is reported as omitted.
-
-`packages/platforms/opencode/` emits a workspace overlay with native Commands, Skills, and Subagents. It creates `opencode.json` only when configured fields or an Extension Adapter requires it, and never fabricates a generic package Manifest.
-
-`packages/platforms/pi/` emits an npm package with native Skills, Command Prompt Templates, and Agent guidance Skills. Its package Manifest declares only Pi discovery fields and cannot leak `private`, `workspaces`, or private workspace dependencies.
-
-Each directory is published as `@tokenroll/acplugin-platform-<id>`. Production code imports only the public SDK from `@tokenroll/acplugin`, declares it as a peer dependency, and exports its factory as both the default and a named export. The main package neither bundles nor re-exports these implementations; private serializers and validators stay inside the owning Platform tarball.
-
-## Official Extensions
-
-`packages/extensions/hooks/` discovers `src/hooks/<id>/hook.ts`, validates event/matcher/timeout/result semantics, and bundles each implementation once as a platform-neutral Node 20 ESM Handler. Its six built-in Platform Adapters emit the verified static config or runtime integration for each host and report unsupported/degraded events individually. Runtime failures use fixed codes without payloads; third-party license notices remain adjacent to the Handler.
-
-`packages/extensions/mcp/` discovers `src/mcp/<id>/mcp.ts`. Remote HTTP entries remain declarations containing only public values and environment-variable references. Local stdio entries provide complete server code, are bundled once as Node 20 ESM, reject unresolved dynamic imports, and must pass a bounded real initialize/tools-list smoke without referenced Secret values in both development and production. There is no mode or cache bypass for this protocol check. Its six Platform Adapters emit only transports each host can install: Claude Code/Codex support both, Cursor/Antigravity support remote HTTP, OpenCode supports remote/local, and Pi reports both unsupported.
-
-Extension build contexts expose `addWatchFile()` as the single dependency-registration boundary. Official bundlers report their actual Rolldown module graphs through it; Core validates absolute file identities, and the CLI—not the Extension—owns watcher policy and readiness compensation.
-
-## Managed output transaction
-
-`dist` is a complete managed target set:
-
-1. acquire an exclusive sibling lock;
-2. recover a retained backup/transaction record;
-3. materialize all selected Platform delivery units into a same-filesystem stage;
-4. recompute and verify every Artifact size, SHA-256, mode, and regular-file status;
-5. write the transaction record and rename old output to backup;
-6. rename stage to output while retaining the rollback boundary;
-7. finish reverse Platform/Extension cleanup successfully or roll back;
-8. remove transaction and best-effort cleanup backup.
-
-Pre-commit failure leaves old output untouched. Failure after backup/swap rolls back. If cleanup alone is interrupted, the next run deterministically reconciles output and backup. Core tests inject failures at each observable phase.
-
-## CLI and package boundary
-
-`packages/acplugin/src/index.ts` exposes the public facade while `project-config.ts` loads fresh trusted TypeScript config/descriptor modules with Jiti and `run-project.ts` connects resolved projects to Core. Nested config objects are runtime-schema checked before lifecycle use. `cli.ts` owns commands, JSON/text output discipline, exit codes, watch coalescing, and lazy Migration import. Stable diagnostics redact external exceptions, absolute paths, and recognizable credential forms.
-
-The normal facade and CLI startup do not import `migration/`. The packed main tarball contains no private package imports, official integration manifest dependencies, or normal eager edges to those integrations. Migration's lazy chunk is the isolated exception that bundles the Claude Code Platform and MCP implementation needed to validate generated projects. `scripts/verify-release.mjs` proves the eager boundary, all nine public package manifests, peer rewrites, and private Symbol-brand interoperability through one main-package peer instance in external consumers.
-
-## Repository-only documentation consumers
-
-`packages/docs/` is a private VitePress workspace. TypeDoc scans only the root public entry point of each of the nine public packages, generates Markdown and the API sidebar into an ignored directory, and then VitePress builds the task-oriented manual without remote content, timestamps, or deployment side effects.
-
-`packages/playground/` is a private real consumer that explicitly imports the main package, all six official Platforms, and the Hooks/MCP Extensions. It exercises Components, Skill auxiliary files, every portable Hook event, HTTP/local MCP, Public files, Marketplaces, compatibility propagation, and managed output. Its content stays domain-neutral and demonstrates protocol and delivery capabilities without implementing product-specific behavior. Neither private workspace is a dependency of a public package or part of release tarballs.
+Migration is dynamically imported from `packages/acplugin/src/migration/`. Its tolerant legacy readers operate only on untrusted migration input and do not form a second normal build path. Content that cannot be mapped safely is written to `.acplugin-migration/unmapped/` with a stable report; it is never fabricated into canonical Hooks, local MCP implementations, or Instructions.

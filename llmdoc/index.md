@@ -17,9 +17,9 @@ ACPlugin is a canonical AI Plugin framework and CLI. Authors write Commands, Ski
 
 ## Architecture
 
-- [System architecture](architecture/system.md) · [系统架构](architecture/system.zh-CN.md) — Core-owned lifecycle, Platforms, Extensions, Adapter boundaries, Artifact graph, and managed output transaction.
-- [ADR-0001: lifecycle determinism and cache](architecture/decisions/0001-lifecycle-determinism-and-cache.md) · [ADR-0001：生命周期确定性与缓存](architecture/decisions/0001-lifecycle-determinism-and-cache.zh-CN.md)
-- [ADR-0002: Extension contribution order](architecture/decisions/0002-extension-contribution-order.md) · [ADR-0002：Extension 贡献顺序](architecture/decisions/0002-extension-contribution-order.zh-CN.md)
+- [System architecture](architecture/system.md) · [系统架构](architecture/system.zh-CN.md) — Core-owned lifecycle, Packages, unordered Contributions, Asset capabilities, and managed output transaction.
+- [ADR-0001: Session close and deterministic rebuilds](architecture/decisions/0001-lifecycle-determinism-and-cache.md) · [ADR-0001：Session 关闭与确定性重建](architecture/decisions/0001-lifecycle-determinism-and-cache.zh-CN.md)
+- [ADR-0002: unordered Extension contributions](architecture/decisions/0002-extension-contribution-order.md) · [ADR-0002：无序 Extension Contribution](architecture/decisions/0002-extension-contribution-order.zh-CN.md)
 - [ADR-0003: Node toolchain and runtime support](architecture/decisions/0003-node-toolchain-and-runtime-support.md) · [ADR-0003：Node 工具链与运行时支持](architecture/decisions/0003-node-toolchain-and-runtime-support.zh-CN.md)
 - [ADR-0004: first-class Platform packages](architecture/decisions/0004-first-class-platform-packages.md) · [ADR-0004：Platform 是一等独立生态包](architecture/decisions/0004-first-class-platform-packages.zh-CN.md)
 

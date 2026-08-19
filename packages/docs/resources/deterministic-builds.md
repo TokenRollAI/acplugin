@@ -12,9 +12,9 @@
 
 ## 框架保证
 
-- Scanner 和 Registry 对目录、资源和报告使用稳定排序。
-- Artifact 记录固定 owner、mode、size 与 SHA-256。
-- 报告不包含 Artifact bytes、时间、绝对路径、凭据或环境值。
+- Resource Provider 和 Registry 对目录、资源、Contribution 和报告使用稳定排序。
+- Asset 记录固定 owner、origin、mode、size 与 SHA-256。
+- 报告不包含 Asset bytes、时间、绝对路径、凭据或环境值。
 - TypeDoc/VitePress 文档 build 关闭 last-updated，不在线 fetch 内容。
 
 确定性不是跨任意 Node/依赖版本的承诺。升级 Node major、lockfile 或生成器版本后，应把变化作为正常版本化 diff 审查。

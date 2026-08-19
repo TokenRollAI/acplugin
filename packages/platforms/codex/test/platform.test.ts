@@ -3,49 +3,36 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
-  bytesArtifact,
   defineExtension,
-  DeliveryUnitRegistry,
-  executeLifecycle,
-  resolveConfig,
-  stableJson,
-  withMaterializedDeliveryUnitCandidate,
+  resolveKernelConfig,
+  runKernelBuildSession,
   type AcpluginExtension,
-  type BuildCommand,
-  type DiagnosticInput,
-  type PlatformDistributionContext,
-  type ResolvedConfig,
+  type ConfigCommand,
 } from '@acplugin/core';
 import { codex } from '../src/index.js';
 import { MARKETPLACE_MANIFEST_PATH, PLUGIN_MANIFEST_PATH } from '../src/manifest.js';
 
-/** 测试结束后统一删除的临时工程根目录。 */
+/** 测试结束后统一删除的临时工程根。 */
 const temporaryRoots: string[] = [];
 
 /** Golden 文件相对于当前测试模块的固定目录。 */
 const goldenRoot = path.join(import.meta.dirname, 'golden');
 
-/**
- * 创建已登记自动清理的空临时工程。
- *
- * @returns 新建工程的绝对路径。
- */
+/** 创建带最小配置占位符且会自动清理的临时工程。 */
 async function temporaryProject(): Promise<string> {
-  /** 当前用例独占且不会与并行测试冲突的工程根。 */
+  /** root 是当前测试独占工程根。 */
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'acplugin-codex-platform-'));
   temporaryRoots.push(root);
   await fs.mkdir(path.join(root, 'src'), { recursive: true });
+  await fs.writeFile(path.join(root, 'acplugin.config.ts'), 'export default {}\n');
   return root;
 }
 
-/**
- * 写入包含原生 Skill、无 hint Command、辅助文件和 Public 的严格兼容工程。
- *
- * @param root 当前测试工程根目录。
- */
+/** 写入原生 Skill、转换 Command、Public branding 和 Core Runtime。 */
 async function writeSupportedProject(root: string): Promise<void> {
   await fs.mkdir(path.join(root, 'src/commands'), { recursive: true });
   await fs.mkdir(path.join(root, 'src/skills/review/references'), { recursive: true });
+  await fs.mkdir(path.join(root, 'src/runtime'), { recursive: true });
   await fs.mkdir(path.join(root, 'public/assets'), { recursive: true });
   await fs.writeFile(path.join(root, 'src/commands/release.md'), `---
 description: Prepare a release.
@@ -72,26 +59,23 @@ platforms:
 Review the implementation.
 `);
   await fs.writeFile(path.join(root, 'src/skills/review/references/checklist.md'), 'Review checklist.\n');
-  await fs.writeFile(path.join(root, 'public/assets/logo.svg'), '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48"><rect width="48" height="48" fill="#10A37F"/></svg>\n');
+  await fs.writeFile(path.join(root, 'src/runtime/cli.ts'), 'process.stdout.write("runtime-ready\\n");\n');
+  await fs.writeFile(path.join(root, 'public/assets/logo.svg'),
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48"><rect width="48" height="48" fill="#10A37F"/></svg>\n');
 }
 
-/**
- * 解析仅包含 Codex Platform 的测试配置。
- *
- * @param root 当前测试工程根目录。
- * @param command 生命周期命令。
- * @param platform 当前用例使用的 Codex Platform。
- * @param extensions 可选横向 Extension 列表。
- * @returns 无配置诊断的完整 ResolvedConfig。
- */
-function resolvedConfig(
-  root: string,
-  command: BuildCommand,
-  platform: ReturnType<typeof codex>,
-  extensions: readonly AcpluginExtension[] = [],
-): ResolvedConfig {
-  /** 通过公开配置解析器建立的测试配置结果。 */
-  const result = resolveConfig({
+/** 执行一次只包含 Codex 的真实 Kernel v2 BuildSession。 */
+async function run(input: {
+  readonly root: string;
+  readonly command?: ConfigCommand;
+  readonly platform?: ReturnType<typeof codex>;
+  readonly extensions?: readonly AcpluginExtension[];
+  readonly commit?: boolean;
+}) {
+  /** command 决定 lifecycle 语义，commit 只允许 build 使用。 */
+  const command = input.command ?? 'build';
+  /** resolved 使用公开 Project API 的相同 config resolver。 */
+  const resolved = resolveKernelConfig({
     name: 'release-tools',
     version: '1.2.3',
     description: 'Release workflow tools.',
@@ -101,53 +85,88 @@ function resolvedConfig(
     repository: 'https://github.com/TokenRollAI/release-tools',
     license: 'MIT',
     keywords: ['release', 'review'],
-    platforms: [platform],
-    extensions,
+    platforms: [input.platform ?? codex()],
+    extensions: input.extensions ?? [],
     build: { outDir: 'dist', strict: true },
-  }, path.join(root, 'acplugin.config.ts'), command, 'production');
-  expect(result.diagnostics).toEqual([]);
-  return result.config!;
-}
-
-/**
- * 执行一次完整 Codex Platform 生命周期。
- *
- * @param config 已解析且只包含当前 Platform 的配置。
- * @returns Core 的稳定 BuildResult。
- */
-async function run(config: ResolvedConfig) {
-  return executeLifecycle({
-    config,
-    /** 当前 Platform Fixture 不加载作者 TypeScript 模块。 */
-    loadTypeScriptModule: async () => undefined,
-    environment: {},
+  }, {
+    projectRoot: input.root,
+    configFile: path.join(input.root, 'acplugin.config.ts'),
+    command,
+    mode: 'production',
   });
+  expect(resolved.diagnostics).toEqual([]);
+  return (await runKernelBuildSession({
+    config: resolved.config!, frameworkVersion: 'test',
+    commit: command === 'build' && (input.commit ?? true),
+  })).report;
 }
 
-/**
- * 读取 Golden 文本并与实际产物执行字节级比较。
- *
- * @param actual 当前构建输出文件的绝对路径。
- * @param golden Golden 文件相对于 test/golden 的路径。
- */
+/** 对比构建结果和仓库内确定性 Golden 字节。 */
 async function expectGolden(actual: string, golden: string): Promise<void> {
-  /** 当前仓库固定保存的期望字节。 */
-  const expected = await fs.readFile(path.join(goldenRoot, golden));
-  /** 当前 Platform 构建产生的实际字节。 */
-  const received = await fs.readFile(actual);
-  expect(received).toEqual(expected);
+  await expect(fs.readFile(actual)).resolves.toEqual(await fs.readFile(path.join(goldenRoot, golden)));
+}
+
+/** 创建向 Codex Package add-only 贡献一个资源的测试 Extension。 */
+function contributionExtension(input: {
+  readonly id: string;
+  readonly field?: 'hooks' | 'mcpServers';
+  readonly value?: string;
+  readonly path: string;
+  readonly bytes: string;
+}): AcpluginExtension {
+  return defineExtension({
+    id: input.id,
+    apiVersion: '1',
+    resourceRoots: [],
+    /** Session 覆盖完整 Resource 与 Contributor 生命周期。 */
+    createSession: () => ({
+      /** 空对象标记 Fixture 本轮已发现。 */
+      discover: () => ({}),
+      /** tuple 用于验证贡献的兼容性覆盖。 */
+      validate: (_context, state) => ({
+        state, subjects: [{ subject: `fixture:${input.id}`, capabilities: ['delivery'] }],
+      }),
+      /** bytes 只通过 Extension owner-scoped AssetService 签发。 */
+      async build({ assets }, state) {
+        return { state: {
+          state,
+          asset: await assets.fromBytes({
+            bytes: input.bytes,
+            origin: { operation: 'codex-fixture', subjects: [`fixture:${input.id}`] },
+          }),
+        } };
+      },
+      contributors: [{
+        platform: 'codex',
+        platformApiVersion: '1',
+        /** Contributor 只能占用声明点、追加 Asset 并覆盖自己的 tuple。 */
+        contribute: (_context, built) => ({
+          ...(input.field === undefined
+            ? {}
+            : {
+                documentFields: [{ document: 'plugin-manifest', path: [input.field], value: input.value! }],
+              }),
+          assets: [{ path: input.path, asset: built.asset }],
+          compatibility: [{
+            subject: `fixture:${input.id}`, capability: 'delivery', level: 'native',
+            reason: 'The fixture is delivered through the Codex Package contribution contract.',
+          }],
+        }),
+      }],
+    }),
+  });
 }
 
 afterEach(async () => {
   await Promise.all(temporaryRoots.splice(0).map(root => fs.rm(root, { recursive: true, force: true })));
 });
 
-describe('Codex Platform', () => {
-  it('builds native Skills, transformed Commands, Public, metadata, and current openai.yaml', async () => {
-    /** 只使用 strict 可接受能力的完整工程。 */
+describe('Codex Platform Package API', () => {
+  it('builds Skill, plugin-prefixed Command, Public, Runtime, metadata, and current protocol goldens', async () => {
+    /** root 包含 Codex 首期全部严格可接受能力。 */
     const root = await temporaryProject();
     await writeSupportedProject(root);
-    /** 配置完整官方安装 interface 的 Codex Platform。 */
+    /** platform 配置完整官方安装 interface。 */
     const platform = codex({
       interface: {
         category: 'Developer Tools',
@@ -158,391 +177,190 @@ describe('Codex Platform', () => {
         logo: './assets/logo.svg',
       },
     });
-    /** 完成 strict 主 Plugin 构建后的稳定结果。 */
-    const result = await run(resolvedConfig(root, 'build', platform));
-    /** Codex 主 Plugin 的最终输出根。 */
+    /** report 来自真实 build 和受管事务。 */
+    const report = await run({ root, platform });
+    /** output 是 Codex 主 Plugin 根。 */
     const output = path.join(root, 'dist/codex/plugin');
 
-    expect(result.success).toBe(true);
-    expect(result.committed).toBe(true);
-    expect(result.compatibility).toEqual(expect.arrayContaining([
-      expect.objectContaining({ subject: 'skill:review', level: 'native' }),
-      expect.objectContaining({ subject: 'command:release', level: 'transform' }),
+    expect(report.success, JSON.stringify(report.diagnostics, null, 2)).toBe(true);
+    expect(report.committed).toBe(true);
+    expect(report.compatibility).toEqual(expect.arrayContaining([
+      expect.objectContaining({ subject: 'skill:review', capability: 'component', level: 'native' }),
+      expect.objectContaining({
+        subject: 'command:release', capability: 'component', level: 'transform',
+        transformation: 'explicit-skill:release-tools-release',
+      }),
+      expect.objectContaining({ subject: 'runtime:cli', capability: 'node20-esm', level: 'native' }),
     ]));
-    expect(result.metadata).toContainEqual(expect.objectContaining({
-      field: 'displayName',
-      disposition: 'emitted',
-      output: '.codex-plugin/plugin.json.interface.displayName',
+    expect(report.metadata).toContainEqual(expect.objectContaining({
+      field: 'displayName', disposition: 'emitted',
     }));
-    await expectGolden(path.join(output, '.codex-plugin/plugin.json'), '.codex-plugin/plugin.json');
+    await expectGolden(path.join(output, PLUGIN_MANIFEST_PATH), PLUGIN_MANIFEST_PATH);
     await expectGolden(path.join(output, 'skills/review/SKILL.md'), 'skills/review/SKILL.md');
     await expectGolden(path.join(output, 'skills/review/agents/openai.yaml'), 'skills/review/agents/openai.yaml');
-    await expectGolden(path.join(output, 'skills/command-release/SKILL.md'), 'skills/command-release/SKILL.md');
-    await expectGolden(path.join(output, 'skills/command-release/agents/openai.yaml'), 'skills/command-release/agents/openai.yaml');
-    expect(await fs.readFile(path.join(output, 'skills/review/references/checklist.md'), 'utf8')).toBe('Review checklist.\n');
-    expect(await fs.readFile(path.join(output, 'assets/logo.svg'), 'utf8')).toContain('viewBox="0 0 48 48"');
-  });
-
-  it('opts into one plugin-prefixed Command Skill ID across Plugin and Marketplace output', async () => {
-    /** 复用完整严格工程，隔离 generated ID 策略对同一 Command 的影响。 */
-    const root = await temporaryProject();
-    await writeSupportedProject(root);
-    /** Plugin 前缀策略必须是显式 opt-in，Marketplace 只继承主单元。 */
-    const platform = codex({
-      generatedSkillIds: { command: 'plugin-prefixed' },
-      interface: { category: 'Developer Tools' },
-      marketplace: {},
+    await expectGolden(path.join(output, 'skills/release-tools-release/SKILL.md'), 'skills/release-tools-release/SKILL.md');
+    await expectGolden(path.join(output, 'skills/release-tools-release/agents/openai.yaml'), 'skills/release-tools-release/agents/openai.yaml');
+    await expect(fs.access(path.join(output, 'skills/command-release/SKILL.md'))).rejects.toThrow();
+    await expect(fs.readFile(path.join(output, 'skills/review/references/checklist.md'), 'utf8')).resolves.toBe('Review checklist.\n');
+    await expect(fs.readFile(path.join(output, 'runtime/cli/main.mjs'), 'utf8')).resolves.toContain('runtime-ready');
+    expect(report.packages[0]?.assets.find(asset => asset.path === 'runtime/cli/main.mjs')).toMatchObject({
+      owner: 'framework:node-runtime', mode: 0o755, origin: { type: 'compile', profile: 'portable-node' },
     });
-    /** 完成主 Plugin 和单 Plugin Marketplace 构建后的稳定结果。 */
-    const result = await run(resolvedConfig(root, 'build', platform));
-    /** 最终 generated ID 由配置中的稳定 Plugin name 与 canonical Command ID 组成。 */
-    const generatedId = 'release-tools-release';
-    /** 主 Plugin 使用的输出根。 */
-    const pluginRoot = path.join(root, 'dist/codex/plugin');
-    /** 单 Plugin Marketplace 使用的输出根。 */
-    const marketplaceRoot = path.join(root, 'dist/codex/marketplace');
-
-    expect(result.success, JSON.stringify(result.diagnostics)).toBe(true);
-    expect(result.compatibility).toContainEqual(expect.objectContaining({
-      subject: 'command:release',
-      capability: 'component',
-      level: 'transform',
-      transformation: `Explicit Skill ${generatedId}`,
-    }));
-    await expectGolden(
-      path.join(pluginRoot, `skills/${generatedId}/SKILL.md`),
-      `skills/${generatedId}/SKILL.md`,
-    );
-    await expectGolden(
-      path.join(pluginRoot, `skills/${generatedId}/agents/openai.yaml`),
-      `skills/${generatedId}/agents/openai.yaml`,
-    );
-    await expect(fs.access(path.join(pluginRoot, 'skills/command-release/SKILL.md'))).rejects.toThrow();
-    expect(await fs.readFile(path.join(marketplaceRoot, `skills/${generatedId}/SKILL.md`)))
-      .toEqual(await fs.readFile(path.join(pluginRoot, `skills/${generatedId}/SKILL.md`)));
   });
 
-  it('rejects only an actually declared Command argument hint in strict mode', async () => {
-    /** 单 Command 工程用于隔离 hint 兼容性。 */
-    const root = await temporaryProject();
-    await fs.mkdir(path.join(root, 'src/commands'), { recursive: true });
-    await fs.writeFile(path.join(root, 'src/commands/deploy.md'), `---
+  it('rejects native/generated and generated/generated Skill namespace collisions before Package creation', async () => {
+    /** nativeRoot 让 native Skill 占用默认 generated Command ID。 */
+    const nativeRoot = await temporaryProject();
+    await fs.mkdir(path.join(nativeRoot, 'src/commands'), { recursive: true });
+    await fs.mkdir(path.join(nativeRoot, 'src/skills/release-tools-release'), { recursive: true });
+    await fs.writeFile(path.join(nativeRoot, 'src/commands/release.md'), '---\ndescription: Release.\n---\nRelease.\n');
+    await fs.writeFile(path.join(nativeRoot, 'src/skills/release-tools-release/SKILL.md'),
+      '---\ndescription: Existing Skill.\n---\nExisting.\n');
+    /** nativeCollision 必须在 Asset 签发和 Package finalization 前失败。 */
+    const nativeCollision = await run({ root: nativeRoot, command: 'validate', commit: false });
+    expect(nativeCollision.success).toBe(false);
+    expect(nativeCollision.packages).toEqual([]);
+    expect(nativeCollision.diagnostics).toContainEqual(expect.objectContaining({
+      code: 'CODEX_GENERATED_SKILL_ID_COLLISION', phase: 'package',
+    }));
+
+    /** generatedRoot 让 Agent fallback 与 native Skill 占用同一固定 agent 前缀 ID。 */
+    const generatedRoot = await temporaryProject();
+    await fs.mkdir(path.join(generatedRoot, 'src/agents'), { recursive: true });
+    await fs.mkdir(path.join(generatedRoot, 'src/skills/agent-reviewer'), { recursive: true });
+    await fs.writeFile(path.join(generatedRoot, 'src/agents/reviewer.md'), '---\ndescription: Review.\n---\nReview.\n');
+    await fs.writeFile(path.join(generatedRoot, 'src/skills/agent-reviewer/SKILL.md'),
+      '---\ndescription: Existing Skill.\n---\nExisting.\n');
+    /** generatedCollision 使用与 native/Command 相同的命名空间检查。 */
+    const generatedCollision = await run({ root: generatedRoot, command: 'validate', commit: false });
+    expect(generatedCollision.success).toBe(false);
+    expect(generatedCollision.diagnostics).toContainEqual(expect.objectContaining({
+      code: 'CODEX_GENERATED_SKILL_ID_COLLISION', phase: 'package',
+    }));
+  });
+
+  it('reports actual argumentHint loss and Agent fallback through final strictness', async () => {
+    /** commandRoot 只声明一个存在 UI 损失的 argumentHint。 */
+    const commandRoot = await temporaryProject();
+    await fs.mkdir(path.join(commandRoot, 'src/commands'), { recursive: true });
+    await fs.writeFile(path.join(commandRoot, 'src/commands/deploy.md'), `---
 description: Deploy an environment.
 argumentHint: <environment>
 ---
 Deploy {{arguments}}.
 `);
-    /** strict 应在 fallback 生成 checkpoint 拒绝实际 hint 损失。 */
-    const result = await run(resolvedConfig(root, 'build', codex()));
-
-    expect(result.success).toBe(false);
-    expect(result.committed).toBe(false);
-    expect(result.compatibility).toContainEqual(expect.objectContaining({
-      subject: 'command:deploy',
-      capability: 'argumentHint',
-      level: 'degraded',
+    /** commandReport 应保留完整降级 tuple 并由 strict 阻止成功。 */
+    const commandReport = await run({ root: commandRoot, command: 'validate', commit: false });
+    expect(commandReport.success).toBe(false);
+    expect(commandReport.compatibility).toContainEqual(expect.objectContaining({
+      subject: 'command:deploy', capability: 'argument-hint', level: 'degraded',
     }));
-    expect(result.diagnostics).toContainEqual(expect.objectContaining({ code: 'COMPATIBILITY_STRICT' }));
-  });
+    expect(commandReport.diagnostics).toContainEqual(expect.objectContaining({ code: 'COMPATIBILITY_STRICT_FAILURE' }));
 
-  it('rejects Agent fallback in strict mode and writes explicit guidance in relaxed mode', async () => {
-    /** 单 Agent 工程用于验证三类运行约束损失。 */
-    const root = await temporaryProject();
-    await fs.mkdir(path.join(root, 'src/agents'), { recursive: true });
-    await fs.writeFile(path.join(root, 'src/agents/reviewer.md'), `---
-description: Review code changes.
+    /** agentRoot 只包含 Codex 无法原生注册的 Agent。 */
+    const agentRoot = await temporaryProject();
+    await fs.mkdir(path.join(agentRoot, 'src/agents'), { recursive: true });
+    await fs.writeFile(path.join(agentRoot, 'src/agents/reviewer.md'), `---
+description: Review changes.
 model: capable
-capabilities:
-  - filesystem:read
-  - search
+capabilities: [filesystem:read, search]
 ---
-Review code and report findings.
+Review.
 `);
-    /** strict 运行不应提交降级 Agent。 */
-    const strictResult = await run(resolvedConfig(root, 'build', codex()));
-    /** relaxed 运行允许生成带明确限制说明的 fallback。 */
-    const relaxedResult = await run(resolvedConfig(root, 'build', codex({ strict: false })));
-    /** relaxed 模式最终生成的指导型 Skill。 */
-    const fallback = await fs.readFile(path.join(root, 'dist/codex/plugin/skills/agent-reviewer/SKILL.md'), 'utf8');
-
-    expect(strictResult.success).toBe(false);
-    expect(strictResult.committed).toBe(false);
-    expect(relaxedResult.success).toBe(true);
-    expect(relaxedResult.compatibility).toEqual(expect.arrayContaining([
-      expect.objectContaining({ subject: 'agent:reviewer', capability: 'component', level: 'degraded' }),
-      expect.objectContaining({ subject: 'agent:reviewer', capability: 'agent.model', level: 'degraded' }),
-      expect.objectContaining({ subject: 'agent:reviewer', capability: 'agent.capabilities', level: 'degraded' }),
-    ]));
-    expect(fallback).toContain('Intended model class: capable.');
-    expect(fallback).toContain('These settings are guidance, not enforced registration.');
+    /** strictReport 证明降级先进入报告再执行 strict。 */
+    const strictReport = await run({ root: agentRoot, command: 'validate', commit: false });
+    /** relaxedReport 允许交付 guidance-only Skill。 */
+    const relaxedReport = await run({ root: agentRoot, platform: codex({ strict: false }) });
+    expect(strictReport.success).toBe(false);
+    expect(strictReport.compatibility).toContainEqual(expect.objectContaining({
+      subject: 'agent:reviewer', capability: 'component', level: 'degraded',
+    }));
+    expect(relaxedReport.success, JSON.stringify(relaxedReport.diagnostics, null, 2)).toBe(true);
+    await expect(fs.readFile(path.join(agentRoot, 'dist/codex/plugin/skills/agent-reviewer/SKILL.md'), 'utf8'))
+      .resolves.toContain('Intended model class: capable.');
   });
 
-  it('reports user:false as an actual invocation degradation', async () => {
-    /** 单 Skill 工程用于隔离禁止显式调用的兼容性。 */
-    const root = await temporaryProject();
-    await fs.mkdir(path.join(root, 'src/skills/manual'), { recursive: true });
-    await fs.writeFile(path.join(root, 'src/skills/manual/SKILL.md'), `---
-description: Run only when explicitly selected.
-invocation:
-  user: false
-  model: true
----
-Perform the manual workflow.
-`);
-    /** relaxed 运行应保留 Skill 内容并只警告 user:false。 */
-    const result = await run(resolvedConfig(root, 'build', codex({ strict: false })));
-    expect(result.success, JSON.stringify(result.diagnostics)).toBe(true);
-
-    expect(result.compatibility).toContainEqual(expect.objectContaining({
-      subject: 'skill:manual',
-      capability: 'invocation.user',
-      level: 'degraded',
-    }));
-    expect(await fs.readFile(path.join(root, 'dist/codex/plugin/skills/manual/SKILL.md'), 'utf8'))
-      .toContain('Perform the manual workflow.');
-  });
-
-  it('fails when a canonical Skill collides with a generated fallback Skill ID', async () => {
-    /** 同时声明 command:release 与 skill:command-release 的冲突工程。 */
-    const root = await temporaryProject();
-    await fs.mkdir(path.join(root, 'src/commands'), { recursive: true });
-    await fs.mkdir(path.join(root, 'src/skills/command-release'), { recursive: true });
-    await fs.writeFile(path.join(root, 'src/commands/release.md'), `---
-description: Prepare a release.
----
-Prepare the release.
-`);
-    await fs.writeFile(path.join(root, 'src/skills/command-release/SKILL.md'), `---
-description: Existing colliding Skill.
----
-Run the existing workflow.
-`);
-    /** prepare 应在任何 Artifact 注册前报告稳定结构错误。 */
-    const result = await run(resolvedConfig(root, 'build', codex()));
-
-    expect(result.success).toBe(false);
-    expect(result.committed).toBe(false);
-    expect(result.diagnostics).toContainEqual(expect.objectContaining({
-      code: 'CODEX_GENERATED_SKILL_ID_COLLISION',
-      message: expect.stringContaining('skill:command-release'),
-    }));
-  });
-
-  it('rejects plugin-prefixed Command collisions and overlong combined identities', async () => {
-    /** 第一份工程让 opt-in Command 与 canonical Skill 占用同一最终 ID。 */
-    const collisionRoot = await temporaryProject();
-    await fs.mkdir(path.join(collisionRoot, 'src/commands'), { recursive: true });
-    await fs.mkdir(path.join(collisionRoot, 'src/skills/release-tools-release'), { recursive: true });
-    await fs.writeFile(path.join(collisionRoot, 'src/commands/release.md'), `---
-description: Prepare a release.
----
-Prepare the release.
-`);
-    await fs.writeFile(path.join(collisionRoot, 'src/skills/release-tools-release/SKILL.md'), `---
-description: Existing colliding Skill.
----
-Run the existing workflow.
-`);
-    /** prepare 必须使用与 generateBundle 相同的 opt-in ID resolver。 */
-    const collision = await run(resolvedConfig(
-      collisionRoot,
-      'build',
-      codex({ generatedSkillIds: { command: 'plugin-prefixed' } }),
-    ));
-
-    expect(collision).toMatchObject({ success: false, committed: false });
-    expect(collision.diagnostics).toContainEqual(expect.objectContaining({
-      code: 'CODEX_GENERATED_SKILL_ID_COLLISION',
-      message: expect.stringContaining('release-tools-release'),
-    }));
-
-    /** 第二份工程验证重复 Plugin 前缀仍受官方组合身份长度限制。 */
-    const lengthRoot = await temporaryProject();
-    await fs.mkdir(path.join(lengthRoot, 'src/commands'), { recursive: true });
-    await fs.writeFile(path.join(lengthRoot, 'src/commands/prepare-release-workflow.md'), `---
-description: Prepare a release workflow.
----
-Prepare the release workflow.
-`);
-    /** 较长但本身合法的 Plugin name 与 generated Skill name 合并后超过 64 字符。 */
-    const lengthConfig = resolveConfig({
-      name: 'organization-release-operations',
-      version: '1.0.0',
-      description: 'Organization release operations.',
-      platforms: [codex({ generatedSkillIds: { command: 'plugin-prefixed' } })],
-    }, path.join(lengthRoot, 'acplugin.config.ts'), 'build', 'production');
-    expect(lengthConfig.diagnostics).toEqual([]);
-    /** 最终候选校验必须拒绝超过官方组合身份限制的 Skill。 */
-    const overlong = await run(lengthConfig.config!);
-
-    expect(overlong).toMatchObject({ success: false, committed: false });
-    expect(overlong.diagnostics).toContainEqual(expect.objectContaining({
-      code: 'CODEX_SKILL_IDENTITY_TOO_LONG',
-    }));
-  });
-
-  it('lets independent Hooks and MCP Adapters use only declared add-only extension points', async () => {
-    /** 至少含一个原生 Skill 的 Extension host 工程。 */
+  it('lets Hooks and MCP Extensions use only declared add-only points and validates final wire data', async () => {
+    /** root 需要至少一个合法 Skill 作为 Extension host。 */
     const root = await temporaryProject();
     await fs.mkdir(path.join(root, 'src/skills/host'), { recursive: true });
-    await fs.writeFile(path.join(root, 'src/skills/host/SKILL.md'), `---
-description: Host extension resources.
----
-Use the extension resources.
-`);
-    /** 模拟官方 Hooks/MCP Extension 包的两个 add-only patch。 */
-    const extension = defineExtension({
-      name: 'codex-extension-fixture',
-      apiVersion: '1',
-      /** discover 返回资源以触发 Adapter 生命周期。 */
-      discover: () => ({ enabled: true }),
-      /** build 透传当前 Fixture 的平台中立状态。 */
-      build: (_context, discovered) => discovered,
-      adapters: [{
-        extensionApiVersion: '1',
-        platform: codex().id,
-        platformApiVersion: '1',
-        /** apply 只能新增 Manifest 字段和自己拥有的 Artifact。 */
-        apply(context) {
-          context.patchDocument({ document: 'plugin-manifest', path: ['hooks'], value: './hooks/hooks.json' });
-          context.patchDocument({ document: 'plugin-manifest', path: ['mcpServers'], value: './.mcp.json' });
-          context.emitArtifact(bytesArtifact('hooks/hooks.json', '{"hooks":{}}\n'));
-          context.emitArtifact(bytesArtifact('.mcp.json', '{"docs":{"url":"https://developers.openai.com/mcp"}}\n'));
-        },
-      }],
+    await fs.writeFile(path.join(root, 'src/skills/host/SKILL.md'), '---\ndescription: Host.\n---\nHost.\n');
+    /** hooks 提供最终平台 validator 可接受的 wire schema。 */
+    const hooks = contributionExtension({
+      id: 'hooks-fixture', field: 'hooks', value: './hooks/hooks.json', path: 'hooks/hooks.json',
+      bytes: '{"hooks":{"SessionStart":[{"hooks":[{"type":"command","command":"node hook.mjs"}]}]}}\n',
     });
-    /** 完成 Extension 合并和最终引用验证的生命周期结果。 */
-    const result = await run(resolvedConfig(root, 'build', codex(), [extension]));
-    /** 最终 Plugin Manifest 中的两个 Extension 引用。 */
-    const manifest = JSON.parse(await fs.readFile(path.join(root, 'dist/codex/plugin/.codex-plugin/plugin.json'), 'utf8'));
-
-    expect(result.success).toBe(true);
+    /** mcp 提供固定 manifest 引用目标。 */
+    const mcp = contributionExtension({
+      id: 'mcp-fixture', field: 'mcpServers', value: './.mcp.json', path: '.mcp.json',
+      bytes: '{"docs":{"url":"https://developers.openai.com/mcp"}}\n',
+    });
+    /** valid 验证集中合并和最终引用检查。 */
+    const valid = await run({ root, extensions: [hooks, mcp] });
+    /** manifest 是 Core codec 序列化后的最终 Document。 */
+    const manifest = JSON.parse(await fs.readFile(path.join(root, 'dist/codex/plugin', PLUGIN_MANIFEST_PATH), 'utf8'));
+    expect(valid.success, JSON.stringify(valid.diagnostics, null, 2)).toBe(true);
     expect(manifest).toMatchObject({ hooks: './hooks/hooks.json', mcpServers: './.mcp.json' });
-    expect(result.deliveryUnits[0]?.artifacts).toEqual(expect.arrayContaining([
-      expect.objectContaining({ path: 'hooks/hooks.json', owner: 'extension:codex-extension-fixture' }),
-      expect.objectContaining({ path: '.mcp.json', owner: 'extension:codex-extension-fixture' }),
-    ]));
+
+    /** invalidRoot 隔离最终 Hook timeout protocol 错误。 */
+    const invalidRoot = await temporaryProject();
+    await fs.mkdir(path.join(invalidRoot, 'src/skills/host'), { recursive: true });
+    await fs.writeFile(path.join(invalidRoot, 'src/skills/host/SKILL.md'), '---\ndescription: Host.\n---\nHost.\n');
+    /** invalidHook 的 SessionEnd timeout 超出 Codex 三秒上限。 */
+    const invalidHook = contributionExtension({
+      id: 'invalid-hook', field: 'hooks', value: './hooks/hooks.json', path: 'hooks/hooks.json',
+      bytes: '{"hooks":{"SessionEnd":[{"hooks":[{"type":"command","command":"node hook.mjs","timeout":4}]}]}}\n',
+    });
+    /** invalid 必须在 candidate validator 阶段失败。 */
+    const invalid = await run({ root: invalidRoot, command: 'validate', extensions: [invalidHook], commit: false });
+    expect(invalid.success).toBe(false);
+    expect(invalid.diagnostics).toContainEqual(expect.objectContaining({
+      code: 'CODEX_HOOK_TIMEOUT_LIMIT', phase: 'platform-validate',
+    }));
   });
 
-  it('creates a policy-aware self-contained Marketplace and remains byte deterministic', async () => {
-    /** Marketplace 必须完整复制的主 Plugin 工程。 */
+  it('creates a policy-aware Marketplace by inheriting validated primary AssetRefs byte-for-byte', async () => {
+    /** root 包含 Component、Public 和 Runtime 三类 inherited Asset。 */
     const root = await temporaryProject();
     await writeSupportedProject(root);
-    /** 显式安装策略与分类进入 Codex Marketplace 条目。 */
+    /** platform 配置 Marketplace 安装策略和缺省分类。 */
     const platform = codex({
       interface: { category: 'Developer Tools' },
       marketplace: { policy: { installation: 'INSTALLED_BY_DEFAULT' } },
     });
-    /** 第一次完整构建的生命周期结果。 */
-    const first = await run(resolvedConfig(root, 'build', platform));
-    /** Marketplace Distribution 的最终输出根。 */
+    /** first 提供确定性和继承报告基线。 */
+    const first = await run({ root, platform });
+    /** primary 是已通过完整 Codex validator 的主 Package。 */
+    const primary = first.packages.find(unit => unit.id === 'plugin')!;
+    /** distribution 应复用 primary 的每个 AssetRef。 */
+    const distribution = first.packages.find(unit => unit.id === 'marketplace')!;
+    /** second 验证同输入的完整事务替换保持确定性。 */
+    const second = await run({ root, platform });
+    /** marketplaceRoot 是最终分发根。 */
     const marketplaceRoot = path.join(root, 'dist/codex/marketplace');
-    /** 第一次构建后按路径保存的 Artifact 字节快照。 */
-    const firstBytes = new Map<string, Buffer>();
-    for (const artifact of first.deliveryUnits.find(unit => unit.id === 'marketplace')!.artifacts)
-      firstBytes.set(artifact.path, await fs.readFile(path.join(marketplaceRoot, artifact.path)));
-    /** 第二次使用相同输入覆盖完整 outDir 的生命周期结果。 */
-    const second = await run(resolvedConfig(root, 'build', platform));
 
-    expect(first.success).toBe(true);
-    expect(second.success).toBe(true);
-    expect(first.deliveryUnits.map(unit => `${unit.role}:${unit.id}`)).toEqual(['distribution:marketplace', 'primary:plugin']);
-    await expectGolden(path.join(marketplaceRoot, '.agents/plugins/marketplace.json'), '.agents/plugins/marketplace.json');
-    for (const [artifactPath, bytes] of firstBytes)
-      expect(await fs.readFile(path.join(marketplaceRoot, artifactPath))).toEqual(bytes);
-    expect(await fs.readFile(path.join(marketplaceRoot, '.codex-plugin/plugin.json')))
-      .toEqual(await fs.readFile(path.join(root, 'dist/codex/plugin/.codex-plugin/plugin.json')));
-  });
-
-  it('combines multiple validated primary Plugins into stable Marketplace subdirectories', async () => {
-    /** 多主单元测试使用的临时物化工作目录。 */
-    const root = await temporaryProject();
-    /** 暴露 Marketplace Distribution Hook 的 Codex Platform。 */
-    const platform = codex({ marketplace: { policy: { installation: 'AVAILABLE' } } });
-    /** 使用真实 Core Registry 创建带完整 owner/hash 的主单元。 */
-    const units = new DeliveryUnitRegistry(new Map());
-    /** 每个 Codex Plugin 都必须携带至少一个有效 Skill。 */
-    const skill = (name: string) => `---\nname: ${name}\ndescription: ${name} workflow.\n---\nRun ${name}.\n`;
-    /** 输入顺序故意与 ID 排序相反的第二个 Plugin。 */
-    const beta = await units.add(platform.id, {
-      id: 'plugin-b', role: 'primary', type: 'plugin',
-      artifacts: [
-        bytesArtifact(PLUGIN_MANIFEST_PATH, stableJson({
-          name: 'beta-tools', version: '2.0.0', description: 'Beta tools.', skills: './skills/',
-        })),
-        bytesArtifact('skills/beta/SKILL.md', skill('beta')),
-      ],
-    });
-    /** 排序后应出现在 Marketplace 第一项的 Plugin。 */
-    const alpha = await units.add(platform.id, {
-      id: 'plugin-a', role: 'primary', type: 'plugin',
-      artifacts: [
-        bytesArtifact(PLUGIN_MANIFEST_PATH, stableJson({
-          name: 'alpha-tools', version: '1.0.0', description: 'Alpha tools.', skills: './skills/',
-        })),
-        bytesArtifact('skills/alpha/SKILL.md', skill('alpha')),
-      ],
-    });
-    /** Distribution 与最终 Validator 共同产生的结构化诊断。 */
-    const diagnostics: DiagnosticInput[] = [];
-    /** 模拟未来 Monorepo 编排器提供的 Marketplace 根上下文。 */
-    const context: PlatformDistributionContext = {
-      command: 'build',
-      mode: 'production',
-      project: {
-        root,
-        metadata: { name: 'tool-catalog', version: '1.0.0', description: 'Tool catalog.' },
-        commands: [], skills: [], agents: [], publicFiles: [],
-      },
-      options: platform.options ?? {},
-      workDir: root,
-      /** 收集 Distribution 生成阶段的结构化诊断。 */
-      reportDiagnostic: diagnostic => diagnostics.push(diagnostic),
-    };
-    /** Platform 必须直接接受数组，无需未来重写 Marketplace Builder。 */
-    const distributionInputs = await platform.generateDistributions!(context, [beta, alpha]);
-    /** 使用两个主单元的继承边界注册最终 Distribution。 */
-    const distribution = await units.add(
-      platform.id,
-      distributionInputs[0]!,
-      [...alpha.artifacts, ...beta.artifacts],
+    expect(first.success, JSON.stringify(first.diagnostics, null, 2)).toBe(true);
+    expect(second.success, JSON.stringify(second.diagnostics, null, 2)).toBe(true);
+    await expectGolden(path.join(marketplaceRoot, MARKETPLACE_MANIFEST_PATH), MARKETPLACE_MANIFEST_PATH);
+    await expect(fs.readFile(path.join(marketplaceRoot, PLUGIN_MANIFEST_PATH))).resolves.toEqual(
+      await fs.readFile(path.join(root, 'dist/codex/plugin', PLUGIN_MANIFEST_PATH)),
     );
-    await withMaterializedDeliveryUnitCandidate(distribution, candidate => platform.validateBundle({
-      command: 'build', mode: 'production', candidate,
-      /** 收集最终候选 Validator 的结构化诊断。 */
-      reportDiagnostic: diagnostic => diagnostics.push(diagnostic),
-    }), root);
-    /** 解析最终 Marketplace 清单以验证稳定条目顺序和本地来源。 */
-    const marketplaceArtifact = distribution.artifacts.find(artifact => artifact.path === MARKETPLACE_MANIFEST_PATH)!;
-    /** Marketplace 清单由 Platform 生成，因此固定为内存字节来源。 */
-    const marketplace = JSON.parse(new TextDecoder().decode(
-      marketplaceArtifact.source.type === 'bytes' ? marketplaceArtifact.source.value : new Uint8Array(),
-    ));
-
-    expect(diagnostics).toEqual([]);
-    expect(marketplace.plugins.map((plugin: { name: string; source: { path: string } }) => [plugin.name, plugin.source.path])).toEqual([
-      ['alpha-tools', './plugins/plugin-a'],
-      ['beta-tools', './plugins/plugin-b'],
-    ]);
-    expect(distribution.artifacts).toEqual(expect.arrayContaining([
-      expect.objectContaining({ path: 'plugins/plugin-a/.codex-plugin/plugin.json' }),
-      expect.objectContaining({ path: 'plugins/plugin-a/skills/alpha/SKILL.md' }),
-      expect.objectContaining({ path: 'plugins/plugin-b/.codex-plugin/plugin.json' }),
-    ]));
+    for (const source of primary.assets) {
+      expect(distribution.assets.find(asset => asset.path === source.path)).toMatchObject({
+        owner: source.owner, mode: source.mode, sha256: source.sha256, origin: source.origin,
+      });
+    }
+    expect(second.packages.find(unit => unit.id === 'marketplace')?.assets).toEqual(distribution.assets);
   });
 
-  it('validates factory and Component fields without raw schema escape hatches', async () => {
+  it('validates factory and Component fields without ID strategy or raw schema escape hatches', async () => {
     expect(() => codex({ raw: true } as never)).toThrow('Unknown Codex Platform option');
+    expect(() => codex({ generatedSkillIds: { command: 'plugin-prefixed' } } as never)).toThrow('Unknown Codex Platform option');
     expect(() => codex({ interface: { displayName: 'duplicate' } } as never)).toThrow('Unknown Codex interface option');
     expect(() => codex({ interface: { websiteURL: 'https://user:secret@example.com' } })).toThrow('without credentials');
     expect(() => codex({ marketplace: { policy: { installation: 'UNKNOWN' } } } as never)).toThrow('not supported');
-    expect(() => codex({ generatedSkillIds: null } as never)).toThrow('must be an object');
-    expect(() => codex({ generatedSkillIds: [] } as never)).toThrow('must be an object');
-    expect(() => codex({ generatedSkillIds: { skill: 'plugin-prefixed' } } as never)).toThrow('Unknown Codex generatedSkillIds option');
-    expect(() => codex({ generatedSkillIds: { command: 'template' } } as never)).toThrow('must be "plugin-prefixed"');
-    expect(() => codex({ generatedSkillIds: { command: true } } as never)).toThrow('must be "plugin-prefixed"');
 
-    /** 非法 Component 专属字段应在 Scanner 阶段失败。 */
+    /** root 的非法 Skill icon path 必须在 Component validation 阶段失败。 */
     const root = await temporaryProject();
     await fs.mkdir(path.join(root, 'src/skills/invalid'), { recursive: true });
     await fs.writeFile(path.join(root, 'src/skills/invalid/SKILL.md'), `---
@@ -553,157 +371,96 @@ platforms:
 ---
 Do not build.
 `);
-    /** Scanner 应附带稳定平台字段路径。 */
-    const result = await run(resolvedConfig(root, 'validate', codex()));
-
-    expect(result.success).toBe(false);
-    expect(result.diagnostics).toContainEqual(expect.objectContaining({
-      code: 'CODEX_COMPONENT_FIELD_INVALID',
-      fieldPath: ['platforms', 'codex', 'iconSmall'],
+    /** report 应保留规范 namespace fieldPath。 */
+    const report = await run({ root, command: 'validate', commit: false });
+    expect(report.success).toBe(false);
+    expect(report.diagnostics).toContainEqual(expect.objectContaining({
+      code: 'CODEX_COMPONENT_FIELD_INVALID', fieldPath: ['platforms', 'codex', 'iconSmall'],
     }));
   });
 
-  it('rejects invalid Skills appended by an Extension at the final candidate boundary', async () => {
-    /** 一个有效规范 Skill 保证错误只来自 Extension 追加内容。 */
-    const root = await temporaryProject();
-    await fs.mkdir(path.join(root, 'src/skills/host'), { recursive: true });
-    await fs.writeFile(path.join(root, 'src/skills/host/SKILL.md'), `---
-description: Host extension output.
----
-Use the host workflow.
-`);
-    /** 模拟错误地向 Platform 安装根注入无 Frontmatter Skill 的第三方 Extension。 */
-    const extension = defineExtension({
-      name: 'invalid-skill-fixture',
-      apiVersion: '1',
-      /** discover 返回资源以触发 Adapter。 */
-      discover: () => ({ enabled: true }),
-      /** build 透传 Fixture 状态。 */
-      build: (_context, discovered) => discovered,
-      adapters: [{
-        extensionApiVersion: '1',
-        platform: codex().id,
-        platformApiVersion: '1',
-        /** apply 追加一个结构路径正确但内容协议错误的 Skill。 */
-        apply(context) {
-          context.emitArtifact(bytesArtifact('skills/invalid-extension/SKILL.md', 'missing frontmatter\n'));
-        },
-      }],
+  it('rejects invalid Extension Skill, missing Skill icon, and malformed branding at candidate boundary', async () => {
+    /** skillRoot 的 Extension 追加无 Frontmatter Skill。 */
+    const skillRoot = await temporaryProject();
+    await fs.mkdir(path.join(skillRoot, 'src/skills/host'), { recursive: true });
+    await fs.writeFile(path.join(skillRoot, 'src/skills/host/SKILL.md'), '---\ndescription: Host.\n---\nHost.\n');
+    /** invalidSkill 不占 Document 字段，只追加协议错误的 Skill。 */
+    const invalidSkill = contributionExtension({
+      id: 'invalid-skill', path: 'skills/invalid-extension/SKILL.md', bytes: 'missing frontmatter\n',
     });
-    /** 最终 Validator 必须阻止无效 Extension 内容进入交付单元。 */
-    const result = await run(resolvedConfig(root, 'build', codex(), [extension]));
+    /** skillReport 必须在最终 validator 阶段失败。 */
+    const skillReport = await run({ root: skillRoot, command: 'validate', extensions: [invalidSkill], commit: false });
+    expect(skillReport.diagnostics).toContainEqual(expect.objectContaining({ code: 'CODEX_SKILL_FRONTMATTER_INVALID' }));
 
-    expect(result.success).toBe(false);
-    expect(result.committed).toBe(false);
-    expect(result.diagnostics).toContainEqual(expect.objectContaining({ code: 'CODEX_SKILL_FRONTMATTER_INVALID' }));
-  });
-
-  it('validates referenced Hook configuration at the final Platform boundary', async () => {
-    /** 有效 Skill 保证最终错误只来自 Extension 贡献的 Hook 配置。 */
-    const root = await temporaryProject();
-    await fs.mkdir(path.join(root, 'src/skills/host'), { recursive: true });
-    await fs.writeFile(path.join(root, 'src/skills/host/SKILL.md'), `---
-description: Host invalid Hook validation.
----
-Validate the extension output.
-`);
-    /** 模拟绕过正式 Hooks Extension 并贡献无效 Codex Handler 的第三方 Adapter。 */
-    const extension = defineExtension({
-      name: 'invalid-codex-hooks',
-      apiVersion: '1',
-      /** discover 返回资源以触发 Adapter。 */
-      discover: () => true,
-      adapters: [{
-        extensionApiVersion: '1',
-        platform: codex().id,
-        platformApiVersion: '1',
-        /** apply 只贡献候选，Platform 最终 Validator 负责原生协议检查。 */
-        apply(context) {
-          context.patchDocument({ document: 'plugin-manifest', path: ['hooks'], value: './hooks/hooks.json' });
-          context.emitArtifact(bytesArtifact('hooks/hooks.json', stableJson({
-            hooks: { SessionEnd: [{ hooks: [{ type: 'command', command: 'node hook.mjs', timeout: 4 }] }] },
-          })));
-        },
-      }],
-    });
-    /** SessionEnd 四秒超出 Codex 官方三秒上限，候选不得提交。 */
-    const result = await run(resolvedConfig(root, 'build', codex(), [extension]));
-
-    expect(result.success).toBe(false);
-    expect(result.committed).toBe(false);
-    expect(result.diagnostics).toContainEqual(expect.objectContaining({ code: 'CODEX_HOOK_TIMEOUT_LIMIT' }));
-  });
-
-  it('validates openai.yaml and its Skill-local icon references', async () => {
-    /** 声明缺失 Skill 图标的工程用于覆盖元数据资源验证。 */
-    const root = await temporaryProject();
-    await fs.mkdir(path.join(root, 'src/skills/icon-test'), { recursive: true });
-    await fs.writeFile(path.join(root, 'src/skills/icon-test/SKILL.md'), `---
+    /** iconRoot 声明安全但不存在的 Skill-local icon。 */
+    const iconRoot = await temporaryProject();
+    await fs.mkdir(path.join(iconRoot, 'src/skills/icon-test'), { recursive: true });
+    await fs.writeFile(path.join(iconRoot, 'src/skills/icon-test/SKILL.md'), `---
 description: Validate Skill metadata assets.
 platforms:
   codex:
     iconSmall: ./assets/missing.png
 ---
-Validate metadata assets.
+Validate.
 `);
-    /** 最终 Validator 应拒绝 Scanner 无法提前确认的产物相对引用。 */
-    const result = await run(resolvedConfig(root, 'build', codex()));
+    /** iconReport 由最终 Skill metadata 引用检查拒绝。 */
+    const iconReport = await run({ root: iconRoot, command: 'validate', commit: false });
+    expect(iconReport.diagnostics).toContainEqual(expect.objectContaining({ code: 'CODEX_SKILL_ASSET_MISSING' }));
 
-    expect(result.success).toBe(false);
-    expect(result.committed).toBe(false);
-    expect(result.diagnostics).toContainEqual(expect.objectContaining({ code: 'CODEX_SKILL_ASSET_MISSING' }));
-  });
-
-  it('rejects branding paths whose bytes are not a supported square image', async () => {
-    /** 包含有效 Skill 和伪造品牌图片的最终候选。 */
-    const root = await temporaryProject();
-    await fs.mkdir(path.join(root, 'src/skills/branding'), { recursive: true });
-    await fs.mkdir(path.join(root, 'public/assets'), { recursive: true });
-    await fs.writeFile(path.join(root, 'src/skills/branding/SKILL.md'), `---
-description: Validate plugin branding.
----
-Validate the branding files.
-`);
-    await fs.writeFile(path.join(root, 'public/assets/not-an-image.bin'), Buffer.from([0, 1, 2, 255]));
-    /** Factory 允许安全路径，最终 Validator 负责检查实际文件内容。 */
-    const result = await run(resolvedConfig(root, 'build', codex({
-      interface: { logo: './assets/not-an-image.bin' },
-    })));
-
-    expect(result.success).toBe(false);
-    expect(result.committed).toBe(false);
-    expect(result.diagnostics).toContainEqual(expect.objectContaining({
+    /** brandingRoot 包含扩展名和内容都不匹配的公开资源。 */
+    const brandingRoot = await temporaryProject();
+    await fs.mkdir(path.join(brandingRoot, 'src/skills/branding'), { recursive: true });
+    await fs.mkdir(path.join(brandingRoot, 'public/assets'), { recursive: true });
+    await fs.writeFile(path.join(brandingRoot, 'src/skills/branding/SKILL.md'), '---\ndescription: Branding.\n---\nBranding.\n');
+    await fs.writeFile(path.join(brandingRoot, 'public/assets/not-an-image.bin'), Buffer.from([0, 1, 2, 255]));
+    /** brandingReport 验证实际候选字节而不是只验证安全路径。 */
+    const brandingReport = await run({
+      root: brandingRoot, command: 'validate',
+      platform: codex({ interface: { logo: './assets/not-an-image.bin' } }), commit: false,
+    });
+    expect(brandingReport.diagnostics).toContainEqual(expect.objectContaining({
       code: 'CODEX_BRANDING_IMAGE_FORMAT_UNSUPPORTED',
     }));
   });
 
+  it('rejects malformed MCP wire data at the final candidate boundary', async () => {
+    /** root 没有其他资源，错误只来自 Extension 贡献的最终 MCP 配置。 */
+    const root = await temporaryProject();
+    await fs.mkdir(path.join(root, 'src/skills/host'), { recursive: true });
+    await fs.writeFile(path.join(root, 'src/skills/host/SKILL.md'), '---\ndescription: Host fixture.\n---\nHost.\n');
+    /** malformed 的 HTTP headers 不是字符串映射，并包含未确认字段。 */
+    const malformed = contributionExtension({
+      id: 'invalid-mcp', field: 'mcpServers', value: './.mcp.json', path: '.mcp.json',
+      bytes: '{"docs":{"url":"https://example.com/mcp","http_headers":42,"extra":true}}\n',
+    });
+    /** report 必须保留 Codex 最终候选 validator 的细粒度诊断。 */
+    const report = await run({ root, command: 'validate', extensions: [malformed], commit: false });
+
+    expect(report.success).toBe(false);
+    expect(report.diagnostics).toEqual(expect.arrayContaining([
+      expect.objectContaining({ code: 'CODEX_MCP_HEADERS_INVALID', phase: 'platform-validate' }),
+      expect.objectContaining({ code: 'CODEX_MCP_FIELD_UNKNOWN', phase: 'platform-validate' }),
+    ]));
+  });
+
   it('strictly rejects malformed SVG XML and dimensions with units', async () => {
-    /** 每个无效 SVG Fixture 的稳定文件名和原始内容。 */
+    /** fixtures 覆盖 XML 未闭合和带单位尺寸两个严格拒绝分支。 */
     const fixtures = [
       ['unclosed.svg', '<svg viewBox="0 0 48 48">'],
       ['unit-size.svg', '<svg xmlns="http://www.w3.org/2000/svg" width="48px" height="48px"></svg>'],
     ] as const;
-    /** [fileName, source] 表示当前应被严格 SVG 解析拒绝的候选。 */
     for (const [fileName, source] of fixtures) {
-      /** 当前无效 SVG 用例的独立工程。 */
+      /** root 隔离当前不合法 SVG。 */
       const root = await temporaryProject();
       await fs.mkdir(path.join(root, 'src/skills/branding'), { recursive: true });
       await fs.mkdir(path.join(root, 'public/assets'), { recursive: true });
-      await fs.writeFile(path.join(root, 'src/skills/branding/SKILL.md'), `---
-description: Validate strict SVG parsing.
----
-Validate the branding SVG.
-`);
+      await fs.writeFile(path.join(root, 'src/skills/branding/SKILL.md'), '---\ndescription: Branding.\n---\nBranding.\n');
       await fs.writeFile(path.join(root, 'public/assets', fileName), source);
-      /** image-size 曾错误接受这两个 SVG，最终 Validator 现在必须失败。 */
-      const result = await run(resolvedConfig(root, 'build', codex({
-        interface: { logo: `./assets/${fileName}` },
-      })));
-
-      expect(result.success).toBe(false);
-      expect(result.diagnostics).toContainEqual(expect.objectContaining({
-        code: 'CODEX_BRANDING_IMAGE_DECODE_FAILED',
-      }));
+      /** report 必须由严格 XML/尺寸解析失败。 */
+      const report = await run({
+        root, command: 'validate', platform: codex({ interface: { logo: `./assets/${fileName}` } }), commit: false,
+      });
+      expect(report.diagnostics).toContainEqual(expect.objectContaining({ code: 'CODEX_BRANDING_IMAGE_DECODE_FAILED' }));
     }
   });
 });

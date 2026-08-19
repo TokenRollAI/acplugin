@@ -1,102 +1,102 @@
 # 系统架构
 
-> [English version](system.md)
+> [English](system.md)
 
-## Pipeline
+## 产品边界
 
-```text
-acplugin.config.ts
-  → 解析并验证配置
-  → 初始化 Platforms 和 Extensions
-  → Extension discover，再执行规范 Component/Public 扫描
-  → Extension validate/build
-  → Platform prepare
-  → Extension Platform Adapters
-  → Platform generate/validate/distribute
-  → 建立不可变 DeliveryUnit/Artifact 图
-  → 应用兼容性严格度
-  → 仅验证物化，或执行受管输出事务
-  → 生成稳定报告
-```
+ACPlugin 是基于 Rolldown 的 AI Plugin 框架和 CLI。它既负责初始化工程，也作为持续使用的构建系统留在项目中，统一完成校验、开发监听、打包、兼容性报告和托管输出更新。
 
-`validate`、`inspect` 和 `build` 运行同一套 Pipeline，区别只在报告明细和提交行为。`dev` 会在合并后的每次重建中创建全新 Pipeline，纳入 Extension 登记的 Bundle 模块图，并在 watcher ready 后先补偿构建；重建失败时保留最后一次成功的完整输出。
+公开 package 刻意分层：
 
-## Core 包
+- `@tokenroll/acplugin` 是作者 facade、CLI、Project API、报告 API、init 和隔离 Migration 入口；
+- 六个 `@tokenroll/acplugin-platform-*` package 拥有目标平台 Package 格式；
+- `@tokenroll/acplugin-extension-hooks` 与 `@tokenroll/acplugin-extension-mcp` 拥有可选横向作者格式；
+- `@acplugin/core` 保持私有，并由主包 bundle。
 
-`packages/core/src/` 负责：
+配置作者从 `@tokenroll/acplugin` 导入。可信 Platform/Extension 实现从 `@tokenroll/acplugin/sdk` 导入契约。主包不会 bundle、发现或重新导出官方集成。
 
-- `types.ts`：公开 Config、Component、Artifact、兼容性和报告契约；
-- `contracts.ts`：带品牌的 Platform、Extension、Adapter 和生命周期 API；
-- `config.ts`：严格配置规范化和安全的项目相对目录；
-- `scanner.ts`：规范 Markdown/Public 发现、Frontmatter 验证、依赖图检查和 Extension 目录门禁；
-- `diagnostics.ts`：稳定排序的诊断与兼容性严格度；
-- `artifacts.ts`：所有权、摘要、文件来源根目录、权限模式和冲突检查；
-- `documents.ts`：add-only 逻辑 Document 扩展点和最终序列化；
-- `delivery-units.ts`：主单元/分发单元所有权和不可变 Artifact 注册；
-- `lifecycle.ts`：固定 Platform/Extension 编排和最终报告创建；
-- `transaction.ts`：验证物化以及整个 `dist` 的锁、备份、交换和恢复；
-- `serialization.ts`：确定性 JSON/YAML/Markdown 序列化。
+配置、descriptor、Platform 与 Extension 模块都是在宿主 Node.js 进程中执行的可信构建时代码，不是进程沙箱。Core Service capability 约束哪些来源与输出可以进入受管 Package 和报告，并不阻止恶意 Integration 自行通过 Node.js 读取内容。Factory result 携带 `Symbol.for(...)` 共享 registry brand，使主包 root、SDK 与 CLI bundle chunk 能识别生命周期定义；它只是可互操作的身份元数据，不是 private Symbol、权限令牌或安全边界。
 
-Artifact 会拒绝绝对路径和目录穿越、符号链接、不支持的权限模式、来源目录逃逸，以及精确、大小写不敏感或 Unicode 规范化后的路径冲突。
-
-## Platform 与 Extension 生命周期
+## 固定生命周期
 
 ```text
-configResolved → buildStart → Extension discover → Core scan → Extension validate/build
-→ Platform prepare → Adapter apply → Platform generate/validate/distribute → buildEnd
+config load/resolve
+→ Platform 与 Extension Session setup
+→ canonical/Public/Runtime/Extension Resource discover
+→ immutable CanonicalProject assembly
+→ Platform Component 与 Extension validate
+→ Extension 与 Core Runtime compile
+→ Platform.createPackage
+→ Framework/Extension Contributor collection
+→ Core add-only merge
+→ Platform.finalizePackage
+→ primary candidate materialize/validate
+→ optional Distribution create/validate
+→ compatibility 与 metadata finalize
+→ aggregate materialization validate
+→ managed output transaction
+→ reverse Session close
 ```
 
-Platform 按配置顺序执行；Extension 同样按配置顺序执行，不形成隐藏依赖图。每个 Extension 只能写入 Core 提供的工作目录，并返回平台中立 Built State。其 Adapter 只能读取声明的 Document、在 Platform 拥有的扩展点增加字段、提交自有 Artifact 和报告兼容性。Platform 始终完整拥有生命周期、Manifest、Schema、Validator 和分发。
+Core 是唯一调度者。各 Platform 的 Package pipeline 相互隔离；稳定 Registry 使诊断和报告不依赖并发完成顺序。所有已初始化 Session 在成功或失败后都恰好逆序关闭一次，`close` 只收到脱敏结果摘要。
 
-`buildEnd` 在成功或失败后按初始化的逆序执行。候选提交期间，事务会在逆序清理完成前保留旧输出作为回滚备份。清理失败会写入报告、传递给剩余清理 Hook，并把目录交换回滚到上一份完整输出。交换前失败则通过普通错误路径进入清理阶段。
+## Core Service 所有权
 
-## 官方 Platform package
+Core 独占物理文件系统和进程能力：
 
-`packages/platforms/claude-code/` 生成原生 Commands、Skills、Agents、`.claude-plugin/plugin.json` 和可选 Marketplace 分发。
+- `SourceRegistry` 在路径、类型、symlink、大小写和 Unicode 校验后签发 owner-scoped `SourceFileRef`/`SourceDirectoryRef`；
+- `ModuleHost` 执行可信 TypeScript/JavaScript 配置与 descriptor，并把模块图登记到 dev；
+- `CompilerHost` 是唯一 Rolldown owner。`portable-node` 为 Hooks、本地 MCP 和内建 Runtime 提供框架契约，`managed-rolldown` 向集成暴露受限 Rolldown 能力；
+- `ExecutionHost` 只运行当前 Session 生成的 Node Asset，并限制输入、输出、超时、cwd 和环境；
+- `AssetRegistry` 签发 Source、Generated、Bytes Asset，执行授权，并记录 mode、hash、size、owner 和结构化 origin；
+- `WatchRegistry`、Package candidate materializer、compatibility registry 和输出事务保持 Core-only。
 
-`packages/platforms/codex/` 生成原生 Skills、Command 回退 Skills、Agent 回退 Skills、调用策略元数据、`.codex-plugin/plugin.json` 和可选 Marketplace 分发。生成标识按大小写不敏感方式保留；任何冲突都会显式失败。
+Platform/Extension 不通过框架契约获得物理 workDir 或 `dist` 写权限，只能通过 Core 引用和 owner-scoped Service 表达受管输出；这一输出边界不会把可信 Integration 代码变成进程沙箱。
 
-`packages/platforms/cursor/` 生成静态 Cursor Plugin，包含原生 Commands、Skills 和 Subagents。Manifest 使用固定的完整官方 Schema Fixture 验证；模型和非只读能力损失会明确报告，不使用猜测字段。
+## Resource 与 Project
 
-`packages/platforms/antigravity/` 生成静态 Plugin，包含原生 Skills、Command 回退 Skills、Agent 指导 Skills 和最小公开确认的 `plugin.json`。没有确认 Manifest 字段的元数据会报告为 omitted。
+Framework-owned Resource 包含：
 
-`packages/platforms/opencode/` 生成 Workspace Overlay，包含原生 Commands、Skills 和 Subagents。只有配置字段或 Extension Adapter 实际需要时才生成 `opencode.json`，绝不伪造通用 Package Manifest。
+- `src/commands/<id>.md` 中的 Command；
+- `src/skills/<id>/SKILL.md` 及精确辅助文件；
+- `src/agents/<id>.md` 中的 Agent；
+- `public` 或显式 copy 规则中的 Public 文件；
+- `src/runtime` 一级 TS/JS 文件或显式 `runtime.entries` 定义的内建 Node Runtime 入口。
 
-`packages/platforms/pi/` 生成 npm Package，包含原生 Skills、Command Prompt Templates 和 Agent 指导 Skills。Package Manifest 只声明 Pi 发现字段，不能泄漏 `private`、`workspaces` 或私有工作区依赖。
+Hooks 与 MCP 是 Extension-owned root。root 中存在作者文件但没有启用 owner Extension 时属于配置错误。Instructions 被明确排除在 canonical Component 之外。
 
-每个目录分别发布为 `@tokenroll/acplugin-platform-<id>`。生产源码只从 `@tokenroll/acplugin` 导入公开 SDK，将其声明为 peer dependency，并同时默认导出和具名导出工厂。主包既不内联也不重新导出这些实现；私有 Serializer 和 Validator 留在所属 Platform tarball 内。
+Graph assembler 冻结唯一 `CanonicalProject`。Component 依赖在 Package 创建前拒绝缺失、自依赖和循环。只有选中 Platform 声明精确 Plugin-local Node 20 ESM capability 时，Core 才把 Runtime 编译一次。
 
-## 官方 Extensions
+## Platform Package 与 Contribution
 
-`packages/extensions/hooks/` 发现 `src/hooks/<id>/hook.ts`，验证事件、Matcher、超时和结果语义，并把每个实现只构建一次，生成平台中立的 Node 20 ESM Handler。其六个内置 Platform Adapter 为各宿主生成经过验证的静态配置或运行时集成，并逐项报告不支持/降级事件。运行时失败只使用固定错误码且不输出 payload；第三方许可说明与 Handler 相邻。
+Platform Session 拥有：
 
-`packages/extensions/mcp/` 发现 `src/mcp/<id>/mcp.ts`。远程 HTTP 只保留公开值和环境变量引用；本地 stdio 必须提供完整 Server 代码，统一 Bundle 一次 Node 20 ESM，拒绝无法解析的动态 import，并在 development 与 production 中都于不读取 Secret 引用值的前提下通过有边界的真实 initialize/tools-list smoke。该协议检查没有 mode 或缓存跳过分支。六个平台 Adapter 只生成宿主可安装的传输：Claude Code/Codex 支持两者，Cursor/Antigravity 支持远程 HTTP，OpenCode 支持远程/本地，Pi 对两者均报告不支持。
+1. 可选 Component 字段校验；
+2. 通过 `createPackage()` 创建 base Document、Asset、compatibility 与 metadata disposition；
+3. 通过 `finalizePackage()` 确定 primary Package 身份和可选新增 Platform Asset；
+4. 通过 `validatePackage()` 校验完整物化候选；
+5. 可选地从已验证 primary Package 创建 Distribution。
 
-Extension build context 以 `addWatchFile()` 作为唯一依赖登记边界。官方 bundler 通过它上报实际 Rolldown 模块图；Core 校验绝对文件身份，具体 watcher 策略与 ready 补偿仍只由 CLI 负责。
+Extension 校验并构建一次平台中立 State。它的 `PlatformContributor` 都读取同一份不可变 Platform base Package，并独立返回 `PackageContribution`。Contribution 只能向声明且为空的 Document extension point 增加字段、增加本 Extension 自有 Asset，并报告兼容性；不能读取其他 Extension State、观察其他 Contribution、替换 Document、删除输出或接管 Component。
 
-## 受管输出事务
+Core 先验证全部 Contribution，再执行一次确定性 add-only merge。Document 字段或 Package 路径冲突与 Extension 配置顺序无关，始终失败。
 
-`dist` 是一套完整的受管目标集合：
+## 输出、报告与 dev
 
-1. 获取同级独占锁；
-2. 恢复遗留的备份或事务记录；
-3. 在同一文件系统的阶段目录中物化所有选中目标；
-4. 重新计算并验证每个 Artifact 的大小、SHA-256、权限和普通文件状态；
-5. 写入事务记录，并把旧输出重命名为备份；
-6. 把阶段目录重命名为正式输出，同时保留回滚边界；
-7. 成功完成逆序 Platform/Extension 清理，否则执行回滚；
-8. 删除事务记录，并尽力清理备份。
+Package candidate 只在 Core 临时根中物化，因此 Platform 校验看到的就是最终将安装的文件树。Distribution 继承已验证 primary Asset 的身份；只有 Platform 显式签发新 Asset 时才能增加内容。
 
-提交前失败不会触碰旧输出。备份或交换后失败会执行回滚。如果只有清理过程被中断，下次运行会确定性地协调输出和备份。Core 测试会在每个可观测阶段注入失败。
+Schema version 2 `BuildReport` 包含 Component、Runtime、Extension、Platform 状态、Package、Asset provenance、兼容性、metadata disposition 和精确阶段诊断，不包含字节、时间戳、环境值、工程绝对路径或临时根。
 
-## CLI 与包边界
+托管输出事务把选中 Platform 集合作为一次整体替换：
 
-`packages/acplugin/src/index.ts` 暴露公开门面；`project-config.ts` 使用 Jiti 重新加载受信任的 TypeScript 配置和描述文件，`run-project.ts` 把解析后的工程连接到 Core。嵌套配置对象会在进入生命周期前完成运行时 Schema 检查。`cli.ts` 负责命令、JSON/文本输出纪律、退出码、监听事件合并和 Migration 延迟导入。稳定诊断会隐藏外部异常、本机绝对路径和可识别的凭据形式。
+```text
+lock → recover → stage → validate → backup → swap → cleanup
+```
 
-普通公开门面和 CLI 启动过程不会导入 `migration/`。主包 tarball 不包含私有包导入、官方集成 manifest 依赖或指向集成的正常 eager 边。Migration lazy chunk 是隔离的例外：它内联生成工程自验证所需的 Claude Code Platform 与 MCP 实现。`scripts/verify-release.mjs` 会在外部消费者中验证 eager 边界、九个公开 package manifest、peer rewrite，以及经同一主包 peer 实例产生的私有 Symbol 品牌互操作。
+任一失败都保留上一份完整输出。`DevSession` 由 Core 独占：同时只有一个 active round，快速变化合并为 pending，最新模块/来源图会被重新协调；失败保留最后成功输出，关闭或进程信号会安全 drain。
 
-## 仓库内文档消费者
+固定 transaction lock record 通过 no-replace hard link 完整发布。短生命周期的 lock metadata 操作由唯一 PID/token guard intent 串行化，因此 stale recovery 不会 rename 首次读取后出现的活跃 replacement；dead guard 使用永不复用的精确 identity 回收。stale recovery 还会同时比较 inode/content metadata 与字节。本 schema-3 协议不承诺和 pre-schema-3 beta 进程并发构建时的 lock 互操作。
 
-`packages/docs/` 是私有 VitePress workspace。TypeDoc 只扫描九个公开 package 的根公开入口，把 Markdown 与 API sidebar 生成到 ignored 目录；VitePress 随后构建按任务组织的手写文档，不读取远程内容、不注入时间，也不执行部署副作用。
+## Migration 隔离
 
-`packages/playground/` 是私有的真实消费者，显式导入主包、六个官方 Platform 和 Hooks/MCP Extension。它覆盖 Components、Skill auxiliary、全部 portable Hook 事件、HTTP/local MCP、Public 文件、Marketplace、兼容性传播与受管输出。内容保持领域中立，只提供协议和交付能力模板，不实现特定产品业务。两个私有 workspace 都不会成为公开包依赖，也不进入发行 tarball。
+Migration 从 `packages/acplugin/src/migration/` 动态导入。容错 legacy reader 只处理不可信迁移输入，不形成第二条正常构建路径。无法安全映射的内容写入 `.acplugin-migration/unmapped/` 和稳定报告，不会伪装成 canonical Hook、本地 MCP 实现或 Instructions。

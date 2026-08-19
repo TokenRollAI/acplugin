@@ -1,6 +1,6 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
-import type { JsonValue, PlatformValidateContext } from '@tokenroll/acplugin';
+import type { JsonValue, ValidatePackageContext } from '@tokenroll/acplugin/sdk';
 import { imageSize } from 'image-size';
 import { parseDocument } from 'yaml';
 import { MARKETPLACE_MANIFEST_PATH, PLUGIN_MANIFEST_PATH } from './manifest.js';
@@ -15,6 +15,9 @@ import {
   isCodexHttpsUrl,
   parseCodexSvgDimensions,
 } from './protocol.js';
+
+/** Codex validator 只消费 SDK 的最终 Package candidate Context。 */
+type PlatformValidateContext = ValidatePackageContext;
 
 /** Codex Plugin Manifest 允许出现的当前官方根字段。 */
 const PLUGIN_FIELDS = new Set([
@@ -100,6 +103,17 @@ const HOOK_HANDLER_FIELDS = new Set([
   'additionalContextLimit', 'async',
 ]);
 
+/** Codex 本地 stdio MCP descriptor 允许的字段。 */
+const MCP_STDIO_FIELDS = new Set(['command', 'args', 'cwd', 'env', 'env_vars']);
+
+/** Codex 远程 HTTP MCP descriptor 允许的字段。 */
+const MCP_HTTP_FIELDS = new Set([
+  'url', 'bearer_token_env_var', 'scopes', 'http_headers', 'env_http_headers',
+]);
+
+/** Codex 运行时环境变量名称的保守规则。 */
+const ENV_NAME_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*$/;
+
 /** JSON 对象的运行时可索引类型。 */
 type JsonRecord = Record<string, JsonValue>;
 
@@ -116,7 +130,7 @@ function isRecord(value: unknown): value is JsonRecord {
 /**
  * 向 Core 提交 Codex 候选校验错误。
  *
- * @param context Platform validateBundle 生命周期上下文。
+ * @param context Platform validatePackage 生命周期上下文。
  * @param code 稳定诊断码。
  * @param message 不包含宿主绝对路径的错误信息。
  * @param fieldPath 可选的清单字段位置。
@@ -127,7 +141,7 @@ function report(
   message: string,
   fieldPath?: readonly (string | number)[],
 ): void {
-  context.reportDiagnostic({
+  context.diagnostics.report({
     code,
     severity: 'error',
     message,
@@ -138,26 +152,26 @@ function report(
 /**
  * 从候选安装根读取并解析 JSON 文件。
  *
- * @param context Platform validateBundle 生命周期上下文。
- * @param artifactPath 候选根内的规范 Artifact 路径。
+ * @param context Platform validatePackage 生命周期上下文。
+ * @param assetPath 候选根内的规范 Asset 路径。
  * @returns JSON 对象；缺失或格式错误时提交诊断并返回 undefined。
  */
 async function readJson(
   context: PlatformValidateContext,
-  artifactPath: string,
+  assetPath: string,
 ): Promise<JsonRecord | undefined> {
   try {
     /** 从 Core 已安全物化的候选根读取清单文本。 */
-    const source = await fs.readFile(path.join(context.candidate.root, artifactPath), 'utf8');
+    const source = await fs.readFile(path.join(context.candidate.root, assetPath), 'utf8');
     /** JSON.parse 的未知结果仍需验证顶层对象形态。 */
     const value: unknown = JSON.parse(source);
     if (!isRecord(value)) {
-      report(context, 'CODEX_MANIFEST_OBJECT_REQUIRED', `${artifactPath} must contain a JSON object.`);
+      report(context, 'CODEX_MANIFEST_OBJECT_REQUIRED', `${assetPath} must contain a JSON object.`);
       return undefined;
     }
     return value;
   } catch {
-    report(context, 'CODEX_MANIFEST_READ_FAILED', `${artifactPath} must be present and contain valid JSON.`);
+    report(context, 'CODEX_MANIFEST_READ_FAILED', `${assetPath} must be present and contain valid JSON.`);
     return undefined;
   }
 }
@@ -165,15 +179,15 @@ async function readJson(
 /**
  * 解析 YAML 并要求顶层为普通映射。
  *
- * @param context Platform validateBundle 生命周期上下文。
+ * @param context Platform validatePackage 生命周期上下文。
  * @param source 待解析的 YAML 文本。
- * @param artifactPath 用于稳定诊断的相对 Artifact 路径。
+ * @param assetPath 用于稳定诊断的相对 Asset 路径。
  * @returns 无语法错误的 JSON 兼容对象，否则返回 undefined。
  */
 function parseYamlObject(
   context: PlatformValidateContext,
   source: string,
-  artifactPath: string,
+  assetPath: string,
 ): JsonRecord | undefined {
   try {
     /** 保留 YAML parser errors 以拒绝重复键和其他不规范输入。 */
@@ -183,12 +197,12 @@ function parseYamlObject(
     /** YAML 文档转换后的未知顶层值。 */
     const value: unknown = document.toJSON();
     if (!isRecord(value)) {
-      report(context, 'CODEX_YAML_OBJECT_REQUIRED', `${artifactPath} must contain a YAML mapping.`);
+      report(context, 'CODEX_YAML_OBJECT_REQUIRED', `${assetPath} must contain a YAML mapping.`);
       return undefined;
     }
     return value;
   } catch {
-    report(context, 'CODEX_YAML_INVALID', `${artifactPath} must contain valid YAML.`);
+    report(context, 'CODEX_YAML_INVALID', `${assetPath} must contain valid YAML.`);
     return undefined;
   }
 }
@@ -214,61 +228,61 @@ function isSafePluginReference(reference: string): boolean {
 }
 
 /**
- * 判断 Artifact 集合是否包含被引用文件或目录。
+ * 判断 Asset 集合是否包含被引用文件或目录。
  *
- * @param artifacts 当前 DeliveryUnit 的规范路径集合。
+ * @param assets 当前 Package 的规范路径集合。
  * @param reference 已通过安全规则验证的 Manifest 引用。
  * @returns 精确文件或目录前缀存在时返回 true。
  */
-function referenceExists(artifacts: ReadonlySet<string>, reference: string): boolean {
-  /** 清单引用去掉 `./` 和结尾斜线后的 Artifact 路径。 */
+function referenceExists(assets: ReadonlySet<string>, reference: string): boolean {
+  /** 清单引用去掉 `./` 和结尾斜线后的 Asset 路径。 */
   const target = reference.slice(2).replace(/\/+$/u, '');
-  if (artifacts.has(target))
+  if (assets.has(target))
     return true;
-  for (const artifact of artifacts) {
-    if (artifact.startsWith(`${target}/`))
+  for (const asset of assets) {
+    if (asset.startsWith(`${target}/`))
       return true;
   }
   return false;
 }
 
 /**
- * 把 Distribution 中某个 Plugin 子树转换为安装根相对 Artifact 集合。
+ * 把 Distribution 中某个 Plugin 子树转换为安装根相对 Asset 集合。
  *
- * @param context Platform validateBundle 生命周期上下文。
+ * @param context Platform validatePackage 生命周期上下文。
  * @param pluginRoot Plugin 相对于 Distribution 根的无前导点路径。
- * @returns 去掉 Plugin 根前缀后的 Artifact 路径集合。
+ * @returns 去掉 Plugin 根前缀后的 Asset 路径集合。
  */
-function scopedArtifacts(context: PlatformValidateContext, pluginRoot: string): ReadonlySet<string> {
+function scopedAssets(context: PlatformValidateContext, pluginRoot: string): ReadonlySet<string> {
   /** 根 Plugin 不需要过滤或裁剪路径。 */
   if (pluginRoot === '')
-    return new Set(context.candidate.unit.artifacts.map(artifact => artifact.path));
-  /** 嵌套 Plugin 全部 Artifact 共同使用的固定目录前缀。 */
+    return new Set(context.candidate.unit.assets.map(asset => asset.path));
+  /** 嵌套 Plugin 全部 Asset 共同使用的固定目录前缀。 */
   const prefix = `${pluginRoot}/`;
-  return new Set(context.candidate.unit.artifacts
-    .filter(artifact => artifact.path.startsWith(prefix))
-    .map(artifact => artifact.path.slice(prefix.length)));
+  return new Set(context.candidate.unit.assets
+    .filter(asset => asset.path.startsWith(prefix))
+    .map(asset => asset.path.slice(prefix.length)));
 }
 
 /**
  * 校验单个 Manifest 路径的安全性与存在性。
  *
- * @param context Platform validateBundle 生命周期上下文。
- * @param artifacts 当前 DeliveryUnit 的 Artifact 路径集合。
+ * @param context Platform validatePackage 生命周期上下文。
+ * @param assets 当前 Package 的 Asset 路径集合。
  * @param field 当前引用所属字段。
  * @param reference 待校验路径。
  * @param fieldPath 精确诊断位置。
  */
 function validateReference(
   context: PlatformValidateContext,
-  artifacts: ReadonlySet<string>,
+  assets: ReadonlySet<string>,
   field: string,
   reference: string,
   fieldPath: readonly (string | number)[],
 ): void {
   if (!isSafePluginReference(reference)) {
     report(context, 'CODEX_MANIFEST_REFERENCE_UNSAFE', `${field} must start with ./ and stay inside the Plugin root.`, fieldPath);
-  } else if (!referenceExists(artifacts, reference)) {
+  } else if (!referenceExists(assets, reference)) {
     report(context, 'CODEX_MANIFEST_REFERENCE_MISSING', `${field} references a missing Plugin file or directory.`, fieldPath);
   }
 }
@@ -276,7 +290,7 @@ function validateReference(
 /**
  * 校验已存在的 Codex 目录品牌图片格式、字节数和方形尺寸。
  *
- * @param context Platform validateBundle 生命周期上下文。
+ * @param context Platform validatePackage 生命周期上下文。
  * @param pluginRoot Plugin 相对于候选 Distribution 根的安装目录。
  * @param reference 相对于 Plugin 根的图片路径。
  * @param field Manifest 中声明图片的字段。
@@ -291,17 +305,17 @@ async function validateBrandingImage(
 ): Promise<void> {
   if (!isSafePluginReference(reference))
     return;
-  /** Manifest 引用转换后的候选根内 Artifact 路径。 */
-  const artifactPath = reference.slice(2);
+  /** Manifest 引用转换后的候选根内 Asset 路径。 */
+  const assetPath = reference.slice(2);
   /** 图片文件名的规范小写扩展名。 */
-  const extension = path.posix.extname(artifactPath).toLocaleLowerCase('en-US');
+  const extension = path.posix.extname(assetPath).toLocaleLowerCase('en-US');
   if (!BRANDING_IMAGE_EXTENSIONS.has(extension)) {
     report(context, 'CODEX_BRANDING_IMAGE_FORMAT_UNSUPPORTED', `${field} must use PNG, JPEG, WebP, or SVG.`, fieldPath);
     return;
   }
   try {
     /** 从 Core 已物化的候选根读取实际图片字节。 */
-    const bytes = await fs.readFile(path.join(context.candidate.root, pluginRoot, artifactPath));
+    const bytes = await fs.readFile(path.join(context.candidate.root, pluginRoot, assetPath));
     if (bytes.byteLength > MAX_BRANDING_IMAGE_BYTES) {
       report(context, 'CODEX_BRANDING_IMAGE_TOO_LARGE', `${field} must not exceed 5 MiB.`, fieldPath);
       return;
@@ -334,14 +348,14 @@ async function validateBrandingImage(
 /**
  * 校验 Codex Plugin 安装界面字段和资源引用。
  *
- * @param context Platform validateBundle 生命周期上下文。
- * @param artifacts 当前 DeliveryUnit 的 Artifact 路径集合。
+ * @param context Platform validatePackage 生命周期上下文。
+ * @param assets 当前 Package 的 Asset 路径集合。
  * @param pluginRoot Plugin 相对于候选 Distribution 根的安装目录。
  * @param value Manifest 的 interface 候选。
  */
 async function validateInterface(
   context: PlatformValidateContext,
-  artifacts: ReadonlySet<string>,
+  assets: ReadonlySet<string>,
   pluginRoot: string,
   value: JsonValue,
 ): Promise<void> {
@@ -380,21 +394,21 @@ async function validateInterface(
     /** 当前图片路径候选。 */
     const candidate = value[field];
     if (typeof candidate === 'string' && !invalidFields.has(field)) {
-      validateReference(context, artifacts, `interface.${field}`, candidate, ['interface', field]);
-      if (referenceExists(artifacts, candidate))
+      validateReference(context, assets, `interface.${field}`, candidate, ['interface', field]);
+      if (referenceExists(assets, candidate))
         await validateBrandingImage(context, pluginRoot, candidate, `interface.${field}`, ['interface', field]);
     }
   }
   if (Array.isArray(value.screenshots) && !invalidFields.has('screenshots')) {
     for (const [index, screenshot] of value.screenshots.entries())
-      validateReference(context, artifacts, 'interface.screenshots', screenshot as string, ['interface', 'screenshots', index]);
+      validateReference(context, assets, 'interface.screenshots', screenshot as string, ['interface', 'screenshots', index]);
   }
 }
 
 /**
  * 校验 Codex Hook matcher 是可执行的正则字符串。
  *
- * @param context Platform validateBundle 生命周期上下文。
+ * @param context Platform validatePackage 生命周期上下文。
  * @param value matcher 候选值。
  * @param fieldPath matcher 在最终 Hook 配置中的字段路径。
  */
@@ -419,7 +433,7 @@ function validateHookMatcher(
 /**
  * 校验 Codex command Hook Handler 的字段和平台限制。
  *
- * @param context Platform validateBundle 生命周期上下文。
+ * @param context Platform validatePackage 生命周期上下文。
  * @param event 当前 Handler 所属事件。
  * @param value Handler 候选值。
  * @param fieldPath Handler 在最终 Hook 配置中的字段路径。
@@ -475,7 +489,7 @@ function validateHookHandler(
 /**
  * 校验 Codex Hook 事件映射及其 matcher 分组。
  *
- * @param context Platform validateBundle 生命周期上下文。
+ * @param context Platform validatePackage 生命周期上下文。
  * @param value `hooks` 字段中的事件映射候选。
  * @param fieldPath 事件映射在最终配置中的字段路径。
  */
@@ -528,7 +542,7 @@ function validateHookEvents(
 /**
  * 校验 Codex `hooks.json` 顶层结构或 Plugin Manifest 内联事件映射。
  *
- * @param context Platform validateBundle 生命周期上下文。
+ * @param context Platform validatePackage 生命周期上下文。
  * @param value 已解析的 Hook 配置对象。
  * @param fieldPath 配置在 Plugin Manifest 中的字段路径。
  * @param wrapped 是否要求配置使用 `hooks.json` 顶层包装。
@@ -561,7 +575,7 @@ function validateHookConfig(
 /**
  * 读取并校验 Plugin 根内被引用的 Codex `hooks.json`。
  *
- * @param context Platform validateBundle 生命周期上下文。
+ * @param context Platform validatePackage 生命周期上下文。
  * @param pluginRoot Plugin 相对于候选 Distribution 根的安装目录。
  * @param reference 已通过安装根路径规则的 Hook 配置引用。
  * @param fieldPath 引用在 Plugin Manifest 中的字段路径。
@@ -590,21 +604,21 @@ async function validateHookFile(
 /**
  * 校验 Hooks 字段允许的引用或内联配置，并验证最终配置内容。
  *
- * @param context Platform validateBundle 生命周期上下文。
- * @param artifacts 当前 DeliveryUnit 的 Artifact 路径集合。
+ * @param context Platform validatePackage 生命周期上下文。
+ * @param assets 当前 Package 的 Asset 路径集合。
  * @param pluginRoot Plugin 相对于候选 Distribution 根的安装目录。
  * @param value Hooks 字段候选。
  */
 async function validateHooks(
   context: PlatformValidateContext,
-  artifacts: ReadonlySet<string>,
+  assets: ReadonlySet<string>,
   pluginRoot: string,
   value: JsonValue,
 ): Promise<void> {
   /** 校验并读取单个 Plugin 根路径引用。 */
   const validatePath = async (reference: string, fieldPath: readonly (string | number)[]): Promise<void> => {
-    validateReference(context, artifacts, 'hooks', reference, fieldPath);
-    if (isSafePluginReference(reference) && referenceExists(artifacts, reference))
+    validateReference(context, assets, 'hooks', reference, fieldPath);
+    if (isSafePluginReference(reference) && referenceExists(assets, reference))
       await validateHookFile(context, pluginRoot, reference, fieldPath);
   };
   if (typeof value === 'string') {
@@ -636,11 +650,115 @@ async function validateHooks(
     validateHookConfig(context, inline as JsonRecord, ['hooks', index], false);
 }
 
+/** 校验 Codex MCP 的字符串键值映射。 */
+function validateMcpStringMap(
+  context: PlatformValidateContext,
+  value: JsonValue | undefined,
+  code: string,
+  label: string,
+  fieldPath: readonly (string | number)[],
+  environmentValues = false,
+): void {
+  if (value !== undefined && (!isRecord(value) || Object.entries(value).some(([key, entry]) =>
+    key.trim().length === 0 || typeof entry !== 'string' || (environmentValues && !ENV_NAME_PATTERN.test(entry))))) {
+    report(context, code, `${label} must map non-empty names to valid string values.`, fieldPath);
+  }
+}
+
+/** 校验 Codex 最终 `.mcp.json` 中的完整 Server 映射。 */
+function validateMcpServers(context: PlatformValidateContext, value: JsonValue, fieldPath: readonly (string | number)[]): void {
+  if (!isRecord(value)) {
+    report(context, 'CODEX_MCP_SERVERS_INVALID', 'Codex MCP config must contain a Server object mapping.', fieldPath);
+    return;
+  }
+  for (const [id, candidate] of Object.entries(value)) {
+    /** 当前 Server 在最终配置中的字段路径。 */
+    const serverPath = [...fieldPath, id];
+    if (!SKILL_ID_PATTERN.test(id) || !isRecord(candidate)) {
+      report(context, 'CODEX_MCP_SERVER_INVALID', 'MCP Server ids must use lowercase kebab-case and map to objects.', serverPath);
+      continue;
+    }
+    /** url/command 必须恰好选择一种传输。 */
+    const remote = Object.hasOwn(candidate, 'url');
+    /** command 表示 Plugin-local stdio 传输。 */
+    const local = Object.hasOwn(candidate, 'command');
+    if (remote === local) {
+      report(context, 'CODEX_MCP_TRANSPORT_INVALID', 'MCP Server must declare exactly one of url or command.', serverPath);
+      continue;
+    }
+    /** 当前传输唯一允许的字段集合。 */
+    const fields = remote ? MCP_HTTP_FIELDS : MCP_STDIO_FIELDS;
+    for (const field of Object.keys(candidate)) {
+      if (!fields.has(field))
+        report(context, 'CODEX_MCP_FIELD_UNKNOWN', `Unknown Codex MCP field "${field}".`, [...serverPath, field]);
+    }
+    if (local) {
+      if (typeof candidate.command !== 'string' || candidate.command.trim().length === 0)
+        report(context, 'CODEX_MCP_COMMAND_INVALID', 'stdio MCP command must be a non-empty string.', [...serverPath, 'command']);
+      if (candidate.args !== undefined
+        && (!Array.isArray(candidate.args) || candidate.args.some(argument => typeof argument !== 'string'))) {
+        report(context, 'CODEX_MCP_ARGS_INVALID', 'stdio MCP args must contain only strings.', [...serverPath, 'args']);
+      }
+      if (candidate.cwd !== undefined && candidate.cwd !== '.')
+        report(context, 'CODEX_MCP_CWD_INVALID', 'Plugin stdio MCP cwd must be the Plugin root ".".', [...serverPath, 'cwd']);
+      validateMcpStringMap(context, candidate.env, 'CODEX_MCP_ENV_INVALID', 'stdio MCP env', [...serverPath, 'env']);
+      if (candidate.env_vars !== undefined
+        && (!Array.isArray(candidate.env_vars) || candidate.env_vars.some(variable => typeof variable !== 'string' || !ENV_NAME_PATTERN.test(variable))
+          || new Set(candidate.env_vars).size !== candidate.env_vars.length)) {
+        report(context, 'CODEX_MCP_ENV_VARS_INVALID', 'stdio MCP env_vars must contain unique environment names.', [...serverPath, 'env_vars']);
+      }
+      continue;
+    }
+    if (typeof candidate.url !== 'string') {
+      report(context, 'CODEX_MCP_URL_INVALID', 'HTTP MCP url must be an HTTP(S) URL without credentials.', [...serverPath, 'url']);
+    } else {
+      try {
+        /** Codex remote MCP 不接受 URL 内联凭据。 */
+        const url = new URL(candidate.url);
+        if ((url.protocol !== 'http:' && url.protocol !== 'https:') || url.username !== '' || url.password !== '')
+          throw new TypeError('unsafe');
+      } catch {
+        report(context, 'CODEX_MCP_URL_INVALID', 'HTTP MCP url must be an HTTP(S) URL without credentials.', [...serverPath, 'url']);
+      }
+    }
+    if (candidate.bearer_token_env_var !== undefined
+      && (typeof candidate.bearer_token_env_var !== 'string' || !ENV_NAME_PATTERN.test(candidate.bearer_token_env_var))) {
+      report(context, 'CODEX_MCP_BEARER_INVALID', 'bearer_token_env_var must be an environment name.', [...serverPath, 'bearer_token_env_var']);
+    }
+    if (candidate.scopes !== undefined
+      && (!Array.isArray(candidate.scopes) || candidate.scopes.length === 0
+        || candidate.scopes.some(scope => typeof scope !== 'string' || scope.trim().length === 0)
+        || new Set(candidate.scopes).size !== candidate.scopes.length)) {
+      report(context, 'CODEX_MCP_SCOPES_INVALID', 'MCP scopes must contain unique non-empty strings.', [...serverPath, 'scopes']);
+    }
+    validateMcpStringMap(context, candidate.http_headers, 'CODEX_MCP_HEADERS_INVALID', 'HTTP MCP headers', [...serverPath, 'http_headers']);
+    validateMcpStringMap(context, candidate.env_http_headers, 'CODEX_MCP_ENV_HEADERS_INVALID', 'HTTP MCP env headers', [...serverPath, 'env_http_headers'], true);
+  }
+}
+
+/** 读取并校验 Codex Plugin 根内被引用的 `.mcp.json`。 */
+async function validateMcpFile(
+  context: PlatformValidateContext,
+  pluginRoot: string,
+  reference: string,
+  fieldPath: readonly (string | number)[],
+): Promise<void> {
+  try {
+    /** MCP 配置引用相对于当前 Plugin 根解析。 */
+    const mcpPath = path.join(context.candidate.root, pluginRoot, reference.slice(2));
+    /** Codex `.mcp.json` 顶层直接是 Server 映射。 */
+    const value: unknown = JSON.parse(await fs.readFile(mcpPath, 'utf8'));
+    validateMcpServers(context, value as JsonValue, fieldPath);
+  } catch {
+    report(context, 'CODEX_MCP_CONFIG_READ_FAILED', 'mcpServers reference must contain valid JSON.', fieldPath);
+  }
+}
+
 /**
  * 校验 Skill 元数据中的相对资源引用。
  *
- * @param context Platform validateBundle 生命周期上下文。
- * @param artifacts 当前 DeliveryUnit 的 Artifact 路径集合。
+ * @param context Platform validatePackage 生命周期上下文。
+ * @param assets 当前 Package 的 Asset 路径集合。
  * @param pluginRoot Plugin 相对于候选 Distribution 根的安装目录。
  * @param skillId 当前 Skill 的最终目录 ID。
  * @param field 元数据资源字段名。
@@ -648,7 +766,7 @@ async function validateHooks(
  */
 function validateSkillAssetReference(
   context: PlatformValidateContext,
-  artifacts: ReadonlySet<string>,
+  assets: ReadonlySet<string>,
   skillId: string,
   field: string,
   reference: string,
@@ -658,9 +776,9 @@ function validateSkillAssetReference(
     report(context, 'CODEX_SKILL_ASSET_UNSAFE', `${field} must start with ./ and stay inside the Skill root.`, ['skills', skillId, 'agents', 'openai.yaml', 'interface', field]);
     return;
   }
-  /** Skill 相对引用转换后的完整 Artifact 路径。 */
-  const artifactPath = `skills/${skillId}/${reference.slice(2)}`;
-  if (!artifacts.has(artifactPath)) {
+  /** Skill 相对引用转换后的完整 Asset 路径。 */
+  const assetPath = `skills/${skillId}/${reference.slice(2)}`;
+  if (!assets.has(assetPath)) {
     report(context, 'CODEX_SKILL_ASSET_MISSING', `${field} references a missing Skill asset.`, ['skills', skillId, 'agents', 'openai.yaml', 'interface', field]);
   }
 }
@@ -668,19 +786,19 @@ function validateSkillAssetReference(
 /**
  * 校验一个 Skill 的 `agents/openai.yaml` 官方结构。
  *
- * @param context Platform validateBundle 生命周期上下文。
- * @param artifacts 当前 DeliveryUnit 的 Artifact 路径集合。
+ * @param context Platform validatePackage 生命周期上下文。
+ * @param assets 当前 Package 的 Asset 路径集合。
  * @param skillId 当前 Skill 的最终目录 ID。
  */
 async function validateSkillMetadata(
   context: PlatformValidateContext,
-  artifacts: ReadonlySet<string>,
+  assets: ReadonlySet<string>,
   pluginRoot: string,
   skillId: string,
 ): Promise<void> {
-  /** 当前 Skill 元数据的固定 Artifact 路径。 */
+  /** 当前 Skill 元数据的固定 Asset 路径。 */
   const metadataPath = `skills/${skillId}/agents/openai.yaml`;
-  if (!artifacts.has(metadataPath))
+  if (!assets.has(metadataPath))
     return;
   try {
     /** 从已物化候选读取 UTF-8 Skill 元数据。 */
@@ -715,7 +833,7 @@ async function validateSkillMetadata(
         if (typeof candidate !== 'string' || candidate.trim().length === 0)
           report(context, 'CODEX_SKILL_ASSET_INVALID', `Skill interface.${field} must be a non-empty path.`);
         else
-          validateSkillAssetReference(context, artifacts, skillId, field, candidate);
+          validateSkillAssetReference(context, assets, skillId, field, candidate);
       }
     }
     if (skillInterface.brand_color !== undefined
@@ -762,8 +880,8 @@ async function validateSkillMetadata(
 /**
  * 校验一个最终 Skill 的 Markdown、frontmatter、正文与可选元数据。
  *
- * @param context Platform validateBundle 生命周期上下文。
- * @param artifacts 当前 DeliveryUnit 的 Artifact 路径集合。
+ * @param context Platform validatePackage 生命周期上下文。
+ * @param assets 当前 Package 的 Asset 路径集合。
  * @param pluginRoot Plugin 相对于候选 Distribution 根的安装目录。
  * @param pluginName 当前 Plugin 的稳定机器名称。
  * @param skillId 当前 Skill 的最终目录 ID。
@@ -771,15 +889,15 @@ async function validateSkillMetadata(
  */
 async function validateSkill(
   context: PlatformValidateContext,
-  artifacts: ReadonlySet<string>,
+  assets: ReadonlySet<string>,
   pluginRoot: string,
   pluginName: string | undefined,
   skillId: string,
   names: Set<string>,
 ): Promise<void> {
-  /** 当前 Skill Manifest 的固定 Artifact 路径。 */
+  /** 当前 Skill Manifest 的固定 Asset 路径。 */
   const manifestPath = `skills/${skillId}/SKILL.md`;
-  if (!artifacts.has(manifestPath)) {
+  if (!assets.has(manifestPath)) {
     report(context, 'CODEX_SKILL_MANIFEST_MISSING', `Skill directory "${skillId}" must contain SKILL.md.`, ['skills', skillId]);
     return;
   }
@@ -818,7 +936,7 @@ async function validateSkill(
     }
     if (match[2]!.trim().length === 0)
       report(context, 'CODEX_SKILL_BODY_EMPTY', `${manifestPath} instructions must not be empty.`);
-    await validateSkillMetadata(context, artifacts, pluginRoot, skillId);
+    await validateSkillMetadata(context, assets, pluginRoot, skillId);
   } catch {
     report(context, 'CODEX_SKILL_READ_FAILED', `${manifestPath} must be readable UTF-8 Markdown.`);
   }
@@ -827,30 +945,30 @@ async function validateSkill(
 /**
  * 校验 `skills/` 根下每个直接子目录及其内容协议。
  *
- * @param context Platform validateBundle 生命周期上下文。
- * @param artifacts 当前 DeliveryUnit 的 Artifact 路径集合。
+ * @param context Platform validatePackage 生命周期上下文。
+ * @param assets 当前 Package 的 Asset 路径集合。
  * @param pluginRoot Plugin 相对于候选 Distribution 根的安装目录。
  * @param pluginName 当前 Plugin 的稳定机器名称。
  */
 async function validateSkills(
   context: PlatformValidateContext,
-  artifacts: ReadonlySet<string>,
+  assets: ReadonlySet<string>,
   pluginRoot: string,
   pluginName: string | undefined,
 ): Promise<void> {
-  /** 从任意 Skill Artifact 收集的直接子目录 ID。 */
+  /** 从任意 Skill Asset 收集的直接子目录 ID。 */
   const directories = new Set<string>();
-  for (const artifact of artifacts) {
-    if (!artifact.startsWith('skills/'))
+  for (const asset of assets) {
+    if (!asset.startsWith('skills/'))
       continue;
-    /** 当前 Skill Artifact 的 POSIX 路径片段。 */
-    const segments = artifact.split('/');
+    /** 当前 Skill Asset 的 POSIX 路径片段。 */
+    const segments = asset.split('/');
     if (segments.length < 3 || segments[1] === '') {
-      report(context, 'CODEX_SKILL_PATH_INVALID', `Invalid Skill Artifact path "${artifact}".`, ['skills']);
+      report(context, 'CODEX_SKILL_PATH_INVALID', `Invalid Skill Asset path "${asset}".`, ['skills']);
       continue;
     }
     directories.add(segments[1]!);
-    if (artifact.endsWith('/SKILL.md') && segments.length !== 3)
+    if (asset.endsWith('/SKILL.md') && segments.length !== 3)
       report(context, 'CODEX_SKILL_MANIFEST_NESTED', 'SKILL.md must be an immediate child of its Skill directory.', ['skills', segments[1]!]);
   }
   if (directories.size === 0) {
@@ -863,14 +981,14 @@ async function validateSkills(
   for (const skillId of [...directories].sort(compareCodeUnits)) {
     if (!SKILL_ID_PATTERN.test(skillId))
       report(context, 'CODEX_SKILL_DIRECTORY_INVALID', `Skill directory "${skillId}" must use lowercase kebab-case.`, ['skills', skillId]);
-    await validateSkill(context, artifacts, pluginRoot, pluginName, skillId, names);
+    await validateSkill(context, assets, pluginRoot, pluginName, skillId, names);
   }
 }
 
 /**
  * 校验 Plugin Manifest 字段、Skill 根和 Extension 引用。
  *
- * @param context Platform validateBundle 生命周期上下文。
+ * @param context Platform validatePackage 生命周期上下文。
  * @param manifest 已解析的 Codex Plugin Manifest。
  * @param pluginRoot Plugin 相对于候选 Distribution 根的安装目录。
  */
@@ -879,8 +997,8 @@ async function validatePluginManifest(
   manifest: JsonRecord,
   pluginRoot = '',
 ): Promise<void> {
-  /** 当前 Plugin 安装根内的相对 Artifact 路径集合。 */
-  const artifacts = scopedArtifacts(context, pluginRoot);
+  /** 当前 Plugin 安装根内的相对 Asset 路径集合。 */
+  const assets = scopedAssets(context, pluginRoot);
   for (const field of Object.keys(manifest)) {
     if (!PLUGIN_FIELDS.has(field))
       report(context, 'CODEX_MANIFEST_FIELD_UNKNOWN', `Unknown Codex Plugin field "${field}".`, [field]);
@@ -929,26 +1047,28 @@ async function validatePluginManifest(
   }
   if (manifest.skills !== './skills/')
     report(context, 'CODEX_SKILLS_PATH_INVALID', 'skills must point to the root ./skills/ directory.', ['skills']);
-  await validateSkills(context, artifacts, pluginRoot, typeof manifest.name === 'string' ? manifest.name : undefined);
+  await validateSkills(context, assets, pluginRoot, typeof manifest.name === 'string' ? manifest.name : undefined);
   if (manifest.interface !== undefined)
-    await validateInterface(context, artifacts, pluginRoot, manifest.interface);
+    await validateInterface(context, assets, pluginRoot, manifest.interface);
   if (manifest.mcpServers !== undefined) {
     if (typeof manifest.mcpServers !== 'string') {
       report(context, 'CODEX_MCP_REFERENCE_INVALID', 'mcpServers must be a Plugin-root file path.', ['mcpServers']);
     } else {
-      validateReference(context, artifacts, 'mcpServers', manifest.mcpServers, ['mcpServers']);
+      validateReference(context, assets, 'mcpServers', manifest.mcpServers, ['mcpServers']);
+      if (isSafePluginReference(manifest.mcpServers) && referenceExists(assets, manifest.mcpServers))
+        await validateMcpFile(context, pluginRoot, manifest.mcpServers, ['mcpServers']);
     }
   }
   if (manifest.hooks !== undefined)
-    await validateHooks(context, artifacts, pluginRoot, manifest.hooks);
-  else if (artifacts.has('hooks/hooks.json'))
+    await validateHooks(context, assets, pluginRoot, manifest.hooks);
+  else if (assets.has('hooks/hooks.json'))
     await validateHookFile(context, pluginRoot, './hooks/hooks.json', ['hooks']);
 }
 
 /**
  * 校验 Marketplace 根清单和自包含 Plugin 来源。
  *
- * @param context Platform validateBundle 生命周期上下文。
+ * @param context Platform validatePackage 生命周期上下文。
  * @param marketplace 已解析的 Marketplace 清单。
  */
 async function validateMarketplace(
@@ -1031,7 +1151,7 @@ async function validateMarketplace(
  *
  * @param context Core 提供的已安全物化候选。
  */
-export async function validateCodexBundle(context: PlatformValidateContext): Promise<void> {
+export async function validateCodexPackage(context: PlatformValidateContext): Promise<void> {
   if (context.candidate.unit.type === 'marketplace') {
     /** Distribution 额外要求 Repo Marketplace 固定路径。 */
     const marketplace = await readJson(context, MARKETPLACE_MANIFEST_PATH);
@@ -1043,7 +1163,7 @@ export async function validateCodexBundle(context: PlatformValidateContext): Pro
   const plugin = await readJson(context, PLUGIN_MANIFEST_PATH);
   if (plugin !== undefined)
     await validatePluginManifest(context, plugin);
-  if (context.candidate.unit.artifacts.some(artifact => artifact.path === MARKETPLACE_MANIFEST_PATH)) {
+  if (context.candidate.unit.assets.some(asset => asset.path === MARKETPLACE_MANIFEST_PATH)) {
     report(context, 'CODEX_MARKETPLACE_IN_PRIMARY', 'Primary Plugin must not contain a Marketplace manifest.');
   }
 }

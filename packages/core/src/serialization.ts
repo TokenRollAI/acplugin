@@ -34,7 +34,7 @@ export function sortObject(value: unknown): unknown {
 }
 
 /**
- * 将值序列化为适合写入 Artifact 的确定性格式化 JSON。
+ * 将值序列化为适合写入 Asset 的确定性格式化 JSON。
  *
  * @param value 需要序列化的数据。
  * @returns 使用两个空格缩进且以换行结尾的 JSON 文本。
@@ -58,7 +58,7 @@ export function stableYaml(value: unknown): string {
  *
  * @param frontmatter 文档头部的结构化元数据。
  * @param body Markdown 正文。
- * @returns 可直接写入 Artifact 的完整 Markdown 文本。
+ * @returns 可直接写入 Asset 的完整 Markdown 文本。
  */
 export function markdownWithFrontmatter(frontmatter: Record<string, unknown>, body: string): string {
   return `---\n${stableYaml(frontmatter)}\n---\n${body.trim()}\n`;

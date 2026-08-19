@@ -1,22 +1,24 @@
 # 为什么使用 ACPlugin
 
-AI 编程平台通常使用不同目录、Manifest 和运行协议描述相似的作者能力。直接维护六套输出会让内容、兼容性判断和安全边界逐渐分叉。ACPlugin 把这两个问题拆开：作者维护一份 Canonical 工程，Platform 负责把它编译成一种目标交付格式。
+AI 编程平台通常使用不同目录、Manifest 和运行协议表达相似能力。直接维护六套输出会让内容、兼容性判断、编译方式和安全边界逐渐分叉。ACPlugin 把作者模型与目标交付分开：作者维护一份 Canonical 工程，Platform 负责目标 Package，Core 提供统一 Rolldown Compiler 与固定生命周期。
 
 ## 一条固定流水线
 
 ```text
-Config → Core lifecycle → Scanner → Platform Draft
-       → Extension Adapter → DeliveryUnit validation → transaction → report
+Config → Core Resource discovery → CanonicalProject
+       → Platform base Package → unordered add-only Contributions
+       → finalized/validated Packages → transaction → BuildReport
 ```
 
-Core 固定阶段顺序、诊断、所有权和事务。Platform 只处理目标平台的 Component 转换、结构化 Document 和 DeliveryUnit。Extension 通过 Adapter 向 Platform 声明的扩展点 add-only 地加入横向能力。
+Core 拥有阶段、Compiler/Module/Watch、诊断、Asset、兼容性和事务。Platform 拥有目标 Component 转换、结构化 Document、Package identity、Distribution 与 candidate validator。Extension 构建一次平台中立状态，再通过只读 base Package 上的 Contributor 添加横向能力。
 
 这意味着：
 
-- CLI 与程序化 `runProject()` 走同一条 lifecycle。
-- 一个 Platform/Extension 失败时，不会提交部分新 `dist`。
-- 兼容性必须逐资源报告，不能静默丢掉能力。
-- 第三方实现使用主包公开的 `definePlatform()`、`defineExtension()`，不需要中央 registry。
+- CLI、`runProject()`、`Project.run()` 与 `Project.dev()` 走同一 Kernel。
+- Platform/Extension 不能自建 bundler、watcher 或直接写入 `dist`。
+- 一个目标失败时不会提交部分新 Package 集合。
+- 兼容性逐资源显式报告，不能静默丢弃能力。
+- 第三方实现使用 `@tokenroll/acplugin/sdk`，不需要中央 registry 或 Core 私有 API。
 
 ## 独立 package，而不是主包开关
 
@@ -34,4 +36,4 @@ export default defineConfig({
 });
 ```
 
-接下来阅读[快速开始](./getting-started.md)，或查看[package map](/resources/package-map)。
+Node Runtime 是 Core 内建约定，不是第三个 Extension package。接下来阅读[快速开始](./getting-started.md)，或查看[package map](/resources/package-map)。

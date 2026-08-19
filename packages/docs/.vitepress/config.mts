@@ -53,6 +53,7 @@ export default defineConfig({
           items: [
             { text: 'Commands、Skills 与 Agents', link: '/guide/commands-skills-agents' },
             { text: '构建与校验', link: '/guide/build-and-validate' },
+            { text: '内建 Node Runtime', link: '/guide/node-runtime' },
             { text: 'CLI', link: '/guide/cli' },
             { text: 'Migration', link: '/guide/migration' },
             { text: '故障排查', link: '/guide/troubleshooting' },
@@ -84,8 +85,9 @@ export default defineConfig({
         { text: '生态开发总览', link: '/ecosystem/' },
         { text: 'Platform 开发', link: '/ecosystem/platform-authoring' },
         { text: 'Extension 开发', link: '/ecosystem/extension-authoring' },
+        { text: 'Rolldown Build Service', link: '/ecosystem/build-service' },
         { text: 'Lifecycle 契约', link: '/ecosystem/lifecycle-contract' },
-        { text: 'Artifact 与 Document', link: '/ecosystem/artifacts-and-documents' },
+        { text: 'Asset、Document 与 Package', link: '/ecosystem/assets-and-documents' },
         { text: 'Package 与 peer 边界', link: '/ecosystem/package-and-peer-boundaries' },
       ],
       '/playground/': [

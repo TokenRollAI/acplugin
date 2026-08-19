@@ -1,6 +1,6 @@
 # @tokenroll/acplugin
 
-Canonical AI plugin framework, public lifecycle SDK, and CLI. Platform and Extension implementations are independently installed peer packages.
+Rolldown-based AI Plugin framework, public lifecycle SDK, and CLI. Platform and Extension implementations are independently installed peer packages.
 
 Requires Node.js `^20.19.0 || ^22.13.0 || >=23.5.0`.
 
@@ -60,9 +60,9 @@ export default defineConfig({
 });
 ```
 
-Claude Code, Codex, Cursor, and Antigravity produce Plugin delivery units. OpenCode produces a workspace overlay; Pi produces an npm package. The compatibility report records native, transformed, degraded, and unsupported behavior before any managed output is committed.
+Claude Code, Codex, Cursor, and Antigravity produce Plugin Packages. OpenCode produces a workspace overlay; Pi produces an npm Package. The compatibility report records native, transformed, degraded, and unsupported behavior before any managed output is committed.
 
-The main package does not re-export official Platforms or Extensions and has no `platforms/*` subpath. Official packages use the same `definePlatform()` and Adapter contracts exposed to third-party authors, so the framework does not need a registry, naming convention, or source change to accept another implementation.
+The main package does not re-export official Platforms or Extensions and has no `platforms/*` subpath. Official and third-party integrations use the same `definePlatform()`, `defineExtension()`, Session, and Contributor contracts from `@tokenroll/acplugin/sdk`, so the framework needs no registry or source change to accept another implementation.
 
 Claude Code can be configured as an explicit Platform. Omitting `marketplace` builds only the installable Plugin; `marketplace: {}` additionally creates a self-contained single-Plugin Marketplace from the top-level metadata.
 
@@ -99,11 +99,13 @@ pnpm exec acplugin inspect
 pnpm exec acplugin build
 ```
 
-Hooks and MCP are optional official Extensions（Hooks 与 MCP 通过可选的官方 Extension 启用）. Their Platform Adapters are included in the Extension packages, while each Platform remains independent of them:
+Hooks and MCP are optional official Extensions（Hooks 与 MCP 通过可选的官方 Extension 启用）. Their Platform Contributors are included in the Extension packages, while each Platform remains independent of them:
 
 ```bash
 pnpm add -D @tokenroll/acplugin-extension-hooks @tokenroll/acplugin-extension-mcp
 ```
+
+Node Runtime is built into Core: direct TypeScript/JavaScript files under `src/runtime/` are compiled once through the Core-owned Rolldown Compiler and delivered only to Platforms that declare a stable Plugin-local Node 20 ESM capability. It does not require another package or factory.
 
 See the [repository documentation](https://github.com/TokenRollAI/acplugin#readme) for the complete authoring schema, compatibility rules, Migration workflow, and security model.
 

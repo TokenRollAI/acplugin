@@ -60,6 +60,11 @@ jobs:
             console.error('::error::The target branch must contain at least one Changeset that bumps a public package.')
             process.exit(1)
           }
+          const publicReleases = status.releases.filter(release => release.name.startsWith('@tokenroll/'))
+          if (publicReleases.length === 0 || publicReleases.some(release => !/^\d+\.\d+\.\d+-beta\.\d+$/.test(release.newVersion))) {
+            console.error('::error::The beta branch may only create explicit beta prerelease versions.')
+            process.exit(1)
+          }
           NODE
 
       - name: Consume Changesets and bump independent packages

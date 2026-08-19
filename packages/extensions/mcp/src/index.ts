@@ -1,7 +1,12 @@
-import { defineExtension, type AcpluginExtension } from '@tokenroll/acplugin';
-import { createMcpAdapters } from './adapters.js';
-import type { BuiltMcpServers } from './bundler.js';
-import { EXTENSION_NAME, MCP_ID_PATTERN } from './constants.js';
+import {
+  defineExtension,
+  type AcpluginExtension,
+  type JsonObject,
+  type PortableNodeCompileOptions,
+} from '@tokenroll/acplugin/sdk';
+import { buildMcpServers, type BuiltMcpServers } from './build.js';
+import { createMcpContributors } from './contributors/index.js';
+import { MCP_ID_PATTERN } from './constants.js';
 import {
   discoverMcpServers,
   type DiscoveredMcpServers,
@@ -9,15 +14,13 @@ import {
 } from './discovery.js';
 
 export { EXTENSION_NAME } from './constants.js';
-export { defineMcpServer } from './types.js';
 export type {
   BearerMcpAuth,
   EnvironmentValueSource,
   HttpMcpServer,
   LiteralValueSource,
   McpAuth,
-  McpServerDefinition,
-  McpServerInput,
+  McpServer,
   NoMcpAuth,
   OAuthMcpAuth,
   StdioMcpServer,
@@ -28,10 +31,15 @@ export type {
 export interface McpExtensionOptions {
   /** 只构建这些 `src/mcp/<id>`；省略时构建全部 Server。 */
   readonly include?: readonly string[];
+  /** 复用 Core portable-node 的公共纯 JSON 编译参数。 */
+  readonly compile?: PortableNodeCompileOptions;
 }
 
+/** 进入 Core defineExtension 的 JSON-safe MCP options。 */
+type McpJsonOptions = JsonObject;
+
 /** MCP Extension 工厂当前接受的公开配置字段。 */
-const MCP_OPTION_FIELDS = new Set(['include']);
+const MCP_OPTION_FIELDS = new Set(['include', 'compile']);
 
 /**
  * 拒绝宽类型变量传入的未知 Extension 工厂字段。
@@ -53,7 +61,7 @@ function validateOptions(options: McpExtensionOptions): void {
  * @param include 配置作者提供的可选 ID 数组。
  * @returns 省略时返回 undefined，否则返回去重后的只读集合。
  */
-function normalizeInclude(include: McpExtensionOptions['include']): ReadonlySet<string> | undefined {
+function normalizeInclude(include: McpExtensionOptions['include']): readonly string[] | undefined {
   if (include === undefined)
     return undefined;
   if (!Array.isArray(include))
@@ -68,54 +76,53 @@ function normalizeInclude(include: McpExtensionOptions['include']): ReadonlySet<
       throw new TypeError(`MCP include contains duplicate ID "${id}".`);
     result.add(id);
   }
-  return result;
+  return Object.freeze([...result].sort());
 }
 
 /**
- * 创建端到端拥有 MCP 作者格式、Bundle 和官方 Adapter 的品牌化 Extension。
+ * 创建端到端拥有 MCP 作者格式、Bundle 和官方 Contributor 的品牌化 Extension。
  *
  * @param options 可选的 MCP Server ID 白名单。
  * @returns 参与 Core 固定生命周期的 MCP Extension。
  */
 export function mcp(
   options: McpExtensionOptions = {},
-): AcpluginExtension<DiscoveredMcpServers | undefined, BuiltMcpServers> {
+): AcpluginExtension<JsonObject, DiscoveredMcpServers, DiscoveredMcpServers, BuiltMcpServers> {
   validateOptions(options);
-  /** 每个 Extension 实例独占且不可被作者随后修改的 include 集合。 */
+  /** factory 边界复制 include，compile 由 Core defineExtension 深度复制。 */
   const include = normalizeInclude(options.include);
-  return defineExtension<DiscoveredMcpServers | undefined, BuiltMcpServers>({
-    name: EXTENSION_NAME,
+  /** 规范化后交给 Core 的 Extension options。 */
+  const normalized: McpJsonOptions = {
+    ...(include === undefined ? {} : { include }),
+    ...(options.compile === undefined ? {} : { compile: options.compile as PortableNodeCompileOptions & JsonObject }),
+  };
+  return defineExtension<JsonObject, DiscoveredMcpServers, DiscoveredMcpServers, BuiltMcpServers>({
+    id: 'mcp',
     apiVersion: '1',
-    /** 扫描 Extension 独占的 `src/mcp` 作者格式。 */
-    discover: context => discoverMcpServers(context, include),
-    /** 在 Bundle 前验证远程安全策略与本地入口边界。 */
-    validate: (context, discovered) => discovered === undefined
-      ? undefined
-      : validateMcpServers(context, discovered),
-    /** HTTP 声明无需加载 Bundler；只有实际 stdio 资源才动态引入 Rolldown。 */
-    build: async (context, discovered) => {
-      if (discovered === undefined)
-        return Object.freeze({ servers: Object.freeze([]) });
-      if (discovered.servers.every(server => server.definition.transport === 'http')) {
-        return Object.freeze({
-          servers: Object.freeze(discovered.servers.map(server => Object.freeze({
-            id: server.id,
-            definition: server.definition,
-          }))),
-        });
-      }
-      /**
-       * 本地实现出现时才加载独立发布的重型构建入口。
-       *
-       * URL 形式让只内联 HTTP 验证路径的消费者无需把 Rolldown 纳入自身构建图；正式
-       * Extension tarball 始终同时携带 bundler.mjs。
-       */
-      const bundlerUrl = new URL('./bundler.mjs', import.meta.url);
-      /** 独立入口导出的本地 Bundle 与协议 smoke 实现。 */
-      const { buildMcpServers } = await import(bundlerUrl.href) as typeof import('./bundler.js');
-      return buildMcpServers(context, discovered);
+    /** Core 复制并冻结的作者配置。 */
+    options: normalized,
+    /** MCP Extension 独占的作者资源根。 */
+    resourceRoots: ['mcp'],
+    /** 每个 BuildSession 从 setup integrations 派生不可变平台快照。 */
+    createSession({ options: sessionOptions }) {
+      /** 当前 Session 选中的 Server ID 集合。 */
+      const normalized = sessionOptions as McpExtensionOptions;
+      /** include 白名单只在当前 Session 内使用。 */
+      const selected = normalized.include === undefined
+        ? undefined
+        : new Set(normalized.include);
+      /** 当前 Session 共享的 portable-node 编译参数。 */
+      const compile = normalized.compile;
+      return {
+        /** 扫描 Extension 独占的 `src/mcp` 作者格式。 */
+        discover: context => discoverMcpServers(context, selected),
+        /** 在 Bundle 前验证远程安全策略与本地入口边界。 */
+        validate: (context, discovered) => validateMcpServers(context, discovered),
+        /** HTTP-only 状态不会调用 Build Service；本地 stdio 统一委托给 Core。 */
+        build: async (context, validated) => ({ state: await buildMcpServers(context, validated, compile) }),
+        contributors: createMcpContributors(),
+      };
     },
-    adapters: createMcpAdapters(),
   });
 }
 

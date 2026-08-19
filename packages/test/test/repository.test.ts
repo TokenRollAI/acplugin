@@ -84,12 +84,14 @@ describe('repository release and documentation guards', () => {
     expect(check).toContain('pnpm run lint');
     expect(check).toContain('pnpm run typecheck');
     expect(check).not.toMatch(/pnpm run (?:test|build|release:verify)/);
+    expect(check).toContain('pnpm run versions:check');
     expect(check).toContain('node-version: 22.18.0');
     expect(patch).toContain('workflow_dispatch:');
     expect(patch).toContain('target_branch:');
     expect(patch).toContain('pnpm changeset status --output');
     expect(patch).toContain('status.releases.length === 0');
     expect(patch).toContain('pnpm version-packages');
+    expect(patch).toContain('beta prerelease versions');
     expect(patch).toContain('peter-evans/create-pull-request@v8');
     expect(patch).toContain('base: ${{ inputs.target_branch }}');
     expect(patch).toContain('node-version: 22.18.0');

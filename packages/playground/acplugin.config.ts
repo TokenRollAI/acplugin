@@ -10,7 +10,7 @@ import pi from '@tokenroll/acplugin-platform-pi';
 
 /** 覆盖全部官方集成能力的 ACPlugin 模板配置。 */
 export default defineConfig({
-  name: 'acplugin-capability-playground',
+  name: 'acplugin-playground',
   version: '0.1.0',
   description: 'Complete ACPlugin capability template for integration exercises.',
   displayName: 'ACPlugin Capability Playground',
@@ -74,6 +74,11 @@ export default defineConfig({
       },
     }),
   ],
+  runtime: {
+    entries: {
+      playground: { entry: 'main.ts' },
+    },
+  },
   extensions: [hooks(), mcp()],
   build: { strict: false },
 });

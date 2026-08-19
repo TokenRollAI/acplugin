@@ -18,22 +18,10 @@ export default defineConfig({
 });
 ```
 
-Commands become explicit Codex Skills named `command-<id>` by default. If a
-consumer needs the Plugin name to remain visible in each generated Command
-Skill ID, opt in without changing the canonical Command:
-
-```ts
-codex({
-  generatedSkillIds: {
-    command: 'plugin-prefixed',
-  },
-})
-```
-
-For Plugin `my-plugin`, Command `bootstrap` then becomes
-`skills/my-plugin-bootstrap/SKILL.md`. The default remains
-`skills/command-bootstrap/SKILL.md`; templates and per-Command overrides are
-not supported.
+Commands become explicit Codex Skills named `<plugin-name>-<command-id>`.
+For Plugin `my-plugin`, Command `bootstrap` is delivered at
+`skills/my-plugin-bootstrap/SKILL.md`. Arbitrary templates and per-Command
+overrides are intentionally not supported.
 
 The package also exports the named `codex` factory, its option types, `PLATFORM_ID`, and `PLATFORM_API_VERSION`.
 

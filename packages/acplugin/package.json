@@ -1,6 +1,6 @@
 {
   "name": "@tokenroll/acplugin",
-  "version": "0.0.1-beta",
+  "version": "0.0.2-beta",
   "description": "Canonical AI Plugin framework and CLI.",
   "type": "module",
   "license": "MIT",
@@ -10,7 +10,10 @@
   "sideEffects": false,
   "engines": { "node": "^20.19.0 || ^22.13.0 || >=23.5.0" },
   "bin": { "acplugin": "./dist/cli.mjs" },
-  "exports": { ".": { "types": "./dist/index.d.mts", "import": "./dist/index.mjs" } },
+  "exports": {
+    ".": { "types": "./dist/index.d.mts", "import": "./dist/index.mjs" },
+    "./sdk": { "types": "./dist/sdk.d.mts", "import": "./dist/sdk.mjs" }
+  },
   "files": ["dist", "README.md", "LICENSE"],
   "publishConfig": { "access": "public" },
   "scripts": {
@@ -22,15 +25,10 @@
     "typecheck": "tsc -p tsconfig.json"
   },
   "dependencies": {
-    "@iarna/toml": "^2.2.5",
     "@inquirer/prompts": "^8.3.2",
-    "chalk": "^5.6.2",
-    "chokidar": "^5.0.0",
     "commander": "14.0.1",
     "gray-matter": "^4.0.3",
-    "glob": "^13.0.6",
-    "jiti": "^2.7.0",
-    "ora": "^5.4.1",
+    "rolldown": "catalog:",
     "semver": "^7.8.5",
     "spdx-expression-parse": "^5.0.0"
   },

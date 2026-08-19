@@ -27,7 +27,7 @@ export default defineConfig({
 
 ## 交付与兼容性
 
-OpenCode 产生 workspace DeliveryUnit，而不是安装型 Plugin：
+OpenCode 产生 workspace 主 Package，而不是安装型 Plugin：
 
 ```text
 .opencode/commands/
@@ -36,6 +36,6 @@ OpenCode 产生 workspace DeliveryUnit，而不是安装型 Plugin：
 opencode.json              # 有配置或 Extension 内容时生成
 ```
 
-Command、Skill、Agent 都有原生 workspace 表示。Canonical capabilities 会转换为 OpenCode tools/permission 字段；无法精确固定 model 时按字段报告 degraded。HTTP 与 local stdio MCP 都可由官方 Adapter 加入 workspace 配置。
+Command、Skill、Agent 都有原生 workspace 表示。Canonical capabilities 会转换为 OpenCode tools/permission 字段；无法精确固定 model 时按字段报告 degraded。HTTP 与 local stdio MCP 都可由官方 Contributor 加入 workspace 配置。
 
 [OpenCode package API](/api/@tokenroll/acplugin-platform-opencode/)

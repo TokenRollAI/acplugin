@@ -1,25 +1,25 @@
-import { definePlatform, type AcpluginPlatform, type JsonObject } from '@tokenroll/acplugin';
-import { generateComponentArtifacts, validateOpenCodeComponentFields } from './components.js';
-import { createWorkspaceDocument, serializeDocuments, validatePlatformOptions } from './config-document.js';
+import {
+  definePlatform,
+  type AcpluginPlatform,
+  type JsonObject,
+} from '@tokenroll/acplugin/sdk';
+import { createOpenCodeComponents, validateOpenCodeComponent } from './components.js';
+import { createWorkspaceDocument, validatePlatformOptions } from './config-document.js';
 import type { OpenCodePlatformOptions } from './types.js';
-import { validateOpenCodeBundle } from './validator.js';
+import { validateOpenCodePackage } from './validator.js';
 
 export type { OpenCodePlatformOptions, OpenCodeWorkspaceOptions } from './types.js';
 
 /** OpenCode Platform 的稳定开放 ID。 */
 export const PLATFORM_ID = 'opencode' as const;
+
 /** OpenCode Platform 实现的 Core API 版本。 */
 export const PLATFORM_API_VERSION = '1' as const;
 
-/**
- * 创建独立且可由 Core 品牌校验的 OpenCode Platform。
- *
- * @param options 严格度覆盖和 workspace 配置选项。
- * @returns OpenCode workspace 交付实现。
- */
+/** 创建只通过 Package API 交付 OpenCode workspace overlay 的 Platform。 */
 export function openCode(options: OpenCodePlatformOptions = {}): AcpluginPlatform {
   validatePlatformOptions(options);
-  /** strict 属于 Core 策略，其余字段作为 Platform 生命周期专属配置保存。 */
+  /** strict 由 Core 解释，其余选项复制、深冻后进入 Platform Session。 */
   const { strict, ...platformOptions } = options;
   return definePlatform({
     id: PLATFORM_ID,
@@ -27,22 +27,28 @@ export function openCode(options: OpenCodePlatformOptions = {}): AcpluginPlatfor
     deliveryType: 'workspace',
     ...(strict === undefined ? {} : { strict }),
     options: platformOptions as unknown as JsonObject,
-    validateComponentFields: validateOpenCodeComponentFields,
-    /** prepare 创建可由 MCP Adapter add-only patch 的 workspace Document。 */
-    prepare: context => ({ documents: [createWorkspaceDocument(context)], artifacts: [] }),
-    /** generateBundle 生成资源，并仅在有配置时物化 opencode.json。 */
-    generateBundle: context => ({
-      id: 'workspace',
-      role: 'primary',
-      type: 'workspace',
-      artifacts: [
-        ...context.artifacts,
-        ...generateComponentArtifacts(context),
-        ...serializeDocuments(context.documents),
-      ],
-    }),
-    /** 最终候选不得伪造 Plugin Manifest 或覆盖通用 package.json。 */
-    validateBundle: validateOpenCodeBundle,
+    /** OpenCode workspace 不声明 Plugin-local Node Runtime 能力。 */
+    createSession({ options: sessionOptions }) {
+      return {
+        validateComponent: validateOpenCodeComponent,
+        /** base Package 包含 workspace Components 和可省略的结构化配置。 */
+        async createPackage({ project, assets }) {
+          /** components 全部通过 Platform owner 的 Asset Service 签发。 */
+          const components = await createOpenCodeComponents(project, assets);
+          /** workspace config 由 Core codec 处理并只开放 MCP 字段。 */
+          const config = createWorkspaceDocument({ metadata: project.metadata, options: sessionOptions });
+          return {
+            documents: [config.document],
+            assets: components.assets,
+            compatibility: components.compatibility,
+            metadata: config.metadata,
+          };
+        },
+        /** 主单元身份明确是 workspace，不伪装 Plugin root。 */
+        finalizePackage: () => ({ id: 'workspace', type: 'workspace' }),
+        validatePackage: validateOpenCodePackage,
+      };
+    },
   });
 }
 

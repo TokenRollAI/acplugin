@@ -75,24 +75,27 @@ describe('published package boundaries', () => {
     const files = await filesWithSuffixes(path.join(root, 'packages/acplugin/dist'), ['.mjs', '.d.mts']);
     /** 用于检测私有工作区引用泄漏的完整产物文本。 */
     const source = await joinedSources(files);
+    /** 仅运行时产物用于检查 Rolldown 是否被静态链接；声明文件可以合法导入其公开类型。 */
+    const runtimeFiles = await filesWithSuffixes(path.join(root, 'packages/acplugin/dist'), ['.mjs']);
+    /** 主包所有 ESM 运行时产物。 */
+    const runtimeSource = await joinedSources(runtimeFiles);
 
     expect(source).not.toMatch(/from\s+["']@acplugin\//);
     expect(source).not.toMatch(/import\s*\(\s*["']@acplugin\//);
-    expect(source).not.toMatch(/^\s*(?:import|export)\s.*from\s+["'](?:@tokenroll\/acplugin-extension-(?:hooks|mcp)|rolldown|@rolldown\/)/m);
-    expect(source).not.toMatch(/^\s*import\s*\(\s*["'](?:@tokenroll\/acplugin-extension-(?:hooks|mcp)|rolldown|@rolldown\/)/m);
+    expect(source).not.toMatch(/^\s*(?:import|export)\s.*from\s+["']@tokenroll\/acplugin-(?:platform-(?:claude-code|codex|cursor|antigravity|opencode|pi)|extension-(?:hooks|mcp|node-runtime))["']/m);
+    expect(source).not.toMatch(/^\s*import\s*\(\s*["']@tokenroll\/acplugin-(?:platform-(?:claude-code|codex|cursor|antigravity|opencode|pi)|extension-(?:hooks|mcp|node-runtime))["']/m);
     expect(source).not.toMatch(/type\s+(?:AcpluginModule|TargetContribution|TargetId)\b/);
     expect(source).not.toMatch(/type\s+Module(?:Build|Discover|Generate|Validate)Context\b/);
+    expect(runtimeSource).not.toMatch(/^\s*import\s.*from\s+["'](?:rolldown|rolldown\/parseAst)["']/m);
+    expect(runtimeSource).toContain('import("rolldown")');
   });
 
-  it('keeps the local MCP Bundler in its published Extension entry', async () => {
-    /** 不触达 Rolldown 的 MCP Extension 轻量公开入口。 */
+  it('uses the Core Build Service from the single published MCP entry', async () => {
+    /** MCP 发布入口包含协议 smoke 与 Core Build Service 调用，但不包含私有 Rolldown driver。 */
     const index = await fs.readFile(path.join(root, 'packages/extensions/mcp/dist/index.mjs'), 'utf8');
-    /** 只有发现本地 stdio Server 后才动态加载的重型构建入口。 */
-    const bundler = await fs.readFile(path.join(root, 'packages/extensions/mcp/dist/bundler.mjs'), 'utf8');
-
-    expect(index).toContain('new URL("./bundler.mjs", import.meta.url)');
+    expect(index).toContain('context.compiler.compile');
     expect(index).not.toMatch(/^\s*import\s.*from\s+["'](?:rolldown|@rolldown\/)/m);
-    expect(bundler).toMatch(/^\s*import\s.*from\s+["']rolldown["']/m);
+    await expect(fs.access(path.join(root, 'packages/extensions/mcp/dist/bundler.mjs'))).rejects.toThrow();
   });
 
   it('keeps each independent Platform package limited to its public factory contract', async () => {
@@ -104,7 +107,7 @@ describe('published package boundaries', () => {
       expect(module.default).toBe(module[factory]);
       /** 当前独立 package 生成的声明入口。 */
       const declaration = await fs.readFile(path.join(root, `packages/platforms/${id}/dist/index.d.mts`), 'utf8');
-      expect(declaration).toContain('from "@tokenroll/acplugin"');
+      expect(declaration).toContain('from "@tokenroll/acplugin/sdk"');
       expect(declaration).not.toContain('@acplugin/');
       expect(declaration).not.toMatch(/\b(?:Compiler|Serializer|Validator|Registry|executeLifecycle|buildProject)\b/);
     }
@@ -125,7 +128,7 @@ describe('published package boundaries', () => {
       ];
       /** 两个入口共同构成的包边界文本。 */
       const source = await joinedSources(files);
-      expect(source).toContain('from "@tokenroll/acplugin"');
+      expect(source).toContain('from "@tokenroll/acplugin/sdk"');
       expect(source).not.toContain('@acplugin/');
     }
   });
@@ -152,7 +155,7 @@ describe('published package boundaries', () => {
 
     /** 主包不得再声明或生成官方 Platform subpath。 */
     const mainManifest = JSON.parse(await fs.readFile(path.join(root, 'packages/acplugin/package.json'), 'utf8')) as { exports: Record<string, unknown> };
-    expect(Object.keys(mainManifest.exports)).toEqual(['.']);
+    expect(Object.keys(mainManifest.exports)).toEqual(['.', './sdk']);
     await expect(fs.access(path.join(root, 'packages/acplugin/dist/platforms'))).rejects.toThrow();
 
     /** 主包生成并由 package.json bin 指向的 CLI 文件。 */

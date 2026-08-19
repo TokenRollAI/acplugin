@@ -23,13 +23,13 @@ export default defineConfig({
 });
 ```
 
-CLI 的 `--strict` 或 `--no-strict` 覆盖本次选择的全部 Platform，适合 CI 临时策略。优先级是 CLI override → Platform override → `build.strict` 默认。
+Platform override 优先于 `build.strict` 默认。项目 CLI 不提供临时 strict override，保证本地、CI 和程序化调用使用同一份显式策略。
 
 Relaxed 模式只允许功能兼容性继续构建，并保留完整报告。以下错误始终失败：
 
 - 配置、Frontmatter、依赖图或 Schema 无效；
-- Artifact 来源越权、路径冲突或 owner 冲突；
-- Extension/Adapter API 不兼容；
-- DeliveryUnit 最终校验或 transaction 失败。
+- Asset 来源越权、路径冲突或 owner 冲突；
+- Extension/Contributor API 不兼容；
+- Package 候选校验或 transaction 失败。
 
 建议默认 strict，只在明确接受一个已审查的降级时对特定 Platform 放宽，并在 CI 检查报告中允许的诊断集合。

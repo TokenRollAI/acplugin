@@ -14,10 +14,11 @@ import openCode from '@tokenroll/acplugin-platform-opencode';
 import pi from '@tokenroll/acplugin-platform-pi';
 
 export default defineConfig({
-  name: 'acplugin-capability-playground',
+  name: 'acplugin-playground',
   version: '0.1.0',
   description: 'Complete ACPlugin capability template for integration exercises.',
   platforms: [claudeCode(), codex(), cursor(), antigravity(), openCode(), pi()],
+  runtime: { entries: { playground: { entry: 'main.ts' } } },
   extensions: [hooks(), mcp()],
   build: { strict: false },
 });
@@ -30,20 +31,21 @@ export default defineConfig({
 - investigator、reflector、recorder Agents。
 - 全部 11 个 portable Hook 事件及其无副作用语义结果。
 - public、OAuth、Bearer 三类 remote HTTP MCP，以及完整 local stdio MCP。
+- 一个可真实执行、向 Claude Code/Codex 交付相同字节的 Node 20 ESM Runtime。
 - runtime/schema/upgrade 静态资源示例、品牌资源和四个 Public 模板。
-- 六个平台主交付单元与 Claude Code/Codex Marketplace。
+- 六个平台主 Package 与 Claude Code/Codex Marketplace Distribution。
 
 ## 输出验证
 
-验证器消费真实 `validate --json` 和 `build --json`，逐项检查六平台兼容性矩阵、Artifact Registry 与文件树闭包、Component 转换内容、Manifest/Config 引用、Hook runtime、MCP JSON-RPC、Secret 不泄漏和双构建字节确定性。平台明确 unsupported 的事件或 transport 必须出现在兼容性报告中，同时不得生成伪配置或伪运行文件。
+验证器消费真实 `validate --json` 和 `build --json`，逐项检查六平台兼容性矩阵、schema-v2 Package/Asset report 与文件树闭包、Component 转换内容、Manifest/Config 引用、Hook runtime、MCP JSON-RPC、Node Runtime 真实执行、Secret 不泄漏和双构建字节确定性。平台明确 unsupported 的事件、transport 或 runtime 必须出现在兼容性报告中，同时不得生成伪配置或伪运行文件。
 
 ## 模板边界
 
 Playground 不实现具体产品业务，只展示作者工程结构、公开 API、平台转换、Extension 协议和交付产物验证。示例 Handler 与 Server 无持久化副作用。
 
-Codex 和 Antigravity 会把 Command 转为 `command-*` Skill，Pi 转为 Prompt Template；Codex、Antigravity 和 Pi 会把 Agent 降级为 `agent-*` guidance Skill。这些是平台明确报告的兼容性结果。
+Codex 会把 Command 转为 `<plugin-name>-<id>` Skill，Antigravity 会把 Command 转为 `command-*` Skill，Pi 转为 Prompt Template；Codex、Antigravity 和 Pi 会把 Agent 降级为 `agent-*` guidance Skill。这些是平台明确报告的兼容性结果。
 
-Hooks 和 MCP 提供可执行但无持久化副作用的协议模板；`public/schemas` 只展示静态资源交付位置，不构成业务 Schema。因此它是 ACPlugin 全能力 packaging/template smoke，不是平台官方 conformance suite。
+Hooks、MCP 和 Core Runtime 提供可执行但无持久化副作用的协议模板；`public/schemas` 只展示静态资源交付位置，不构成业务 Schema。因此它是 ACPlugin 全能力 packaging/template smoke，不是平台官方 conformance suite。
 
 ## 运行
 
@@ -51,4 +53,4 @@ Hooks 和 MCP 提供可执行但无持久化副作用的协议模板；`public/s
 pnpm playground:check
 ```
 
-配置使用 `strict: false` 是为了显式观察六平台的真实能力差异；结构、安全、owner、来源和事务错误仍必须失败。仓库 verifier 会精确接受已声明的 degradation/unsupported，同时验证这些不支持项没有生成伪 Artifact。
+配置使用 `strict: false` 是为了显式观察六平台的真实能力差异；结构、安全、owner、来源和事务错误仍必须失败。仓库 verifier 会精确接受已声明的 degradation/unsupported，同时验证这些不支持项没有生成伪 Asset。

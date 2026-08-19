@@ -14,7 +14,7 @@ Making `@tokenroll/acplugin/platforms/<id>` an export subpath would still leave 
 
 1. `@tokenroll/acplugin` provides only the CLI and public framework SDK; it does not re-export official Platforms or Extensions.
 2. Each official Platform is published as `@tokenroll/acplugin-platform-<id>`. The Extensions retain `@tokenroll/acplugin-extension-<name>`.
-3. Every official integration imports only public contracts from `@tokenroll/acplugin` and declares it as a peer dependency. Production sources cannot import private Core.
+3. Every official integration imports only public contracts from `@tokenroll/acplugin/sdk` and declares the main package as a peer dependency. Production sources cannot import private Core.
 4. `platforms` is required. The main package does not load official implementations by default or by ID. `init` preserves the default Claude Code and Codex experience by generating explicit dependencies and imports.
 5. Official integrations are versioned independently; lifecycle `apiVersion` and the main-package peer range express compatibility.
 6. Third-party packages need no registry, official scope, or enforced naming convention.
@@ -38,7 +38,8 @@ Making `@tokenroll/acplugin/platforms/<id>` an export subpath would still leave 
 ## Evidence
 
 - `packages/acplugin/src/index.ts`
-- `packages/acplugin/src/project-config.ts`
+- `packages/acplugin/src/project.ts`
+- `packages/acplugin/src/sdk.ts`
 - `packages/acplugin/tsdown.config.ts`
 - `packages/platforms/*/package.json`
 - `packages/extensions/*/package.json`

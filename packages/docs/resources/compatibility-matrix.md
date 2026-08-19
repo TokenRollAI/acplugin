@@ -5,7 +5,7 @@
 | Platform | Command | Skill | Agent |
 | --- | --- | --- | --- |
 | Claude Code | Native | Native | Native |
-| Codex | Transform → 默认 `command-*`、可选 Plugin 前缀 Skill | Native | Degraded → `agent-*` guidance Skill |
+| Codex | Transform → 固定 `<plugin-name>-<id>` explicit Skill | Native | Degraded → `agent-*` guidance Skill |
 | Cursor | Native | Native | Native |
 | Antigravity | Transform → explicit Skill | Native | Degraded → guidance Skill |
 | OpenCode | Native workspace Command | Native workspace Skill | Native workspace Agent；capability 为 transform |

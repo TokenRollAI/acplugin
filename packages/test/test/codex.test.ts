@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
-import type { BuildResult } from '@tokenroll/acplugin';
+import type { BuildReport } from '@tokenroll/acplugin';
 import codex, { PLATFORM_ID } from '@tokenroll/acplugin-platform-codex';
 
 /** 跨包契约测试读取源码边界时使用的仓库根目录。 */
@@ -13,8 +13,8 @@ const repositoryRoot = fileURLToPath(new URL('../../..', import.meta.url));
 /** 配置和生命周期共用品牌实例的主包真实构建入口。 */
 const acpluginEntry = path.join(repositoryRoot, 'packages/acplugin/dist/index.mjs');
 
-/** 配置文件直接加载的 Codex Platform 真实构建入口。 */
-const codexEntry = path.join(repositoryRoot, 'packages/platforms/codex/dist/index.mjs');
+/** 临时工程通过正常 package specifier 加载的 Codex Platform 包名。 */
+const codexPackageName = '@tokenroll/acplugin-platform-codex';
 
 /** 当前测试创建并在 afterEach 中删除的临时工程。 */
 const temporaryRoots: string[] = [];
@@ -25,7 +25,7 @@ const temporaryRoots: string[] = [];
  * @param root 包含真实配置文件的临时项目根。
  * @returns 公开 runProject 产生的结构化结果。
  */
-async function runBuiltProject(root: string): Promise<BuildResult> {
+async function runBuiltProject(root: string): Promise<BuildReport> {
   /** 子进程加载公开入口并返回稳定 JSON 的 ESM 源码。 */
   const source = `
 import { runProject } from ${JSON.stringify(acpluginEntry)};
@@ -60,10 +60,26 @@ try {
   if (execution.code !== 0)
     throw new Error(`Project subprocess failed: ${execution.stderr}`);
   /** 子进程返回的成功结果或安全错误摘要。 */
-  const payload = JSON.parse(execution.stdout) as { readonly ok: boolean; readonly result?: BuildResult; readonly message?: string };
+  const payload = JSON.parse(execution.stdout) as { readonly ok: boolean; readonly result?: BuildReport; readonly message?: string };
   if (!payload.ok || payload.result === undefined)
     throw new Error(payload.message ?? 'Project execution failed.');
   return payload.result;
+}
+
+/**
+ * 用 package-manager 风格目录链接给临时工程安装真实构建后的 Codex 包。
+ *
+ * @param root 临时消费工程根。
+ */
+async function installBuiltCodex(root: string): Promise<void> {
+  /** scope 目录必须先存在，最终 package link 才与 pnpm 布局语义一致。 */
+  const scope = path.join(root, 'node_modules/@tokenroll');
+  await fs.mkdir(scope, { recursive: true });
+  await fs.symlink(
+    path.join(repositoryRoot, 'packages/platforms/codex'),
+    path.join(scope, 'acplugin-platform-codex'),
+    'dir',
+  );
 }
 
 /**
@@ -107,7 +123,6 @@ describe('Codex public Platform integration', () => {
         displayName: 'TokenRoll Plugins',
         policy: { installation: 'INSTALLED_BY_DEFAULT' },
       },
-      generatedSkillIds: { command: 'plugin-prefixed' },
     });
 
     expect(platform.id).toBe(PLATFORM_ID);
@@ -123,18 +138,17 @@ describe('Codex public Platform integration', () => {
         displayName: 'TokenRoll Plugins',
         policy: { installation: 'INSTALLED_BY_DEFAULT' },
       },
-      generatedSkillIds: { command: 'plugin-prefixed' },
     });
     expect(Object.isFrozen(platform.options)).toBe(true);
     expect(Object.isFrozen(platform.options!.interface)).toBe(true);
     expect(Object.isFrozen(platform.options!.marketplace)).toBe(true);
-    expect(Object.isFrozen(platform.options!.generatedSkillIds)).toBe(true);
   });
 
   it('loads plugin-prefixed Command Skill IDs through the built public packages', async () => {
     /** 使用真实配置加载路径验证独立 Platform package 与主包 bundle 的品牌一致性。 */
     const root = await fs.mkdtemp(path.join(os.tmpdir(), 'acplugin-codex-generated-id-'));
     temporaryRoots.push(root);
+    await installBuiltCodex(root);
     await fs.mkdir(path.join(root, 'src/commands'), { recursive: true });
     await fs.writeFile(path.join(root, 'src/commands/bootstrap.md'), `---
 description: Bootstrap the repository.
@@ -142,12 +156,12 @@ description: Bootstrap the repository.
 Bootstrap the repository.
 `);
     await fs.writeFile(path.join(root, 'acplugin.config.ts'), `
-import codex from ${JSON.stringify(codexEntry)};
+import codex from ${JSON.stringify(codexPackageName)};
 export default {
   name: 'repository-ops',
   version: '1.0.0',
   description: 'Repository operations.',
-  platforms: [codex({ generatedSkillIds: { command: 'plugin-prefixed' } })],
+  platforms: [codex()],
 };
 `);
     /** 子进程加载真实 dist 入口并完成事务提交。 */
@@ -156,11 +170,11 @@ export default {
     const generatedId = 'repository-ops-bootstrap';
 
     expect(result.success, JSON.stringify(result.diagnostics)).toBe(true);
-    expect(result.deliveryUnits.find(unit => unit.id === 'plugin')?.artifacts)
+    expect(result.packages.find(unit => unit.id === 'plugin')?.assets)
       .toContainEqual(expect.objectContaining({ path: `skills/${generatedId}/SKILL.md` }));
     expect(result.compatibility).toContainEqual(expect.objectContaining({
       subject: 'command:bootstrap',
-      transformation: `Explicit Skill ${generatedId}`,
+      transformation: `explicit-skill:${generatedId}`,
     }));
     expect(await fs.readFile(path.join(root, `dist/codex/plugin/skills/${generatedId}/SKILL.md`), 'utf8'))
       .toContain(`name: ${generatedId}`);
@@ -180,6 +194,7 @@ export default {
     /** 覆盖有参数和无参数 Command 的真实 Scanner/Lifecycle 工程。 */
     const root = await fs.mkdtemp(path.join(os.tmpdir(), 'acplugin-codex-arguments-'));
     temporaryRoots.push(root);
+    await installBuiltCodex(root);
     await fs.mkdir(path.join(root, 'src/commands'), { recursive: true });
     await fs.writeFile(path.join(root, 'src/commands/deploy.md'), `---
 description: Deploy an environment.
@@ -192,7 +207,7 @@ description: Show deployment status.
 Show deployment status.
 `);
     await fs.writeFile(path.join(root, 'acplugin.config.ts'), `
-import codex from ${JSON.stringify(codexEntry)};
+import codex from ${JSON.stringify(codexPackageName)};
 export default {
   name: 'codex-arguments',
   version: '1.0.0',
@@ -215,7 +230,7 @@ export default {
       subject: 'command:status',
       capability: 'arguments',
     }));
-    expect(await fs.readFile(path.join(root, 'dist/codex/plugin/skills/command-deploy/SKILL.md'), 'utf8'))
+    expect(await fs.readFile(path.join(root, 'dist/codex/plugin/skills/codex-arguments-deploy/SKILL.md'), 'utf8'))
       .toContain('the arguments supplied with this explicit invocation');
   });
 });

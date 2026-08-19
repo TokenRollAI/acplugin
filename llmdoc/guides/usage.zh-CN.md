@@ -13,15 +13,15 @@ pnpm install
 pnpm build
 ```
 
-`init` 可通过 `--hooks` 和 `--mcp` 加入官方 Hooks/MCP Extension。未传 `--platform` 时，它的脚手架选择是 Claude Code 和 Codex，但仍会显式写入两个 Platform 依赖、import 和配置项。也可以改为选择任意受支持组合：
+`init` 可通过 `--hooks` 和 `--mcp` 加入官方 Hooks 与 MCP Extension；`--node-runtime` 只生成内建约定入口 `src/runtime/main.ts`，不会添加额外 package 或 factory。未传 `--platform` 时，它的脚手架选择是 Claude Code 和 Codex，但仍会显式写入两个 Platform 依赖、import 和配置项。也可以改为选择任意受支持组合：
 
 ```bash
 pnpm dlx @tokenroll/acplugin init my-plugin --yes \
   --platform claude-code codex cursor antigravity opencode pi \
-  --hooks --mcp
+  --hooks --mcp --node-runtime
 ```
 
-每个所选 Platform 都是独立 package。启用 Extension 同样只会添加依赖、Import、配置项和空源码目录；`init` 不会伪造 Hook Handler 或 MCP Server。构建运行时不会默认发现或安装 package。
+每个所选 Platform 都是独立 package。启用 Extension 同样只会添加依赖、Import、配置项和空源码目录；`init` 不会伪造 Hook Handler 或 MCP Server。内建 Runtime 模板是真实、中立的可执行源码，依赖 Core 默认的 `src/runtime` 自动发现。构建运行时不会默认发现或安装 package。
 
 已知的 `init` 输入错误使用稳定的 `INIT_INVALID` 诊断，并保留安全、可操作的原因；对应的专用错误类型保持内部实现，不从公开门面导出。
 
@@ -44,7 +44,7 @@ export default defineConfig({
 });
 ```
 
-ACPlugin 不提供 Instructions Component。只有启用对应官方 Extension 后，工程才允许存在 Hooks 或 MCP 目录。
+ACPlugin 不提供 Instructions Component。只有启用对应官方 Extension 后，工程才允许存在 Hooks 或 MCP 目录。`src/runtime` 由 Core 拥有：一级 TS/JS 文件按约定成为入口，`runtime.entries` 可替换自动发现，`runtime: false` 可关闭该能力。
 
 TypeScript 配置以及已启用的 Hook/MCP 描述文件都是受信任、可执行的项目代码，应当像构建脚本一样接受 review。Legacy Migration 来源会作为不可信数据扫描，不会作为描述文件执行。
 
@@ -58,11 +58,11 @@ pnpm exec acplugin dev
 ```
 
 - `validate` 会在临时目录中生成并物化全部选中 Platform，不修改 `dist`；
-- `inspect` 会增加 Artifact 明细，但不修改 `dist`；
-- `build` 只有在全部 Platform 成功后才会原子替换完整受管输出；
-- `dev` 监听配置、经 Jiti 转换的本地配置 import、规范资源、Public、descriptor 和登记的 Bundle import；工程外的已转换 helper 按最近 package root 监听。绕过 Jiti transform 的原生 ESM import 与运行时计算的动态目标无法被精确发现，应放在工程根下，或通过已转换 helper 把对应 package 接入监听边界。Dev 会合并变更，用 watcher ready 后的补偿构建关闭竞态窗口，并在重建失败时保留最后一次成功输出。
+- `inspect` 会增加 Package 与 Asset 明细，但不修改 `dist`；
+- `build` 只有在全部所选 Platform 成功后才会原子替换完整受管 Package 集合；
+- `dev` 监听配置、规范资源、Public、descriptor 和 Core Module/Build Service 的真实图，其中包括 Plugin、license 与 tsconfig 依赖；解析后的依赖会贡献 package root。托管 Bundle 中 Rolldown 无法表示在静态模块图内的运行时计算 import 会被拒绝。Dev 会合并变更，用 watcher ready 后的补偿构建关闭竞态窗口，并在重建失败时保留最后一次成功输出。
 
-通用选项包括 `--config`、`--platform <id...>`、`--mode`、`--no-strict` 和 `--json`。默认启用严格模式。例如，包含 Agent 的 Codex 构建会失败，因为 Codex 只能接收显式降级的 Skill 回退；当该结果符合预期时，可使用 `--no-strict` 明确接受。
+通用选项包括 `--config`、`--platform <id...>`、`--mode` 和 `--json`。默认启用严格模式，并通过 `build.strict` 或 Platform factory override 配置。例如，包含 Agent 的 Codex 构建会失败，因为 Codex 只能接收显式降级的 Skill 回退；当该结果符合预期时，可使用 `codex({ strict: false })` 明确接受。
 
 现有工程需要显式安装并导入每个 Platform package：
 
@@ -86,13 +86,7 @@ export default defineConfig({
 
 `platforms` 是必填项，`--platform <id...>` 只会筛选该列表中已经实例化的 ID。主包不重新导出官方工厂，也不提供 Platform subpath。OpenCode 产物是 Workspace Overlay，Pi 产物是 npm Package，不会被错误标记为静态 Plugin。启用严格多平台构建前应先查看[平台支持矩阵](../reference/conversion-matrix.zh-CN.md)。
 
-Codex 默认把 Command 转换为显式的 `command-<id>` Skill。只有消费侧明确要求 generated ID 显示 Plugin name 时，才对对应 Codex Platform 实例启用：
-
-```ts
-codex({ generatedSkillIds: { command: 'plugin-prefixed' } })
-```
-
-对于 Plugin `my-plugin`，Command `bootstrap` 会生成 `my-plugin-bootstrap`。这不会改变 canonical Command ID、其他 Platform 或 Codex 默认输出。
+Codex 默认把 Command 转换为显式的 `<plugin-name>-<id>` Skill。对于 Plugin `my-plugin`，Command `bootstrap` 会生成 `my-plugin-bootstrap`；这不会改变 canonical Command ID 或其他 Platform。
 
 ## Public 文件
 

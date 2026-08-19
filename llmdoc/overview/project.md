@@ -4,46 +4,44 @@
 
 ## Identity
 
-ACPlugin is a canonical AI Plugin framework and CLI. Authors maintain one framework-owned source layout and compile Platform-owned deliveries for Claude Code, Codex, Cursor, Antigravity, OpenCode, and Pi.
+ACPlugin is a Rolldown-based AI Plugin framework and CLI. Authors maintain one canonical project and continuously compile validated Packages for Claude Code, Codex, Cursor, Antigravity, OpenCode, and Pi.
 
 The independently versioned public packages are:
 
 - `@tokenroll/acplugin`
-- `@tokenroll/acplugin-platform-claude-code`
-- `@tokenroll/acplugin-platform-codex`
-- `@tokenroll/acplugin-platform-cursor`
-- `@tokenroll/acplugin-platform-antigravity`
-- `@tokenroll/acplugin-platform-opencode`
-- `@tokenroll/acplugin-platform-pi`
+- six `@tokenroll/acplugin-platform-*` packages
 - `@tokenroll/acplugin-extension-hooks`
 - `@tokenroll/acplugin-extension-mcp`
 
-Core, the integration-test workspace, Docs, and Playground are private packages. The main package bundles Core, while every official Platform and Extension imports the public SDK from `@tokenroll/acplugin` through a peer dependency. Docs and Playground are repository-only consumers and never enter public tarballs. Consumers never depend on `@acplugin/*`.
+Core, integration tests, Docs, and Playground are private workspaces. `@tokenroll/acplugin` bundles Core and exposes two intentional boundaries: the root author/programmatic API and `@tokenroll/acplugin/sdk` for Platform and Extension implementations. Official integrations use the SDK through a peer dependency; public tarballs never depend on `@acplugin/*`.
 
 ## Authoring boundary
 
-Core Components are Commands, Skills, and Agents. `acplugin.config.ts` defines top-level `name`, `version`, `description`, Platforms, Public copy behavior, Extensions, and strictness.
+Canonical Components are Commands, Skills, and Agents. `acplugin.config.ts` defines project metadata, explicit Platform instances, Public mappings, optional Extensions, the built-in Node Runtime, and build strictness. Instructions are intentionally outside the installable Plugin boundary.
 
-Instructions are intentionally outside the installable Plugin boundary. Hooks and MCP are optional Extensions: enabling one joins the same Core-owned lifecycle through its own Platform Adapters rather than replacing a Platform.
+Hooks and MCP are optional Extensions. Each discovers and builds its author resources once through Core-owned Module, Compiler, Asset, Execution, and Watch services, then contributes add-only Package fields and Assets for supported Platforms.
 
-`platforms` is required: builds use explicitly imported instances and the main package never discovers or loads an implementation by ID. `init` keeps Claude Code and Codex as its scaffolding selection when no `--platform` option is supplied, but writes both dependencies and imports. Claude Code, Codex, Cursor, and Antigravity are static Plugins, OpenCode is a workspace overlay, and Pi is an npm package. Every Platform reports native transformations and semantic losses instead of claiming a lowest-common-denominator format.
+Node Runtime is a Framework Resource, not an Extension package. Direct files under `src/runtime/` are entries by convention; explicit `runtime.entries` replaces automatic discovery. Core compiles each entry once with the `portable-node` profile and capable Platforms inherit the same Asset references and bytes. Unsupported Platforms report the capability and emit no pseudo runtime.
+
+`platforms` is required. Builds use explicitly imported instances; the main package never discovers implementations by ID. `init` defaults to explicit Claude Code and Codex dependencies/imports when no platform option is supplied. Each Platform owns canonical conversion, base Package Documents and Assets, final Package identity, optional distributions, candidate validation, and compatibility reporting.
 
 ## Runtime and tooling
 
-- Node.js >=20, ESM-only TypeScript 7 for package builds and typechecking
-- pnpm workspace, no Turborepo
+- Node.js >=20 and ESM-only TypeScript 7 package sources
+- pnpm workspace without Turborepo
 - Commander.js and `@inquirer/prompts` for CLI/TUI
-- tsdown for package bundles/declarations/package validation
-- Rolldown for local Hook/MCP executable bundles
+- tsdown for package bundles and declarations
+- one Core-owned Rolldown Module/Compiler service for config, descriptors, portable Node bundles, and managed third-party builds
+- one Core-owned Chokidar watcher behind `Project.dev()`
 - Vitest for private repository tests
-- VitePress 1.6 and TypeDoc 0.28 for the private documentation workspace
+- VitePress 1.6 and TypeDoc 0.28 for private documentation
 
-The TypeScript 7 compiler is installed across workspaces through the cataloged `@typescript/native` alias, so every package `tsc` script uses 7.x. The root keeps the official `@typescript/typescript6` compatibility API under the `typescript` name only for tools such as typescript-eslint and the comment AST checker, because TypeScript 7 no longer exposes the legacy JavaScript compiler API. TypeDoc uses the same TypeScript 6 compatibility family inside `@acplugin/docs`; production package typechecking remains on TypeScript 7. Vitest, tsdown, Rolldown, and Node types are also shared through the catalog; package-specific runtime and lint dependencies stay in the package that owns them.
+The workspace catalog maps package `tsc` commands to `@typescript/native`. Tools that still require the legacy Compiler API use the isolated `@typescript/typescript6` alias. Production package typechecking remains on TypeScript 7.
 
-The CLI entry is `packages/acplugin/src/cli.ts`; the facade is `packages/acplugin/src/index.ts`, and `packages/acplugin/src/project-config.ts` loads trusted project configuration. Official integration factories live only in their own packages. `packages/docs` builds the VitePress/manual and generated API surface, while `packages/playground` exercises the published authoring boundary as a domain-neutral full-capability template smoke.
+The CLI and author facade live in `packages/acplugin/src/cli.ts` and `src/index.ts`; `src/sdk.ts` is the only Integration implementation entry. Core's fixed lifecycle is implemented by `packages/core/src/kernel/build-session.ts`, while `Project.dev()` delegates every rebuild round to that same BuildSession.
 
 ## Migration boundary
 
-`acplugin migrate` accepts legacy Claude projects, single plugins, marketplaces, and supported GitHub forms. Migration is dynamically imported and isolated under `packages/acplugin/src/migration/`. Its tolerant legacy scanner/converter implementation is retained only below `migration/legacy/`.
+`acplugin migrate` is dynamically imported and isolated under `packages/acplugin/src/migration/`. Tolerant legacy GitHub and Claude/plugin reading remains under `migration/legacy/` only for migration input. Normal CLI startup, Core, Platforms, and Extensions do not import Migration.
 
-Only the tolerant GitHub download and Claude/plugin scanning helpers remain below `migration/legacy/`; the retired multi-platform converter, writer, CLI, TUI, and test copies were removed. Untrusted or non-portable content is preserved under `.acplugin-migration/unmapped/`; it is never fabricated into canonical Hooks, MCP implementations, or Instructions Components.
+Migration never writes in place. Content that cannot be mapped safely is preserved under `.acplugin-migration/unmapped/` with a stable report; it is not fabricated into canonical Hooks, MCP implementations, Instructions, or external-command wrappers.

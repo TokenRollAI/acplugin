@@ -1,7 +1,10 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
-import type { JsonValue, PlatformValidateContext } from '@tokenroll/acplugin';
+import type { JsonValue, ValidatePackageContext } from '@tokenroll/acplugin/sdk';
 import { MARKETPLACE_MANIFEST_PATH, PLUGIN_MANIFEST_PATH } from './manifest.js';
+
+/** Claude Code validator 只消费 SDK 的最终 Package candidate Context。 */
+type PlatformValidateContext = ValidatePackageContext;
 
 /** Claude Code Plugin 清单允许出现的官方根字段。 */
 const PLUGIN_FIELDS = new Set([
@@ -75,6 +78,15 @@ const HOOK_HANDLER_FIELDS: Readonly<Record<string, ReadonlySet<string>>> = Objec
   mcp_tool: new Set([...HOOK_HANDLER_COMMON_FIELDS, 'server', 'tool', 'input']),
 });
 
+/** Claude Code MCP 配置文件唯一允许的包装字段。 */
+const MCP_CONFIG_FIELDS = new Set(['mcpServers']);
+
+/** Claude Code Plugin-local stdio MCP descriptor 字段。 */
+const MCP_STDIO_FIELDS = new Set(['type', 'command', 'args', 'env']);
+
+/** Claude Code 远程 HTTP MCP descriptor 字段。 */
+const MCP_HTTP_FIELDS = new Set(['type', 'url', 'headers', 'oauth']);
+
 /** 多 Plugin Marketplace 的本地来源必须使用稳定单元目录。 */
 const MARKETPLACE_PLUGIN_SOURCE_PATTERN = /^\.\/plugins\/[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
@@ -103,7 +115,7 @@ function isRecord(value: unknown): value is JsonRecord {
 /**
  * 向 Core 提交 Claude Code 候选校验错误。
  *
- * @param context Platform validateBundle 生命周期上下文。
+ * @param context Platform validatePackage 生命周期上下文。
  * @param code 稳定诊断码。
  * @param message 不包含宿主绝对路径的错误信息。
  * @param fieldPath 可选的清单字段路径。
@@ -114,7 +126,7 @@ function report(
   message: string,
   fieldPath?: readonly (string | number)[],
 ): void {
-  context.reportDiagnostic({
+  context.diagnostics.report({
     code,
     severity: 'error',
     message,
@@ -125,8 +137,8 @@ function report(
 /**
  * 从候选安装根读取并解析 JSON 文件。
  *
- * @param context Platform validateBundle 生命周期上下文。
- * @param artifactPath 候选根内的规范 Artifact 路径。
+ * @param context Platform validatePackage 生命周期上下文。
+ * @param artifactPath 候选根内的规范 Asset 路径。
  * @returns JSON 对象；缺失或格式错误时提交诊断并返回 undefined。
  */
 async function readJson(
@@ -170,19 +182,19 @@ function isSafePluginReference(reference: string): boolean {
 }
 
 /**
- * 判断候选 Artifact 集合是否满足文件或目录引用。
+ * 判断候选 Asset 集合是否满足文件或目录引用。
  *
- * @param artifacts 当前 DeliveryUnit 的全部规范 Artifact 路径。
+ * @param assets 当前 Package 的全部规范 Asset 路径。
  * @param reference 已通过安全规则校验的 Claude Code 路径引用。
- * @returns 精确文件或目录前缀至少匹配一个 Artifact 时返回 true。
+ * @returns 精确文件或目录前缀至少匹配一个 Asset 时返回 true。
  */
-function referenceExists(artifacts: ReadonlySet<string>, reference: string): boolean {
-  /** 清单引用去除固定 `./` 后的 Artifact 路径。 */
+function referenceExists(assets: ReadonlySet<string>, reference: string): boolean {
+  /** 清单引用去除固定 `./` 后的 Asset 路径。 */
   const target = reference.slice(2).replace(/\/+$/u, '');
-  if (artifacts.has(target))
+  if (assets.has(target))
     return true;
-  for (const artifact of artifacts) {
-    if (artifact.startsWith(`${target}/`))
+  for (const asset of assets) {
+    if (asset.startsWith(`${target}/`))
       return true;
   }
   return false;
@@ -191,7 +203,7 @@ function referenceExists(artifacts: ReadonlySet<string>, reference: string): boo
 /**
  * 校验 Claude Code Hook matcher 是可执行的正则字符串。
  *
- * @param context Platform validateBundle 生命周期上下文。
+ * @param context Platform validatePackage 生命周期上下文。
  * @param value matcher 候选值。
  * @param fieldPath matcher 在最终 Hook 配置中的字段路径。
  */
@@ -216,7 +228,7 @@ function validateHookMatcher(
 /**
  * 校验 Claude Code Hook Handler 的类型、必填字段和公共执行选项。
  *
- * @param context Platform validateBundle 生命周期上下文。
+ * @param context Platform validatePackage 生命周期上下文。
  * @param event 当前 Handler 所属事件。
  * @param value Handler 候选值。
  * @param fieldPath Handler 在最终 Hook 配置中的字段路径。
@@ -325,7 +337,7 @@ function validateHookHandler(
 /**
  * 校验 Claude Code Hook 事件映射及其 matcher 分组。
  *
- * @param context Platform validateBundle 生命周期上下文。
+ * @param context Platform validatePackage 生命周期上下文。
  * @param value `hooks` 字段中的事件映射候选。
  * @param fieldPath 事件映射在最终配置中的字段路径。
  */
@@ -378,7 +390,7 @@ function validateHookEvents(
 /**
  * 校验 Claude Code `hooks.json` 顶层结构。
  *
- * @param context Platform validateBundle 生命周期上下文。
+ * @param context Platform validatePackage 生命周期上下文。
  * @param value 已解析的 Hook 配置对象。
  * @param fieldPath 配置在 Plugin Manifest 中的字段路径。
  * @param wrapped 是否要求配置使用 `hooks.json` 顶层包装。
@@ -411,7 +423,7 @@ function validateHookConfig(
 /**
  * 读取并校验 Plugin 根内被引用的 Claude Code `hooks.json`。
  *
- * @param context Platform validateBundle 生命周期上下文。
+ * @param context Platform validatePackage 生命周期上下文。
  * @param pluginRoot Plugin 相对于候选 Distribution 根的安装目录。
  * @param reference 已通过安装根路径规则的 Hook 配置引用。
  * @param fieldPath 引用在 Plugin Manifest 中的字段路径。
@@ -437,35 +449,149 @@ async function validateHookFile(
   }
 }
 
+/** 校验字符串映射，不允许 headers/env 退化为任意 JSON。 */
+function validateStringMap(
+  context: PlatformValidateContext,
+  value: JsonValue | undefined,
+  code: string,
+  label: string,
+  fieldPath: readonly (string | number)[],
+): void {
+  if (value !== undefined && (!isRecord(value)
+    || Object.entries(value).some(([key, entry]) => key.trim().length === 0 || typeof entry !== 'string'))) {
+    report(context, code, `${label} must map non-empty names to string values.`, fieldPath);
+  }
+}
+
+/** 校验 Claude Code 最终将加载的 MCP Server 映射。 */
+function validateMcpServers(
+  context: PlatformValidateContext,
+  value: JsonValue,
+  fieldPath: readonly (string | number)[],
+): void {
+  if (!isRecord(value)) {
+    report(context, 'CLAUDE_MCP_SERVERS_INVALID', 'mcpServers must contain a Server object mapping.', fieldPath);
+    return;
+  }
+  for (const [id, candidate] of Object.entries(value)) {
+    /** 当前 Server 在最终配置中的字段路径。 */
+    const serverPath = [...fieldPath, id];
+    if (!PLUGIN_NAME_PATTERN.test(id) || !isRecord(candidate)) {
+      report(context, 'CLAUDE_MCP_SERVER_INVALID', 'MCP Server ids must use lowercase kebab-case and map to objects.', serverPath);
+      continue;
+    }
+    /** type 决定 stdio 与 HTTP 的精确字段集合。 */
+    const fields = candidate.type === 'stdio'
+      ? MCP_STDIO_FIELDS
+      : candidate.type === 'http'
+        ? MCP_HTTP_FIELDS
+        : undefined;
+    if (fields === undefined) {
+      report(context, 'CLAUDE_MCP_TRANSPORT_INVALID', 'MCP Server type must be stdio or http.', [...serverPath, 'type']);
+      continue;
+    }
+    for (const field of Object.keys(candidate)) {
+      if (!fields.has(field))
+        report(context, 'CLAUDE_MCP_FIELD_UNKNOWN', `Unknown Claude Code MCP field "${field}".`, [...serverPath, field]);
+    }
+    if (candidate.type === 'stdio') {
+      if (typeof candidate.command !== 'string' || candidate.command.trim().length === 0)
+        report(context, 'CLAUDE_MCP_COMMAND_INVALID', 'stdio MCP command must be a non-empty string.', [...serverPath, 'command']);
+      if (candidate.args !== undefined
+        && (!Array.isArray(candidate.args) || candidate.args.some(argument => typeof argument !== 'string'))) {
+        report(context, 'CLAUDE_MCP_ARGS_INVALID', 'stdio MCP args must contain only strings.', [...serverPath, 'args']);
+      }
+      validateStringMap(context, candidate.env, 'CLAUDE_MCP_ENV_INVALID', 'stdio MCP env', [...serverPath, 'env']);
+      continue;
+    }
+    if (typeof candidate.url !== 'string') {
+      report(context, 'CLAUDE_MCP_URL_INVALID', 'HTTP MCP url must be an HTTP(S) URL without credentials.', [...serverPath, 'url']);
+    } else {
+      try {
+        /** 远程地址不得把凭据内联到 URL。 */
+        const url = new URL(candidate.url);
+        if ((url.protocol !== 'http:' && url.protocol !== 'https:') || url.username !== '' || url.password !== '')
+          throw new TypeError('unsafe');
+      } catch {
+        report(context, 'CLAUDE_MCP_URL_INVALID', 'HTTP MCP url must be an HTTP(S) URL without credentials.', [...serverPath, 'url']);
+      }
+    }
+    validateStringMap(context, candidate.headers, 'CLAUDE_MCP_HEADERS_INVALID', 'HTTP MCP headers', [...serverPath, 'headers']);
+    if (candidate.oauth !== undefined) {
+      if (!isRecord(candidate.oauth)) {
+        report(context, 'CLAUDE_MCP_OAUTH_INVALID', 'HTTP MCP oauth must be an object.', [...serverPath, 'oauth']);
+      } else {
+        for (const field of Object.keys(candidate.oauth)) {
+          if (field !== 'scopes')
+            report(context, 'CLAUDE_MCP_OAUTH_FIELD_UNKNOWN', `Unknown Claude Code MCP OAuth field "${field}".`, [...serverPath, 'oauth', field]);
+        }
+        if (candidate.oauth.scopes !== undefined
+          && (typeof candidate.oauth.scopes !== 'string' || candidate.oauth.scopes.trim().length === 0)) {
+          report(context, 'CLAUDE_MCP_OAUTH_INVALID', 'HTTP MCP oauth.scopes must be a non-empty string.', [...serverPath, 'oauth', 'scopes']);
+        }
+      }
+    }
+  }
+}
+
+/** 读取并校验 Plugin 根内被引用的 Claude Code MCP 配置。 */
+async function validateMcpFile(
+  context: PlatformValidateContext,
+  pluginRoot: string,
+  reference: string,
+  fieldPath: readonly (string | number)[],
+): Promise<void> {
+  try {
+    /** MCP 配置引用相对于当前 Plugin 根解析。 */
+    const mcpPath = path.join(context.candidate.root, pluginRoot, reference.slice(2));
+    /** 被引用文件必须使用 `{ mcpServers }` 包装。 */
+    const value: unknown = JSON.parse(await fs.readFile(mcpPath, 'utf8'));
+    if (!isRecord(value)) {
+      report(context, 'CLAUDE_MCP_CONFIG_INVALID', 'MCP config must contain a JSON object.', fieldPath);
+      return;
+    }
+    for (const field of Object.keys(value)) {
+      if (!MCP_CONFIG_FIELDS.has(field))
+        report(context, 'CLAUDE_MCP_CONFIG_FIELD_UNKNOWN', `Unknown Claude Code MCP config field "${field}".`, [...fieldPath, field]);
+    }
+    if (value.mcpServers === undefined)
+      report(context, 'CLAUDE_MCP_SERVERS_REQUIRED', 'MCP config must contain mcpServers.', [...fieldPath, 'mcpServers']);
+    else
+      validateMcpServers(context, value.mcpServers, [...fieldPath, 'mcpServers']);
+  } catch {
+    report(context, 'CLAUDE_MCP_CONFIG_READ_FAILED', 'MCP config reference must contain valid JSON.', fieldPath);
+  }
+}
+
 /**
- * 把 Distribution 中某个 Plugin 子树转换为安装根相对 Artifact 集合。
+ * 把 Distribution 中某个 Plugin 子树转换为安装根相对 Asset 集合。
  *
- * @param context Platform validateBundle 生命周期上下文。
+ * @param context Platform validatePackage 生命周期上下文。
  * @param pluginRoot Plugin 相对于 Distribution 根的无前导点路径。
- * @returns 去掉 Plugin 根前缀后的 Artifact 路径集合。
+ * @returns 去掉 Plugin 根前缀后的 Asset 路径集合。
  */
-function scopedArtifacts(context: PlatformValidateContext, pluginRoot: string): ReadonlySet<string> {
+function scopedAssets(context: PlatformValidateContext, pluginRoot: string): ReadonlySet<string> {
   /** 根 Plugin 不需要过滤或裁剪路径。 */
   if (pluginRoot === '')
-    return new Set(context.candidate.unit.artifacts.map(artifact => artifact.path));
-  /** 嵌套 Plugin 全部 Artifact 共同使用的固定目录前缀。 */
+    return new Set(context.candidate.unit.assets.map(asset => asset.path));
+  /** 嵌套 Plugin 全部 Asset 共同使用的固定目录前缀。 */
   const prefix = `${pluginRoot}/`;
-  return new Set(context.candidate.unit.artifacts
-    .filter(artifact => artifact.path.startsWith(prefix))
-    .map(artifact => artifact.path.slice(prefix.length)));
+  return new Set(context.candidate.unit.assets
+    .filter(asset => asset.path.startsWith(prefix))
+    .map(asset => asset.path.slice(prefix.length)));
 }
 
 /**
  * 校验一个清单引用值的类型、安全性和安装根内存在性。
  *
- * @param context Platform validateBundle 生命周期上下文。
- * @param artifacts 当前 DeliveryUnit 的 Artifact 路径集合。
+ * @param context Platform validatePackage 生命周期上下文。
+ * @param assets 当前 Package 的 Asset 路径集合。
  * @param field 当前引用所属的清单字段。
  * @param value 单路径或路径数组候选。
  */
 function validateReferences(
   context: PlatformValidateContext,
-  artifacts: ReadonlySet<string>,
+  assets: ReadonlySet<string>,
   field: string,
   value: JsonValue,
 ): void {
@@ -484,7 +610,7 @@ function validateReferences(
     const fieldPath: readonly (string | number)[] = references.length === 1 ? [field] : [field, index];
     if (!isSafePluginReference(reference)) {
       report(context, 'CLAUDE_MANIFEST_REFERENCE_UNSAFE', `${field} references must start with ./ and stay inside the Plugin root.`, fieldPath);
-    } else if (!referenceExists(artifacts, reference)) {
+    } else if (!referenceExists(assets, reference)) {
       report(context, 'CLAUDE_MANIFEST_REFERENCE_MISSING', `${field} references a missing Plugin file or directory.`, fieldPath);
     }
   }
@@ -493,7 +619,7 @@ function validateReferences(
 /**
  * 校验 Claude Code Plugin 清单字段、Component 目录和 Extension 引用。
  *
- * @param context Platform validateBundle 生命周期上下文。
+ * @param context Platform validatePackage 生命周期上下文。
  * @param manifest 已解析的 Plugin 清单对象。
  * @param pluginRoot Plugin 相对于候选 Distribution 根的安装目录。
  */
@@ -502,8 +628,8 @@ async function validatePluginManifest(
   manifest: JsonRecord,
   pluginRoot = '',
 ): Promise<void> {
-  /** 当前 Plugin 安装根内的相对 Artifact 路径集合。 */
-  const artifacts = scopedArtifacts(context, pluginRoot);
+  /** 当前 Plugin 安装根内的相对 Asset 路径集合。 */
+  const assets = scopedAssets(context, pluginRoot);
   for (const field of Object.keys(manifest)) {
     if (!PLUGIN_FIELDS.has(field))
       report(context, 'CLAUDE_MANIFEST_FIELD_UNKNOWN', `Unknown Claude Code Plugin field "${field}".`, [field]);
@@ -546,7 +672,7 @@ async function validatePluginManifest(
     report(context, 'CLAUDE_MANIFEST_DEFAULT_INVALID', 'defaultEnabled must be a boolean.', ['defaultEnabled']);
   for (const field of COMPONENT_REFERENCE_FIELDS) {
     if (manifest[field] !== undefined)
-      validateReferences(context, artifacts, field, manifest[field]);
+      validateReferences(context, assets, field, manifest[field]);
   }
   for (const field of EXTENSION_REFERENCE_FIELDS) {
     /** 当前 Extension 添加的清单字段值。 */
@@ -554,23 +680,30 @@ async function validatePluginManifest(
     if (value === undefined)
       continue;
     if (typeof value === 'string') {
-      validateReferences(context, artifacts, field, value);
-      if (field === 'hooks' && isSafePluginReference(value) && referenceExists(artifacts, value))
+      validateReferences(context, assets, field, value);
+      if (field === 'hooks' && isSafePluginReference(value) && referenceExists(assets, value))
         await validateHookFile(context, pluginRoot, value, [field]);
+      if (field === 'mcpServers' && isSafePluginReference(value) && referenceExists(assets, value))
+        await validateMcpFile(context, pluginRoot, value, [field]);
     } else if (!isRecord(value)) {
       report(context, 'CLAUDE_EXTENSION_FIELD_INVALID', `${field} must be a Plugin path or inline object.`, [field]);
     } else if (field === 'hooks') {
       validateHookConfig(context, value, [field], false);
+    } else {
+      validateMcpServers(context, value, [field]);
     }
   }
-  if (manifest.hooks === undefined && artifacts.has('hooks/hooks.json'))
+  if (manifest.hooks === undefined && assets.has('hooks/hooks.json'))
     await validateHookFile(context, pluginRoot, './hooks/hooks.json', ['hooks']);
+  /** Claude Code 会自动发现 Plugin 根 `.mcp.json`，即使 Manifest 未显式引用。 */
+  if (manifest.mcpServers === undefined && assets.has('.mcp.json'))
+    await validateMcpFile(context, pluginRoot, './.mcp.json', ['mcpServers']);
 }
 
 /**
  * 校验 Marketplace 根清单与自包含 Plugin 的身份和引用。
  *
- * @param context Platform validateBundle 生命周期上下文。
+ * @param context Platform validatePackage 生命周期上下文。
  * @param marketplace 已解析的 Marketplace 清单。
  */
 async function validateMarketplace(
@@ -663,7 +796,7 @@ async function validateMarketplace(
  *
  * @param context Core 已安全物化的只读候选上下文。
  */
-export async function validateClaudeBundle(context: PlatformValidateContext): Promise<void> {
+export async function validateClaudePackage(context: PlatformValidateContext): Promise<void> {
   if (context.candidate.unit.role !== 'distribution') {
     /** 主单元始终使用安装根固定 Plugin Manifest。 */
     const plugin = await readJson(context, PLUGIN_MANIFEST_PATH);

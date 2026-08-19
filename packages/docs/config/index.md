@@ -18,5 +18,6 @@ export default defineConfig({
 
 - [工程元数据](./project-metadata.md)
 - [Public 文件](./public-files.md)
+- [内建 Node Runtime](/guide/node-runtime)
 - [构建选项](./build-options.md)
 - [兼容性与 strict](./compatibility-and-strictness.md)

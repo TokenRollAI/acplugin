@@ -1,0 +1,11 @@
+{
+  "@tokenroll/acplugin": "0.0.2-beta",
+  "@tokenroll/acplugin-platform-claude-code": "0.0.2-beta",
+  "@tokenroll/acplugin-platform-codex": "0.0.3-beta",
+  "@tokenroll/acplugin-platform-cursor": "0.0.2-beta",
+  "@tokenroll/acplugin-platform-antigravity": "0.0.2-beta",
+  "@tokenroll/acplugin-platform-opencode": "0.0.2-beta",
+  "@tokenroll/acplugin-platform-pi": "0.0.2-beta",
+  "@tokenroll/acplugin-extension-hooks": "0.0.2-beta",
+  "@tokenroll/acplugin-extension-mcp": "0.0.2-beta"
+}

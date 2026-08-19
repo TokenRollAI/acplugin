@@ -1,248 +1,218 @@
-import { spawn } from 'node:child_process';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
-  bytesArtifact,
   defineExtension,
   definePlatform,
-  stableJson,
-} from '@tokenroll/acplugin';
+  type SourceFileRef,
+} from '@tokenroll/acplugin/sdk';
+import claudeCode from '@tokenroll/acplugin-platform-claude-code';
+import codex from '@tokenroll/acplugin-platform-codex';
 import {
-  executeLifecycle,
-  type ResolvedConfig,
+  resolveKernelConfig,
+  runKernelBuildSession,
 } from '@acplugin/core';
 
 /** 生态契约测试创建并统一清理的临时工程。 */
 const temporaryRoots: string[] = [];
 
-/** 原生严格拒绝子进程直接加载的 Core 构建入口。 */
-const coreEntry = fileURLToPath(new URL('../../core/dist/index.mjs', import.meta.url));
-
-/**
- * 创建不包含内置 Platform 假设的空作者工程。
- *
- * @returns 已登记清理的工程绝对路径。
- */
+/** 创建包含最小配置占位符且登记清理的工程。 */
 async function temporaryProject(): Promise<string> {
   /** 当前测试独占的工程根。 */
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'acplugin-ecosystem-contract-'));
   temporaryRoots.push(root);
   await fs.mkdir(path.join(root, 'src'), { recursive: true });
+  await fs.writeFile(path.join(root, 'acplugin.config.ts'), 'export default {}\n');
   return root;
+}
+
+/** 第三方 Fixture 对必填 metadata 的完整处置。 */
+function metadata() {
+  return ['name', 'version', 'description'].map(field => ({
+    field,
+    disposition: 'emitted' as const,
+    output: `plugin.json/${field}`,
+    reason: 'The ecosystem fixture emits this canonical field.',
+  }));
 }
 
 afterEach(async () => {
   await Promise.all(temporaryRoots.splice(0).map(root => fs.rm(root, { recursive: true, force: true })));
 });
 
-describe('third-party ecosystem contract', () => {
-  it('executes public factory-created Platform, Extension, and Adapter objects through Core', async () => {
-    /** 用公开主包工厂创建且不依赖任何内置实现的虚拟 Platform。 */
+describe('Kernel v2 ecosystem contract', () => {
+  it('executes SDK-created Platform, Extension, and Contributor through the fixed Package lifecycle', async () => {
+    /** Extension 独占来源根中的 add-only 资源。 */
+    const root = await temporaryProject();
+    await fs.mkdir(path.join(root, 'src/community'), { recursive: true });
+    await fs.writeFile(path.join(root, 'src/community/state.txt'), 'enabled\n');
+    /** 第三方 Platform 只使用公开 SDK 的 Session/Document/Asset 契约。 */
     const platform = definePlatform({
       id: 'ecosystem-fixture',
       apiVersion: '1',
       deliveryType: 'plugin',
-      options: { manifest: { channel: 'stable' } },
-      /** prepare 创建可供 Adapter 增量扩展的 Manifest Draft。 */
-      prepare(context) {
-        expect(context.options).toEqual({ manifest: { channel: 'stable' } });
-        context.reportMetadata({
-          field: 'name',
-          disposition: 'emitted',
-          output: 'plugin.json.name',
-          reason: 'The virtual manifest preserves the canonical name.',
-        });
+      options: { channel: 'stable' },
+      /** 每轮创建只捕获 Core 防御性复制后的选项。 */
+      createSession({ options }) {
+        expect(options).toEqual({ channel: 'stable' });
         return {
-          documents: [{
-            id: 'plugin-manifest',
-            path: 'plugin.json',
-            format: 'json',
-            owner: 'platform:ecosystem-fixture',
-            value: { name: context.project.metadata.name, extensions: {} },
-            extensionPoints: [['extensions', 'bridge']],
-          }],
-          artifacts: [],
+          /** Platform 只创建自己的 base Document。 */
+          createPackage: ({ project }) => ({
+            documents: [{
+              id: 'plugin-manifest',
+              path: 'plugin.json',
+              format: 'json',
+              value: {
+                name: project.metadata.name,
+                version: project.metadata.version,
+                description: project.metadata.description,
+                extensions: {},
+              },
+              extensionPoints: [['extensions', 'community']],
+            }],
+            assets: [],
+            compatibility: [],
+            metadata: metadata(),
+          }),
+          /** Core 自动继承 base 与 Contributor 内容。 */
+          finalizePackage: () => ({ id: 'plugin', type: 'plugin' }),
+          /** 临时候选必须已经包含 codec 输出和 Extension Asset。 */
+          async validatePackage({ candidate }) {
+            /** manifest 是 Core Document codec 物化后的最终候选。 */
+            const manifest = JSON.parse(await fs.readFile(path.join(candidate.root, 'plugin.json'), 'utf8'));
+            expect(manifest.extensions).toEqual({ community: { enabled: true } });
+            await expect(fs.readFile(path.join(candidate.root, 'community/state.txt'), 'utf8')).resolves.toBe('enabled\n');
+          },
         };
       },
-      /** generateBundle 将合并后的 Document 与 Artifact 序列化为主单元。 */
-      generateBundle(context) {
-        /** Adapter patch 完成后的 Manifest 文档。 */
-        const manifest = context.documents.find(document => document.id === 'plugin-manifest')!;
-        return {
-          id: 'plugin',
-          role: 'primary',
-          type: 'plugin',
-          artifacts: [
-            ...context.artifacts,
-            bytesArtifact('plugin.json', stableJson(manifest.value)),
-          ],
-        };
-      },
-      /** validateBundle 接受当前虚拟 Platform 的已物化候选。 */
-      validateBundle: () => undefined,
     });
-    /** 用公开主包工厂创建并桥接虚拟 Platform 的第三方 Extension。 */
-    const extension = defineExtension({
-      name: 'ecosystem-bridge',
+    /** 第三方 Extension 的状态只沿 discover→validate→build 传递。 */
+    const extension = defineExtension<Record<string, never>, { readonly file: SourceFileRef }, { readonly file: SourceFileRef }, { readonly asset: import('@tokenroll/acplugin/sdk').SourceAssetRef }>({
+      id: 'community-extension',
       apiVersion: '1',
-      /** discover 返回 Extension 在 Fixture 中发现的最小状态。 */
-      discover: () => ({ enabled: true }),
-      /** build 把已发现状态作为跨 Platform 的 Built State。 */
-      build: (_context, discovered) => discovered,
-      adapters: [{
-        extensionApiVersion: '1',
-        platform: platform.id,
-        platformApiVersion: '1',
-        /** apply 只通过 add-only Context 修改当前 Platform Draft。 */
-        apply(context, built) {
-          context.patchDocument({
-            document: 'plugin-manifest',
-            path: ['extensions', 'bridge'],
-            value: built,
-          });
-          context.emitArtifact(bytesArtifact('bridge/state.txt', 'enabled'));
+      options: {},
+      resourceRoots: ['community'],
+      /** 每轮返回独立且无跨 Extension 读取的 Session。 */
+      createSession: () => ({
+        /** discover 只能从 Extension 独占 Resource root 签发 SourceRef。 */
+        async discover({ roots, sources }) {
+          /** 缺失 root 时按未发现处理，不生成兼容性噪声。 */
+          const sourceRoot = roots.community;
+          return sourceRoot === undefined ? undefined : { file: await sources.file(sourceRoot, 'state.txt') };
         },
-      }],
-    });
-    /** 手工组装仅供私有 Core 集成测试使用的已解析配置边界。 */
-    const root = await temporaryProject();
-    /** 直接执行 Core 所需的完整 ResolvedConfig Fixture。 */
-    const config = {
-      root,
-      configPath: path.join(root, 'acplugin.config.ts'),
-      command: 'validate',
-      mode: 'production',
-      metadata: { name: 'ecosystem-test', version: '1.0.0', description: 'Ecosystem contract.' },
-      srcDir: path.join(root, 'src'),
-      public: { enabled: false, dir: path.join(root, 'public') },
-      platforms: [{ platform, strict: true }],
-      extensions: [extension],
-      outDir: path.join(root, 'dist'),
-      strict: true,
-    } as unknown as ResolvedConfig;
-
-    /** 第三方 Platform、Extension 与 Adapter 共同运行的生命周期结果。 */
-    const result = await executeLifecycle({
-      config,
-      /** loadTypeScriptModule 在当前 Fixture 中不需要加载任何作者模块。 */
-      loadTypeScriptModule: async () => undefined,
-      environment: {},
-    });
-
-    expect(result.success).toBe(true);
-    expect(result.deliveryUnits).toEqual([
-      expect.objectContaining({
-        platform: 'ecosystem-fixture',
-        id: 'plugin',
-        artifacts: expect.arrayContaining([
-          expect.objectContaining({ path: 'plugin.json', owner: 'platform:ecosystem-fixture' }),
-          expect.objectContaining({ path: 'bridge/state.txt', owner: 'extension:ecosystem-bridge' }),
-        ]),
+        /** validate 声明 Contributor 后续必须覆盖的 capability tuple。 */
+        validate: (_context, discovered) => ({
+          state: discovered,
+          subjects: [{ subject: 'community:state', capabilities: ['delivery'] }],
+        }),
+        /** build 只通过 owner-scoped Asset Service 转换 SourceRef。 */
+        build: async ({ assets }, validated) => ({
+          state: { asset: await assets.fromSource(validated.file) },
+        }),
+        contributors: [{
+          platform: 'ecosystem-fixture',
+          platformApiVersion: '1',
+          /** Contributor 只填声明点并追加自己拥有的 Asset。 */
+          contribute: (_context, built) => ({
+            documentFields: [{
+              document: 'plugin-manifest',
+              path: ['extensions', 'community'],
+              value: { enabled: true },
+            }],
+            assets: [{ path: 'community/state.txt', asset: built.asset }],
+            compatibility: [{
+              subject: 'community:state',
+              capability: 'delivery',
+              level: 'native',
+              reason: 'The extension contributes through a declared Package extension point.',
+            }],
+          }),
+        }],
       }),
-    ]);
-    expect(result.metadata).toEqual([
-      expect.objectContaining({ platform: 'ecosystem-fixture', field: 'name', disposition: 'emitted' }),
-    ]);
-  });
-
-  it('observes immediate Artifact rejection before an async Adapter failure in strict Node mode', async () => {
-    /** 子进程使用的空工程，确保生命周期可进入 Adapter 阶段。 */
-    const root = await temporaryProject();
-    /** 真实构建 Core 中创建立即碰撞 Promise、随后等待 timer 并抛错的 ESM 程序。 */
-    const source = `
-import {
-  bytesArtifact,
-  defineExtension,
-  definePlatform,
-  executeLifecycle,
-  resolveConfig,
-} from ${JSON.stringify(coreEntry)};
-
-const platform = definePlatform({
-  id: 'strict-rejection',
-  apiVersion: '1',
-  deliveryType: 'plugin',
-  prepare: () => ({
-    documents: [{
-      id: 'manifest',
-      path: 'manifest.json',
-      format: 'json',
-      owner: 'platform:strict-rejection',
-      value: {},
-      extensionPoints: [],
-    }],
-    artifacts: [],
-  }),
-  generateBundle: context => ({
-    id: 'plugin', role: 'primary', type: 'plugin', artifacts: context.artifacts,
-  }),
-  validateBundle: () => undefined,
-});
-const extension = defineExtension({
-  name: 'strict-rejection-extension',
-  apiVersion: '1',
-  discover: () => ({ enabled: true }),
-  adapters: [{
-    extensionApiVersion: '1',
-    platform: platform.id,
-    platformApiVersion: '1',
-    async apply(context) {
-      context.emitArtifact(bytesArtifact('manifest.json', 'collision'));
-      await new Promise(resolve => setTimeout(resolve, 20));
-      throw new Error('later Adapter failure');
-    },
-  }],
-});
-const resolved = resolveConfig({
-  name: 'strict-rejection-fixture',
-  version: '1.0.0',
-  description: 'Strict rejection fixture.',
-  public: false,
-  platforms: [platform],
-  extensions: [extension],
-}, ${JSON.stringify(path.join(root, 'acplugin.config.ts'))}, 'validate', 'production');
-if (!resolved.config)
-  throw new Error('Fixture config did not resolve.');
-const result = await executeLifecycle({
-  config: resolved.config,
-  loadTypeScriptModule: async () => undefined,
-  environment: {},
-});
-process.stdout.write(JSON.stringify(result));
-`;
-    /** strict 模式会把任何短暂无 observer 的拒绝直接升级为进程失败。 */
-    const execution = await new Promise<{ code: number | null; stdout: string; stderr: string }>((resolve, reject) => {
-      /** 使用原生 ESM 与严格拒绝策略执行真实 Core 构建产物。 */
-      const child = spawn(process.execPath, ['--unhandled-rejections=strict', '--input-type=module', '--eval', source], {
-        stdio: ['ignore', 'pipe', 'pipe'],
-      });
-      /** 子进程返回的唯一 JSON 构建结果。 */
-      let stdout = '';
-      /** 严格模式下不得出现未处理拒绝堆栈。 */
-      let stderr = '';
-      child.stdout.setEncoding('utf8');
-      child.stderr.setEncoding('utf8');
-      child.stdout.on('data', (chunk: string) => {
-        stdout += chunk;
-      });
-      child.stderr.on('data', (chunk: string) => {
-        stderr += chunk;
-      });
-      child.on('error', reject);
-      child.on('close', code => resolve({ code, stdout, stderr }));
+    });
+    /** 私有测试直接调用 Kernel，生产配置仍只通过公开品牌对象。 */
+    const resolved = resolveKernelConfig({
+      name: 'ecosystem-test',
+      version: '1.0.0',
+      description: 'Ecosystem contract.',
+      public: false,
+      platforms: [platform],
+      extensions: [extension],
+    }, {
+      projectRoot: root,
+      configFile: path.join(root, 'acplugin.config.ts'),
+      command: 'inspect',
+      mode: 'production',
+    });
+    /** BuildSession 是测试中唯一实际执行的构建路径。 */
+    const result = await runKernelBuildSession({
+      config: resolved.config!,
+      frameworkVersion: 'test',
+      commit: false,
     });
 
-    expect(execution.code).toBe(0);
-    expect(execution.stderr).toBe('');
-    expect(JSON.parse(execution.stdout)).toEqual(expect.objectContaining({
-      success: false,
-      committed: false,
-      diagnostics: expect.arrayContaining([
-        expect.objectContaining({ code: 'PLATFORM_GENERATION_FAILED', platform: 'strict-rejection' }),
+    expect(resolved.diagnostics).toEqual([]);
+    expect(result.report.success, JSON.stringify(result.report.diagnostics, null, 2)).toBe(true);
+    expect(result.report.packages).toContainEqual(expect.objectContaining({
+      platform: 'ecosystem-fixture',
+      id: 'plugin',
+      validated: true,
+      assets: expect.arrayContaining([
+        expect.objectContaining({ path: 'plugin.json', owner: 'platform:ecosystem-fixture' }),
+        expect.objectContaining({ path: 'community/state.txt', owner: 'extension:community-extension' }),
       ]),
     }));
+    expect(result.report.compatibility).toContainEqual(expect.objectContaining({
+      platform: 'ecosystem-fixture',
+      subject: 'community:state',
+      capability: 'delivery',
+      level: 'native',
+    }));
+  });
+
+  it('delivers one Core-built Node Runtime byte stream to Claude Code and Codex', async () => {
+    /** 工程包含一个原生 Skill 和一个自动发现的 Runtime 入口。 */
+    const root = await temporaryProject();
+    await fs.mkdir(path.join(root, 'src/skills/host'), { recursive: true });
+    await fs.mkdir(path.join(root, 'src/runtime'), { recursive: true });
+    await fs.writeFile(path.join(root, 'src/skills/host/SKILL.md'), '---\ndescription: Host the runtime.\n---\nUse the runtime.\n');
+    await fs.writeFile(path.join(root, 'src/runtime/cli.ts'), 'process.stdout.write("runtime-ready\\n");\n');
+    /** 两个官方 Platform 都只声明能力，不各自编译 Runtime。 */
+    const resolved = resolveKernelConfig({
+      name: 'runtime-ecosystem',
+      version: '1.0.0',
+      description: 'Cross-platform runtime contract.',
+      public: false,
+      platforms: [claudeCode(), codex()],
+    }, {
+      projectRoot: root,
+      configFile: path.join(root, 'acplugin.config.ts'),
+      command: 'build',
+      mode: 'production',
+    });
+    /** commit 验证最终两个 Platform 目录中的真实字节。 */
+    const result = await runKernelBuildSession({
+      config: resolved.config!,
+      frameworkVersion: 'test',
+      commit: true,
+    });
+    /** 两个 Package 报告中的 Runtime 必须继承同一个 Core provenance/hash/mode。 */
+    const runtimes = result.report.packages
+      .filter(unit => unit.role === 'primary')
+      .map(unit => unit.assets.find(asset => asset.path === 'runtime/cli/main.mjs')!);
+
+    expect(resolved.diagnostics).toEqual([]);
+    expect(result.report.success, JSON.stringify(result.report.diagnostics, null, 2)).toBe(true);
+    expect(runtimes).toHaveLength(2);
+    expect(runtimes[0]).toMatchObject({
+      owner: 'framework:node-runtime',
+      mode: 0o755,
+      origin: { type: 'compile', profile: 'portable-node' },
+    });
+    expect(runtimes[1]).toEqual(runtimes[0]);
+    await expect(fs.readFile(path.join(root, 'dist/claude-code/plugin/runtime/cli/main.mjs'))).resolves.toEqual(
+      await fs.readFile(path.join(root, 'dist/codex/plugin/runtime/cli/main.mjs')),
+    );
   });
 });

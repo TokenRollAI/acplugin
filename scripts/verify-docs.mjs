@@ -8,15 +8,19 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const apiDirectory = path.join(root, 'packages/docs/api');
 /** 必须作为 TypeDoc package 模块出现的公开 package 及其代表 API 页面。 */
 const publicPackages = [
-  { name: '@tokenroll/acplugin', api: 'functions/defineConfig.md' },
+  {
+    name: '@tokenroll/acplugin',
+    api: 'functions/defineConfig.md',
+    sdk: ['functions/definePlatform.md', 'interfaces/PlatformContributor.md', 'interfaces/CompilerService.md'],
+  },
   { name: '@tokenroll/acplugin-platform-antigravity', api: 'functions/antigravity.md' },
   { name: '@tokenroll/acplugin-platform-claude-code', api: 'functions/claudeCode.md' },
   { name: '@tokenroll/acplugin-platform-codex', api: 'functions/codex.md' },
   { name: '@tokenroll/acplugin-platform-cursor', api: 'functions/cursor.md' },
   { name: '@tokenroll/acplugin-platform-opencode', api: 'functions/openCode.md' },
   { name: '@tokenroll/acplugin-platform-pi', api: 'functions/pi.md' },
-  { name: '@tokenroll/acplugin-extension-hooks', api: 'functions/defineHook.md' },
-  { name: '@tokenroll/acplugin-extension-mcp', api: 'functions/defineMcpServer.md' },
+  { name: '@tokenroll/acplugin-extension-hooks', api: 'interfaces/Hook.md' },
+  { name: '@tokenroll/acplugin-extension-mcp', api: 'type-aliases/McpServer.md' },
 ];
 /** 不得成为 TypeDoc package 模块的私有 workspace。 */
 const privatePackages = ['@acplugin/core', '@acplugin/test', '@acplugin/docs', '@acplugin/playground'];
@@ -71,6 +75,8 @@ async function main() {
     const packageDirectory = path.join(apiDirectory, packageEntry.name);
     assert(await pathExists(path.join(packageDirectory, 'index.md')), `Generated API is missing package page ${packageEntry.name}.`);
     assert(await pathExists(path.join(packageDirectory, packageEntry.api)), `Generated API is missing representative API for ${packageEntry.name}.`);
+    for (const sdkApi of packageEntry.sdk ?? [])
+      assert(await pathExists(path.join(packageDirectory, sdkApi)), `Generated API is missing SDK API ${packageEntry.name}/${sdkApi}.`);
     assert(source.includes(`/api/${packageEntry.name}/`), `Generated sidebar is missing public package ${packageEntry.name}.`);
   }
   for (const packageName of privatePackages) {
