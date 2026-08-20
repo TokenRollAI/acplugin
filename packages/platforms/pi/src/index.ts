@@ -8,10 +8,10 @@ import {
   hasGeneratedSkills,
   validateGeneratedSkillIds,
   validatePiComponent,
-} from './components.js';
-import { createPackageDocument, validatePlatformOptions } from './manifest.js';
+} from './package/components.js';
+import { createPackageDocument, validatePlatformOptions } from './package/manifest.js';
 import type { PiPlatformOptions } from './types.js';
-import { validatePiPackage } from './validator.js';
+import { validatePiPackage } from './package/validator.js';
 
 export type { PiPackageOptions, PiPlatformOptions } from './types.js';
 

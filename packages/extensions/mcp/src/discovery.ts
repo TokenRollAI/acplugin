@@ -1,9 +1,9 @@
-import type {
-  ExtensionDiscoverContext,
-  ExtensionValidateContext,
-  JsonValue,
-  SourceDirectoryRef,
-  SourceFileRef,
+import {
+  snapshotJson,
+  type ExtensionDiscoverContext,
+  type ExtensionValidateContext,
+  type SourceDirectoryRef,
+  type SourceFileRef,
 } from '@tokenroll/acplugin/sdk';
 import { MCP_ID_PATTERN, ENV_NAME_PATTERN } from './constants.js';
 import { compareCodeUnits } from './sorting.js';
@@ -53,57 +53,10 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
     && (Object.getPrototypeOf(value) === Object.prototype || Object.getPrototypeOf(value) === null);
 }
 
-/** 把 descriptor 复制成无函数、无 accessor 的 JSON 数据。 */
-function jsonSnapshot(value: unknown, path: string, ancestors = new Set<object>()): JsonValue {
-  if (value === null || typeof value === 'string' || typeof value === 'boolean') return value;
-  if (typeof value === 'number') {
-    if (!Number.isFinite(value))
-      throw new TypeError(`${path} must be finite.`);
-    return value;
-  }
-  if (typeof value !== 'object' || ancestors.has(value)) throw new TypeError(`${path} must be JSON data.`);
-  ancestors.add(value);
-  try {
-    /** 所有自有字段先读取 descriptor，绝不触发 getter。 */
-    const descriptors = Object.getOwnPropertyDescriptors(value);
-    if (Array.isArray(value)) {
-      if (Object.getOwnPropertySymbols(value).length > 0)
-        throw new TypeError(`${path} must not contain symbol fields.`);
-      /** 稀疏数组不能形成稳定的 JSON snapshot。 */
-      for (let i = 0; i < value.length; i += 1) if (!Object.hasOwn(value, i)) throw new TypeError(`${path} must not be sparse.`);
-      /** 数组只允许 index 与 length，不允许隐藏扩展字段。 */
-      if (Object.keys(descriptors).some(key => key !== 'length'
-        && (!/^(?:0|[1-9][0-9]*)$/u.test(key) || Number(key) >= value.length))) throw new TypeError(`${path} has unknown fields.`);
-      /** 逐索引读取 data descriptor，绝不通过 Array.prototype.map 触发 getter。 */
-      const result: JsonValue[] = [];
-      for (let index = 0; index < value.length; index += 1) {
-        /** 稠密索引必须仍是显式 data property。 */
-        const descriptor = descriptors[String(index)]!;
-        if (!('value' in descriptor))
-          throw new TypeError(`${path}[${index}] must be data.`);
-        result.push(jsonSnapshot(descriptor.value, `${path}[${index}]`, ancestors));
-      }
-      return Object.freeze(result);
-    }
-    /** descriptor 必须是无 Symbol 的普通对象。 */
-    if (!isPlainObject(value) || Object.getOwnPropertySymbols(value).length > 0) throw new TypeError(`${path} must be plain.`);
-    /** snapshot 输出对象与作者对象完全隔离。 */
-    const result: Record<string, JsonValue> = Object.create(null) as Record<string, JsonValue>;
-    for (const key of Object.keys(descriptors).sort()) {
-      /** 当前字段的 data descriptor。 */
-      const descriptor = descriptors[key]!;
-      if (!('value' in descriptor)) throw new TypeError(`${path}.${key} must be data.`);
-      /** 递归复制字段值并保持稳定路径。 */
-      result[key] = jsonSnapshot(descriptor.value, `${path}.${key}`, ancestors);
-    }
-    return Object.freeze(result);
-  } finally { ancestors.delete(value); }
-}
-
 /** Descriptor 快照只允许 MCP 规范的普通字段。 */
 function normalizeDefinition(value: unknown): McpServer {
   /** 先建立无行为 JSON snapshot，再验证 MCP Schema。 */
-  const snapshot = jsonSnapshot(value, 'MCP descriptor');
+  const snapshot = snapshotJson(value, 'MCP descriptor');
   if (!isPlainObject(snapshot) || typeof snapshot.transport !== 'string') throw new TypeError('MCP descriptor is invalid.');
   if (Object.keys(snapshot).some(key => !FIELDS.has(key))) throw new TypeError('MCP descriptor contains unknown fields.');
   return snapshot as unknown as McpServer;

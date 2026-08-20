@@ -3,14 +3,14 @@ import {
   type AcpluginPlatform,
   type JsonObject,
 } from '@tokenroll/acplugin/sdk';
-import { createClaudeComponents, validateClaudeComponent } from './components.js';
+import { createClaudeComponents, validateClaudeComponent } from './package/components.js';
 import {
   createMarketplaceAssets,
   createPluginDocument,
   validatePlatformOptions,
-} from './manifest.js';
+} from './package/manifest.js';
 import type { ClaudeCodeMarketplaceOptions, ClaudeCodePlatformOptions } from './types.js';
-import { validateClaudePackage } from './validator.js';
+import { validateClaudePackage } from './package/validation/index.js';
 
 export type {
   ClaudeCodeMarketplaceOptions,

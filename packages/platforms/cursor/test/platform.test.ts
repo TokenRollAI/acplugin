@@ -13,7 +13,7 @@ import {
   runKernelBuildSession,
 } from '@acplugin/core';
 import { cursor } from '../src/index.js';
-import { PLUGIN_MANIFEST_PATH } from '../src/manifest.js';
+import { PLUGIN_MANIFEST_PATH } from '../src/package/manifest.js';
 
 /** 测试结束后统一删除的临时工程根目录。 */
 const temporaryRoots: string[] = [];

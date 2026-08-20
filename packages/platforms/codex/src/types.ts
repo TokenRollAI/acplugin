@@ -1,7 +1,7 @@
 import type { JsonValue, PluginAuthor } from '@tokenroll/acplugin/sdk';
-import type { CodexCategory, CodexMarketplaceInstallation } from './protocol.js';
+import type { CodexCategory, CodexMarketplaceInstallation } from './package/protocol.js';
 
-export type { CodexCategory, CodexMarketplaceInstallation } from './protocol.js';
+export type { CodexCategory, CodexMarketplaceInstallation } from './package/protocol.js';
 
 /** Codex Plugin `interface` 中由平台工厂管理的展示选项。 */
 export interface CodexInterfaceOptions {

@@ -7,7 +7,7 @@ import { publicPackageManifestPaths } from './public-packages.mjs';
 /** Current repository root resolved independently from the invoking cwd. */
 const root = path.resolve(fileURLToPath(new URL('..', import.meta.url)));
 /** Generated snapshot consumed by init, Migration and release verification. */
-const snapshotPath = path.join(root, 'packages/acplugin/src/ecosystem-versions.json');
+const snapshotPath = path.join(root, 'packages/acplugin/src/ecosystem/versions.json');
 
 /** Read and validate the fixed public package manifest catalog. */
 async function publicVersions() {

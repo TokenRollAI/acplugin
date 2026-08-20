@@ -38,7 +38,7 @@
 ## 证据
 
 - `packages/acplugin/src/index.ts`
-- `packages/acplugin/src/project.ts`
+- `packages/acplugin/src/author/project.ts`
 - `packages/acplugin/src/sdk.ts`
 - `packages/acplugin/tsdown.config.ts`
 - `packages/platforms/*/package.json`

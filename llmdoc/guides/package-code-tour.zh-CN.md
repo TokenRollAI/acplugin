@@ -45,18 +45,18 @@ acplugin.config.ts
 → BuildReport schema v2
 ```
 
-CLI、`runProject()`、`Project.run()` 与 `Project.dev()` 的每个重建轮次最终都进入 `packages/core/src/kernel/build-session.ts`。不存在 CLI 专用构建器或 Extension 自己的 pipeline。
+CLI、`runProject()`、`Project.run()` 与 `Project.dev()` 的每个重建轮次最终都进入 `packages/core/src/lifecycle/build-session.ts`。不存在 CLI 专用构建器或 Extension 自己的 pipeline。
 
 ## 3. 主包入口
 
 | 文件 | 作用 |
 | --- | --- |
 | `packages/acplugin/src/index.ts` | 作者/程序化根入口；只导出配置、Project、报告和 Runtime path helper |
-| `packages/acplugin/src/sdk.ts` | Integration 唯一实现入口，转出 Core `kernel-sdk` |
-| `packages/acplugin/src/project.ts` | 把公开 Project API 绑定到 Core Kernel 与当前 Framework version |
-| `packages/acplugin/src/cli.ts` | init、validate、inspect、build、dev、migrate；只消费 Project API |
-| `packages/acplugin/src/init.ts` | 显式 Platform/Extension 脚手架与内建 Runtime 模板 |
-| `packages/acplugin/src/ecosystem-versions.*` | init、Migration 与 release verifier 共用的公开生态版本快照 |
+| `packages/acplugin/src/sdk.ts` | Integration 唯一实现入口，转出 Core `api/integration` |
+| `packages/acplugin/src/author/project.ts` | 把公开 Project API 绑定到 Core lifecycle 与当前 Framework version |
+| `packages/acplugin/src/cli.ts`、`src/cli/` | 薄入口与 init、validate、inspect、build、dev、migrate 命令；只消费 Project API |
+| `packages/acplugin/src/scaffolding/` | 显式 Platform/Extension 脚手架与内建 Runtime 模板 |
+| `packages/acplugin/src/ecosystem/` | init、Migration 与 release verifier 共用的公开生态版本快照 |
 | `packages/acplugin/src/migration/` | 动态 import 的隔离迁移子系统 |
 
 `defineConfig()` 是唯一作者 define factory，仅用于类型推断。Hook、MCP descriptor 与 Runtime 源码使用 plain default export / 目录约定，不需要 `defineHook()`、`defineMcpServer()`、`defineNodeRuntime()` 或 `nodeRuntime()`。
@@ -65,11 +65,11 @@ CLI、`runProject()`、`Project.run()` 与 `Project.dev()` 的每个重建轮次
 
 | 文件 | 作用 |
 | --- | --- |
-| `kernel-types.ts` | 作者 Config、CanonicalProject、Session、Host、Package/Contribution、报告类型 |
-| `kernel-contracts.ts` | `definePlatform()` / `defineExtension()` 精确字段验证、JSON 防御性复制、品牌与冻结 |
-| `kernel-author.ts` | 主包根入口允许公开的作者/报告类型 |
-| `kernel-sdk.ts` | `/sdk` 允许公开的 Integration 类型与工具 |
-| `serialization.ts` | 确定性 JSON/YAML/frontmatter 序列化 |
+| `contracts/` | 按 common、config、component、project、integration、compiler、package、service、report 拆分的契约类型 |
+| `api/definitions.ts` | `definePlatform()` / `defineExtension()` 精确字段验证、严格 JSON snapshot、品牌与冻结 |
+| `api/author.ts` | 主包根入口允许公开的作者/报告类型 |
+| `api/integration.ts` | `/sdk` 允许公开的 Integration 类型与工具 |
+| `serialization/` | 确定性 JSON/YAML/frontmatter 与 Document 序列化 |
 
 `LIFECYCLE_API_VERSION` 保持 `'1'`。该值表达当前 Session/Contributor 契约版本，不表示保留被删除的旧 shape。
 
@@ -81,14 +81,14 @@ Kernel 不把物理路径和任意文件系统权限交给 Integration，而是�
 
 | 模块 | 能力 |
 | --- | --- |
-| `source-registry.ts` | 验证来源根、普通文件、symlink/特殊文件、SourceRef 授权 |
-| `module-host.ts` | 通过受管 ESM 图加载可信 TypeScript/JavaScript config/descriptor |
-| `compiler/compiler-host.ts` | 当前 Session 唯一 Rolldown owner，返回 GeneratedAssetRef 与脱敏模块图 |
-| `execution-host.ts` | 在隔离 cwd、最小显式环境、超时和输出上限内执行 portable Node Asset |
-| `asset-registry.ts` | 签发 Source/Generated/Bytes AssetRef，记录 owner/origin/mode/size/hash 与 grant |
-| `watch-registry.ts` | 集中记录 Resource、Module、Compiler 实际读取的依赖 |
-| `work-directories.ts` | 为 owner 管理不可伪造的内部 workDir；不公开物理写权限 |
-| `build-session-scope.ts` | Session 结束后统一撤销所有 capability identity |
+| `services/sources.ts` | 验证来源根、普通文件、symlink/特殊文件、SourceRef 授权 |
+| `services/modules.ts` | 通过受管 ESM 图加载可信 TypeScript/JavaScript config/descriptor |
+| `compiler/compiler-service.ts` | 当前 Session 唯一 Rolldown owner，返回 GeneratedAssetRef 与脱敏模块图 |
+| `services/execution.ts` | 在隔离 cwd、最小显式环境、超时和输出上限内执行 portable Node Asset |
+| `services/assets.ts` | 签发 Source/Generated/Bytes AssetRef，记录 owner/origin/mode/size/hash 与 grant |
+| `services/watch.ts` | 集中记录 Resource、Module、Compiler 实际读取的依赖 |
+| `services/work-directories.ts` | 为 owner 管理不可伪造的内部 workDir；不公开物理写权限 |
+| `lifecycle/session-scope.ts` | Session 结束后统一撤销所有 capability identity |
 
 AssetRef 不是可伪造的 `{ path }`。Registry 使用对象身份验证当前 Session、真实 issuer 与 consumer grant；报告中的 origin 为结构化工程相对来源，不影响内容 hash。
 
@@ -96,12 +96,12 @@ AssetRef 不是可伪造的 `{ path }`。Registry 使用对象身份验证当前
 
 `packages/core/src/resources/` 把作者布局转换为唯一 `CanonicalProject`：
 
-- `canonical-provider.ts`：Command、Skill、Agent Markdown/frontmatter、辅助资源与平台字段。
+- `canonical/provider.ts`：Command、Skill、Agent Markdown/frontmatter、辅助资源与平台字段。
 - `project-graph.ts`：拒绝缺失、自依赖和循环依赖。
-- `public-provider.ts`：默认 `public/` 和显式 copy mapping。
-- `runtime-provider.ts`：内建 Node Runtime 自动/显式入口、编译与 capability-driven Contribution。
-- `extension-provider.ts`：Extension discover/validate/build state snapshot、consumer plan 与 Contributor 收集。
-- `resource-registry.ts`：声明/认领资源根，拒绝未启用 Extension 遗留目录和根冲突。
+- `public.ts`：默认 `public/` 和显式 copy mapping。
+- `runtime/provider.ts`：内建 Node Runtime 自动/显式入口、编译与 capability-driven Contribution。
+- `extensions.ts`：Extension discover/validate/build state snapshot、consumer plan 与 Contributor 收集。
+- `registry.ts`：声明/认领资源根，拒绝未启用 Extension 遗留目录和根冲突。
 
 所有 ID、目录项和报告集合按 code point 稳定排序；路径统一拒绝绝对路径、NUL、`..`、大小写/Unicode normalization 冲突与文件/目录前缀冲突。
 
@@ -144,11 +144,11 @@ Contribution 只能：
 
 相关实现位于：
 
-- `package/package-registry.ts`
-- `package/document-codec.ts`
+- `package/registry.ts`
+- `package/documents.ts`
 - `package/candidate-materializer.ts`
-- `package/distribution-registry.ts`
-- `package/compatibility-registry.ts`
+- `package/distributions.ts`
+- `package/compatibility.ts`
 - `package/report-builder.ts`
 
 ## 9. Platform package
@@ -157,11 +157,13 @@ Contribution 只能：
 
 ```text
 src/
-├── index.ts          # factory、definePlatform、Session
-├── components.ts     # Canonical Component 转换与 compatibility
-├── manifest.ts       # 可选，结构化 Platform Document/metadata
-├── validator.ts      # 完整候选 Schema/引用闭包校验
-└── types.ts          # 公开 options 与目标格式类型
+├── index.ts             # factory、definePlatform、Session
+├── types.ts             # 可选，公开 options 与目标格式类型
+└── package/
+    ├── components.ts    # Canonical Component 转换与 compatibility
+    ├── manifest.ts      # 或 config-document.ts；结构化 Platform Document/metadata
+    ├── protocol.ts      # 可选，目标协议的共享常量与 wire helper
+    └── validator.ts     # 小平台使用；Claude Code/Codex 按 validation/* 协议域拆分
 ```
 
 Platform 只声明能力，不要求 Core 按 ID 分支。当前 Claude Code/Codex 声明固定 Plugin-local Node 20 ESM capability；Runtime Provider 据此交付相同 AssetRef。其他 Platform 得到 `unsupported` 且无伪 Runtime。
@@ -175,6 +177,8 @@ Hooks 与 MCP 都采用：
 ```text
 types.ts → discovery.ts → build.ts → contributors/<platform>.ts
 ```
+
+Hooks 交付进 bundle 的 runner、integration 与 wire 源码集中在 `runtime/`；MCP 没有无实现意义的空 Runtime 层级。两者都通过公开 SDK 的唯一 strict JSON snapshot 建立 descriptor 数据边界。
 
 ### Hooks
 
@@ -206,7 +210,7 @@ Runtime 不使用 descriptor 或 Extension factory：
 
 ## 12. DevSession 与事务
 
-`kernel/dev-session.ts` 是唯一 Chokidar owner：
+`lifecycle/dev-session.ts` 是唯一 Chokidar owner：
 
 - 同一时间只有一个 active BuildSession；
 - active round 期间的变化合并到下一轮；
@@ -216,7 +220,7 @@ Runtime 不使用 descriptor 或 Extension factory：
 - rebuild 失败保留最后一次成功输出；
 - signal drain 与 `close()` 幂等。
 
-`transaction.ts` 对所选目标集合执行：
+`output/transaction.ts` 对所选目标集合执行：
 
 ```text
 lock → recovery → stage → materialization validation
@@ -244,7 +248,7 @@ schema-v2 `BuildReport` 包含：
 | `packages/core/test/` | Resource/graph、Host、Compiler、Registry、Package、transaction、DevSession |
 | `packages/platforms/*/test/` | Component 转换、golden、candidate validator、确定性 |
 | `packages/extensions/*/test/` | descriptor、build、Contributor、compatibility、真实 runtime/protocol |
-| `packages/test/test/` | CLI、init、Migration、九包边界、SDK consumer、六平台集成 |
+| `packages/test/test/{architecture,api,cli,platforms,extensions,release}/` | 架构、公开 API、CLI、六平台、Extension 与发行边界集成；Migration 保持根测试路径 |
 | `scripts/verify-playground.mjs` | 全能力文件树、协议执行、Secret、双构建确定性 |
 | `scripts/verify-release.mjs` | 九个 tarball、ATTW/publint、peer rewrite、clean consumer |
 
@@ -263,14 +267,14 @@ pnpm run release:verify
 
 | 变更 | 首要位置 | 必须联动 |
 | --- | --- | --- |
-| Canonical Component 字段/布局 | `resources/canonical-provider.ts`、`kernel-types.ts` | 六 Platform 转换、graph、报告、golden |
-| Package/Asset 安全不变量 | `kernel/asset-registry.ts`、`package/*` | owner、candidate、transaction、report 测试 |
-| Compiler profile | `compiler/*`、`kernel-types.ts` | Watch、license、Hooks/MCP/Runtime、SDK type tests |
+| Canonical Component 字段/布局 | `resources/canonical/`、`contracts/components.ts` | 六 Platform 转换、graph、报告、golden |
+| Package/Asset 安全不变量 | `services/assets.ts`、`package/*` | owner、candidate、transaction、report 测试 |
+| Compiler profile | `compiler/*`、`contracts/compiler.ts` | Watch、license、Hooks/MCP/Runtime、SDK type tests |
 | Platform 格式 | 对应 `packages/platforms/<id>` | compatibility、validator、Extension Contributor |
 | Extension 作者协议 | 对应 `types.ts`/`discovery.ts` | build、六 Contributor、protocol smoke |
-| Runtime 约定 | `resources/runtime-provider.ts`、config resolver | capability、路径 helper、双平台交付与执行 |
-| dev 监听 | `kernel/dev-session.ts`、各 Host watch observation | CLI 子进程、恢复、coalescing、close 测试 |
-| 输出事务 | `transaction.ts` | fault injection、full/subset、rollback、cleanup |
-| 公开 API | `kernel-author.ts` 或 `kernel-sdk.ts`、主包入口 | TypeDoc、type tests、tarball consumer、peer range |
+| Runtime 约定 | `resources/runtime/`、`config/resolver.ts` | capability、路径 helper、双平台交付与执行 |
+| dev 监听 | `lifecycle/dev-session.ts`、各 Service watch observation | CLI 子进程、恢复、coalescing、close 测试 |
+| 输出事务 | `output/transaction.ts` | fault injection、full/subset、rollback、cleanup |
+| 公开 API | `api/author.ts` 或 `api/integration.ts`、主包入口 | TypeDoc、type tests、tarball consumer、peer range |
 
-推荐阅读顺序：`acplugin/src/index.ts` 与 `sdk.ts` → `kernel-types.ts` → `kernel/build-session.ts` → Resource/Package Registry → 一个官方 Platform → Hooks/MCP → DevSession 与 transaction → Playground/release verifier。
+推荐阅读顺序：`acplugin/src/index.ts` 与 `sdk.ts` → `core/src/contracts/` → `lifecycle/build-session.ts` → Resource/Package Registry → 一个官方 Platform → Hooks/MCP → DevSession 与 output transaction → Playground/release verifier。

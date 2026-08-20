@@ -38,7 +38,7 @@ Node Runtime is a Framework Resource, not an Extension package. Direct files und
 
 The workspace catalog maps package `tsc` commands to `@typescript/native`. Tools that still require the legacy Compiler API use the isolated `@typescript/typescript6` alias. Production package typechecking remains on TypeScript 7.
 
-The CLI and author facade live in `packages/acplugin/src/cli.ts` and `src/index.ts`; `src/sdk.ts` is the only Integration implementation entry. Core's fixed lifecycle is implemented by `packages/core/src/kernel/build-session.ts`, while `Project.dev()` delegates every rebuild round to that same BuildSession.
+The CLI and author facade live in `packages/acplugin/src/cli.ts`, `src/cli/`, `src/index.ts`, and `src/author/`; `src/sdk.ts` is the only Integration implementation entry. Core's fixed lifecycle is implemented by `packages/core/src/lifecycle/build-session.ts`, while `Project.dev()` delegates every rebuild round to that same BuildSession.
 
 ## Migration boundary
 

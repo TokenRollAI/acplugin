@@ -19,8 +19,8 @@ export default defineConfig({
   resolve: {
     alias: [
       { find: '@tokenroll/acplugin/sdk', replacement: workspaceSource('../acplugin/src/sdk.ts') },
-      { find: '@acplugin/core/kernel-sdk', replacement: workspaceSource('../core/src/kernel-sdk.ts') },
-      { find: '@acplugin/core/kernel-author', replacement: workspaceSource('../core/src/kernel-author.ts') },
+      { find: '@acplugin/core/integration', replacement: workspaceSource('../core/src/api/integration.ts') },
+      { find: '@acplugin/core/author', replacement: workspaceSource('../core/src/api/author.ts') },
       { find: '@acplugin/core', replacement: workspaceSource('../core/src/index.ts') },
       { find: '@tokenroll/acplugin', replacement: workspaceSource('../acplugin/src/index.ts') },
       { find: '@tokenroll/acplugin-platform-antigravity', replacement: workspaceSource('../platforms/antigravity/src/index.ts') },

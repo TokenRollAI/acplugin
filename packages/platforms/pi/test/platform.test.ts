@@ -14,8 +14,8 @@ import {
   type ValidatePackageContext,
 } from '@acplugin/core';
 import { pi } from '../src/index.js';
-import { PACKAGE_MANIFEST_PATH } from '../src/manifest.js';
-import { validatePiPackage } from '../src/validator.js';
+import { PACKAGE_MANIFEST_PATH } from '../src/package/manifest.js';
+import { validatePiPackage } from '../src/package/validator.js';
 
 /** 测试结束后统一删除的临时工程根目录。 */
 const temporaryRoots: string[] = [];

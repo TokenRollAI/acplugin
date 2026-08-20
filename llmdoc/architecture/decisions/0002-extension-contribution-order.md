@@ -36,7 +36,7 @@ Kernel v2 instead needs independent integrations, parallel-safe collection, and 
 
 ## Evidence
 
-- `packages/core/src/resources/extension-provider.ts`
-- `packages/core/src/package/package-registry.ts`
-- `packages/core/src/kernel/build-session.ts`
-- `packages/core/src/kernel-types.ts` (`PlatformContributor`, `ContributionContext`, `PackageContribution`)
+- `packages/core/src/resources/extensions.ts`
+- `packages/core/src/package/registry.ts`
+- `packages/core/src/lifecycle/build-session.ts`
+- `packages/core/src/contracts/` (`PlatformContributor`, `ContributionContext`, `PackageContribution`)

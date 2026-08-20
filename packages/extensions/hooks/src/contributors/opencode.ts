@@ -1,7 +1,7 @@
 import type { ContributionContext, PlatformContributor } from '@tokenroll/acplugin/sdk';
 import type { BuiltHook, BuiltHooks } from '../build.js';
 import { eventName } from '../discovery.js';
-import { createOpenCodePluginSource, runtimeHookDescriptor } from '../runtime-integration-source.js';
+import { createOpenCodePluginSource, runtimeHookDescriptor } from '../runtime/integration.js';
 import {
   addHookRuntime,
   addRuntimeAsset,

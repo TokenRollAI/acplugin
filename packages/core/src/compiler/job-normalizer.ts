@@ -1,13 +1,15 @@
 import { promises as fs } from 'node:fs';
 import type {
   AssetMode,
+  SourceDirectoryRef,
+} from '../contracts/services.js';
+import type {
   CompileEntry,
   CompileJob,
   CompileProfile,
-  SourceDirectoryRef,
-} from '../kernel-types.js';
-import { compareCodePoints } from '../kernel/path-policy.js';
-import { SourceRegistry } from '../kernel/source-registry.js';
+} from '../contracts/compiler.js';
+import { compareCodePoints } from '../security/path-policy.js';
+import { SourceRegistry } from '../services/sources.js';
 
 /** Compiler job/output/entry 共用的稳定 ID 语法。 */
 const STABLE_ID = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;

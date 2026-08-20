@@ -7,8 +7,8 @@ import {
   definePlatform,
   type ManagedRolldownPlugin,
   type SourceFileRef,
-} from '@acplugin/core/kernel-sdk';
-import { createProject } from '../src/project.js';
+} from '@acplugin/core/integration';
+import { createProject } from '../src/author/project.js';
 
 /** DevSession 程序化测试统一清理的临时工程根。 */
 const roots: string[] = [];
@@ -94,7 +94,7 @@ export default {
 
 /** @returns 下一次公开 build-complete，并在命中后自动取消订阅。 */
 function nextBuildComplete(session: Awaited<ReturnType<ReturnType<typeof createProject>['dev']>>) {
-  return new Promise<Extract<import('@acplugin/core/kernel-author').DevSessionEvent, { readonly type: 'build-complete' }>>((resolve) => {
+  return new Promise<Extract<import('@acplugin/core/author').DevSessionEvent, { readonly type: 'build-complete' }>>((resolve) => {
     const unsubscribe = session.subscribe((event) => {
       if (event.type === 'build-complete') {
         unsubscribe();
@@ -109,7 +109,7 @@ function nextBuildForChange(
   session: Awaited<ReturnType<ReturnType<typeof createProject>['dev']>>,
   identity: string,
 ) {
-  return new Promise<Extract<import('@acplugin/core/kernel-author').DevSessionEvent, { readonly type: 'build-complete' }>>((resolve) => {
+  return new Promise<Extract<import('@acplugin/core/author').DevSessionEvent, { readonly type: 'build-complete' }>>((resolve) => {
     /** 只有明确匹配的 start sequence 才能完成当前等待。 */
     const matching = new Set<number>();
     const unsubscribe = session.subscribe((event) => {
@@ -136,7 +136,7 @@ describe('DevSession API', () => {
       throw new Error('listener failure');
     });
     /** 正常 listener 记录完整公开事件序列。 */
-    const events: import('@acplugin/core/kernel-author').DevSessionEvent[] = [];
+    const events: import('@acplugin/core/author').DevSessionEvent[] = [];
     session.subscribe(event => events.push(event));
 
     await fs.writeFile(path.join(current.root, 'src', 'commands', 'review.md'), [
@@ -276,7 +276,7 @@ export default {
     /** fixture() 创建的其他工程仅用于取得同一测试 Platform；实际 Session 使用 pendingRoot。 */
     const session = await createProject({ cwd: pendingRoot }).dev();
     const identity = 'src/pending/future.config.ts';
-    const events: import('@acplugin/core/kernel-author').DevSessionEvent[] = [];
+    const events: import('@acplugin/core/author').DevSessionEvent[] = [];
     session.subscribe(event => events.push(event));
     const rebuilt = nextBuildForChange(session, identity);
     await fs.writeFile(pending, 'export default true;\n');

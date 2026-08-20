@@ -2,8 +2,8 @@ import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { definePlatform } from '@acplugin/core/kernel-sdk';
-import { createProject, ProjectConfigError, runProject } from '../src/project.js';
+import { definePlatform } from '@acplugin/core/integration';
+import { createProject, ProjectConfigError, runProject } from '../src/author/project.js';
 
 /** 临时工程由 afterEach 统一删除。 */
 const roots: string[] = [];

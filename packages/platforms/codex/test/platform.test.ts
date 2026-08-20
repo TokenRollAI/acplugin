@@ -10,7 +10,7 @@ import {
   type ConfigCommand,
 } from '@acplugin/core';
 import { codex } from '../src/index.js';
-import { MARKETPLACE_MANIFEST_PATH, PLUGIN_MANIFEST_PATH } from '../src/manifest.js';
+import { MARKETPLACE_MANIFEST_PATH, PLUGIN_MANIFEST_PATH } from '../src/package/manifest.js';
 
 /** 测试结束后统一删除的临时工程根。 */
 const temporaryRoots: string[] = [];

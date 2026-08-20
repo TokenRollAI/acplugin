@@ -3,10 +3,10 @@ import {
   type AcpluginPlatform,
   type JsonObject,
 } from '@tokenroll/acplugin/sdk';
-import { createOpenCodeComponents, validateOpenCodeComponent } from './components.js';
-import { createWorkspaceDocument, validatePlatformOptions } from './config-document.js';
+import { createOpenCodeComponents, validateOpenCodeComponent } from './package/components.js';
+import { createWorkspaceDocument, validatePlatformOptions } from './package/config-document.js';
 import type { OpenCodePlatformOptions } from './types.js';
-import { validateOpenCodePackage } from './validator.js';
+import { validateOpenCodePackage } from './package/validator.js';
 
 export type { OpenCodePlatformOptions, OpenCodeWorkspaceOptions } from './types.js';
 

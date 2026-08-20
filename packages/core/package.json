@@ -11,13 +11,13 @@
       "types": "./dist/index.d.mts",
       "import": "./dist/index.mjs"
     },
-    "./kernel-sdk": {
-      "types": "./dist/kernel-sdk.d.mts",
-      "import": "./dist/kernel-sdk.mjs"
+    "./integration": {
+      "types": "./dist/integration.d.mts",
+      "import": "./dist/integration.mjs"
     },
-    "./kernel-author": {
-      "types": "./dist/kernel-author.d.mts",
-      "import": "./dist/kernel-author.mjs"
+    "./author": {
+      "types": "./dist/author.d.mts",
+      "import": "./dist/author.mjs"
     }
   },
   "scripts": {

@@ -1,76 +1,13 @@
-import type { DocumentFieldPath, JsonObject, JsonValue } from '../kernel-types.js';
-import { dataArrayItems, dataObjectFields } from '../kernel/data-boundary.js';
-import { compareCodePoints } from '../kernel/path-policy.js';
+import type {
+  DocumentFieldPath,
+  JsonObject,
+  JsonValue,
+} from '../contracts/common.js';
+import { snapshotJson } from '../security/json-snapshot.js';
+import { compareCodePoints } from '../security/path-policy.js';
 
-/** JSON snapshot 递归时携带的路径和祖先集合。 */
-interface SnapshotState {
-  readonly path: string;
-  readonly ancestors: Set<object>;
-}
-
-/**
- * 复制严格 JSON 值并拒绝 getter、Symbol、稀疏数组和循环。
- *
- * @param value Integration 返回的未知值。
- * @param state 当前递归路径与祖先身份。
- * @returns 与调用方容器断开的深度冻结 JSON。
- */
-function snapshot(value: unknown, state: SnapshotState): JsonValue {
-  if (value === null || typeof value === 'string' || typeof value === 'boolean')
-    return value;
-  if (typeof value === 'number') {
-    if (!Number.isFinite(value))
-      throw new TypeError(`${state.path} must contain only finite JSON numbers.`);
-    return value;
-  }
-  if (typeof value !== 'object')
-    throw new TypeError(`${state.path} must contain only JSON values.`);
-  if (state.ancestors.has(value))
-    throw new TypeError(`${state.path} must not contain cycles.`);
-  state.ancestors.add(value);
-  try {
-    if (Array.isArray(value)) {
-      /** 数组先经过统一 data boundary，再递归复制每个元素。 */
-      const items = dataArrayItems(value, state.path);
-      return Object.freeze(items.map((item, index) => snapshot(item, {
-        ancestors: state.ancestors,
-        path: `${state.path}[${index}]`,
-      })));
-    }
-    /** JSON object 允许任意字符串字段，但仍统一拒绝行为型容器。 */
-    const ownFields = Object.getOwnPropertyNames(value);
-    /** 任意字段集合仍通过统一 descriptor boundary。 */
-    const fields = dataObjectFields(value, new Set(ownFields), state.path);
-    /** 新对象不保留调用方 prototype 或 descriptor 可变性。 */
-    const result: Record<string, JsonValue> = {};
-    for (const field of Object.keys(fields).sort(compareCodePoints)) {
-      /** 每个 JSON 字段必须是显式 data property。 */
-      const descriptor = fields[field]!;
-      if (!('value' in descriptor))
-        throw new TypeError(`${state.path}.${field} must be a data property.`);
-      Object.defineProperty(result, field, {
-        value: snapshot(descriptor.value, { ancestors: state.ancestors, path: `${state.path}.${field}` }),
-        enumerable: true,
-        configurable: false,
-        writable: false,
-      });
-    }
-    return Object.freeze(result);
-  } finally {
-    state.ancestors.delete(value);
-  }
-}
-
-/**
- * 建立可进入 Document、Contribution 或报告的严格 JSON snapshot。
- *
- * @param value 外部 JSON 候选。
- * @param label 根路径诊断标签。
- * @returns 深度冻结且键序稳定的 JSON。
- */
-export function snapshotJson(value: unknown, label = 'JSON value'): JsonValue {
-  return snapshot(value, { path: label, ancestors: new Set<object>() });
-}
+/** Package 领域沿用唯一的 Core strict JSON snapshot 实现。 */
+export { snapshotJson };
 
 /**
  * 验证并复制非空 Document 字段路径。

@@ -13,7 +13,7 @@ import { mainPublicPackageName, publicPackageManifestPaths } from './public-pack
 /** 当前 monorepo 根目录。 */
 const root = path.resolve(fileURLToPath(new URL('..', import.meta.url)));
 /** init、Migration 与发布验证共享的公开生态精确版本快照。 */
-const ecosystemVersions = JSON.parse(await fs.readFile(path.join(root, 'packages/acplugin/src/ecosystem-versions.json'), 'utf8'));
+const ecosystemVersions = JSON.parse(await fs.readFile(path.join(root, 'packages/acplugin/src/ecosystem/versions.json'), 'utf8'));
 /** 同一 revision 中独立版本化并共同验证的全部公开包。 */
 const packages = await Promise.all(publicPackageManifestPaths.map(async (manifestPath) => {
   /** manifest 是公开目录的唯一包名来源，不能依赖生成 JSON 的键位置。 */

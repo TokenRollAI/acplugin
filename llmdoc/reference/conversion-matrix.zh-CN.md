@@ -55,16 +55,16 @@ Platform-only 事件保持显式平台限定，不会扩充可移植事件联合
 
 | 关注点 | 事实来源 |
 | --- | --- |
-| Config、作者类型与 Integration SDK 契约 | `packages/core/src/kernel-types.ts`、`kernel-contracts.ts` |
+| Config、作者类型与 Integration SDK 契约 | `packages/core/src/contracts/`、`api/definitions.ts`、`api/author.ts`、`api/integration.ts` |
 | Canonical/Public/Runtime/Extension 发现 | `packages/core/src/resources/` |
-| 固定生命周期与 Platform 隔离 | `packages/core/src/kernel/build-session.ts` |
+| 固定生命周期与 Platform 隔离 | `packages/core/src/lifecycle/build-session.ts` |
 | Package、Document、Contribution 与报告 Registry | `packages/core/src/package/` |
-| 事务化输出 | `packages/core/src/transaction.ts` |
+| 事务化输出 | `packages/core/src/output/transaction.ts` |
 | Platform 输出契约 | `packages/platforms/<id>/src/` |
 | Hooks 发现、编译与 Platform Contributor | `packages/extensions/hooks/src/` |
 | MCP 发现、编译与 Platform Contributor | `packages/extensions/mcp/src/` |
-| 公开 façade、SDK 与 Project 配置加载 | `packages/acplugin/src/index.ts`、`sdk.ts`、`project.ts` |
-| CLI 与隔离 Migration 边界 | `packages/acplugin/src/cli.ts`、`migration/` |
+| 公开 façade、SDK 与 Project 配置加载 | `packages/acplugin/src/index.ts`、`sdk.ts`、`author/project.ts` |
+| CLI 与隔离 Migration 边界 | `packages/acplugin/src/cli.ts`、`cli/`、`migration/` |
 
 Platform 拥有 base Package 路径、Document、Manifest、Schema、最终 Package 身份、Distribution 与候选校验。所有 Extension Contributor 读取同一个不可变 base Package，只能增加自有 Asset、填写已声明的 add-only Document extension point 并报告兼容性；不能观察其他 Contribution、替换 Platform 或直接写入 `dist`。
 

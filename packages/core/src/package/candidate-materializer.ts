@@ -2,9 +2,12 @@ import { createHash } from 'node:crypto';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import type { PackageCandidate, PackageUnitSnapshot } from '../kernel-types.js';
-import { AssetRegistry } from '../kernel/asset-registry.js';
-import { compareCodePoints, safeRelativePath, sourceCollisionKey } from '../kernel/path-policy.js';
+import type {
+  PackageCandidate,
+  PackageUnitSnapshot,
+} from '../contracts/packages.js';
+import { AssetRegistry } from '../services/assets.js';
+import { compareCodePoints, safeRelativePath, sourceCollisionKey } from '../security/path-policy.js';
 
 /** Package Unit Platform/ID 共用的 lowercase-kebab 规则。 */
 const STABLE_ID = /^[a-z0-9]+(?:-[a-z0-9]+)*$/u;

@@ -7,12 +7,12 @@ import type {
   MetadataDispositionEntry,
   PackageAssetReport,
   PackageUnitReport,
-  PackageUnitSnapshot,
   PlatformReport,
   RuntimeReport,
-} from '../kernel-types.js';
-import { AssetRegistry } from '../kernel/asset-registry.js';
-import { compareCodePoints } from '../kernel/path-policy.js';
+} from '../contracts/reports.js';
+import type { PackageUnitSnapshot } from '../contracts/packages.js';
+import { AssetRegistry } from '../services/assets.js';
+import { compareCodePoints } from '../security/path-policy.js';
 import { snapshotJson } from './json-snapshot.js';
 
 /** Schema v2 BuildReport 的完整内部输入。 */

@@ -10,8 +10,8 @@ export default defineConfig({
         replacement: fileURLToPath(new URL('../../acplugin/src/sdk.ts', import.meta.url)),
       },
       {
-        find: /^@acplugin\/core\/kernel-sdk$/,
-        replacement: fileURLToPath(new URL('../../core/src/kernel-sdk.ts', import.meta.url)),
+        find: /^@acplugin\/core\/integration$/,
+        replacement: fileURLToPath(new URL('../../core/src/api/integration.ts', import.meta.url)),
       },
       {
         find: /^@acplugin\/core$/,

@@ -5,8 +5,8 @@
     "moduleResolution": "NodeNext",
     "paths": {
       "@acplugin/core": ["./packages/core/src/index.ts"],
-      "@acplugin/core/kernel-author": ["./packages/core/src/kernel-author.ts"],
-      "@acplugin/core/kernel-sdk": ["./packages/core/src/kernel-sdk.ts"],
+      "@acplugin/core/author": ["./packages/core/src/api/author.ts"],
+      "@acplugin/core/integration": ["./packages/core/src/api/integration.ts"],
       "@tokenroll/acplugin": ["./packages/acplugin/src/index.ts"],
       "@tokenroll/acplugin/sdk": ["./packages/acplugin/src/sdk.ts"],
       "@tokenroll/acplugin-platform-antigravity": ["./packages/platforms/antigravity/src/index.ts"],

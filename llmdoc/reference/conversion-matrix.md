@@ -55,16 +55,16 @@ Remote MCP authoring is declarative: the author supplies an endpoint and secret 
 
 | Concern | Source of truth |
 | --- | --- |
-| Config, author types, and Integration SDK contracts | `packages/core/src/kernel-types.ts`, `kernel-contracts.ts` |
+| Config, author types, and Integration SDK contracts | `packages/core/src/contracts/`, `api/definitions.ts`, `api/author.ts`, `api/integration.ts` |
 | Canonical/Public/Runtime/Extension discovery | `packages/core/src/resources/` |
-| Fixed lifecycle and Platform isolation | `packages/core/src/kernel/build-session.ts` |
+| Fixed lifecycle and Platform isolation | `packages/core/src/lifecycle/build-session.ts` |
 | Package, Document, Contribution, and report registries | `packages/core/src/package/` |
-| Transactional output | `packages/core/src/transaction.ts` |
+| Transactional output | `packages/core/src/output/transaction.ts` |
 | Platform output contracts | `packages/platforms/<id>/src/` |
 | Hooks discovery, compilation, and Platform Contributors | `packages/extensions/hooks/src/` |
 | MCP discovery, compilation, and Platform Contributors | `packages/extensions/mcp/src/` |
-| Public facade, SDK, and Project config loading | `packages/acplugin/src/index.ts`, `sdk.ts`, `project.ts` |
-| CLI and isolated Migration boundary | `packages/acplugin/src/cli.ts`, `migration/` |
+| Public facade, SDK, and Project config loading | `packages/acplugin/src/index.ts`, `sdk.ts`, `author/project.ts` |
+| CLI and isolated Migration boundary | `packages/acplugin/src/cli.ts`, `cli/`, `migration/` |
 
 Platforms own base Package paths, Documents, manifests, schemas, final Package identity, distributions, and candidate validation. Extension Contributors all read the same immutable base Package and may add owned Assets, fill declared add-only Document extension points, and report compatibility. They cannot observe other Contributions, replace a Platform, or write `dist` directly.
 

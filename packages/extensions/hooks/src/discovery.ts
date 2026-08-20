@@ -1,9 +1,10 @@
-import type {
-  ExtensionDiscoverContext,
-  ExtensionValidateContext,
-  JsonValue,
-  SourceDirectoryRef,
-  SourceFileRef,
+import {
+  snapshotJson,
+  type ExtensionDiscoverContext,
+  type ExtensionValidateContext,
+  type JsonValue,
+  type SourceDirectoryRef,
+  type SourceFileRef,
 } from '@tokenroll/acplugin/sdk';
 import {
   CLAUDE_CODE_PLATFORM_ID,
@@ -77,65 +78,6 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
   return prototype === Object.prototype || prototype === null;
 }
 
-/** 深度复制一个无 accessor、Symbol、cycle 或 executable 的 JSON 值。 */
-function copyJson(value: unknown, path: string, ancestors = new Set<object>()): JsonValue {
-  if (value === null || typeof value === 'string' || typeof value === 'boolean')
-    return value;
-  if (typeof value === 'number') {
-    if (!Number.isFinite(value))
-      throw new TypeError(`${path} must be finite.`);
-    return value;
-  }
-  if (typeof value !== 'object')
-    throw new TypeError(`${path} must contain JSON data.`);
-  if (ancestors.has(value))
-    throw new TypeError(`${path} must not contain cycles.`);
-  ancestors.add(value);
-  try {
-    if (Array.isArray(value)) {
-      /** 数组索引必须稠密且不能携带隐藏自定义字段。 */
-      const descriptors = Object.getOwnPropertyDescriptors(value);
-      if (Object.getOwnPropertySymbols(value).length > 0)
-        throw new TypeError(`${path} arrays must not contain symbol fields.`);
-      for (let index = 0; index < value.length; index += 1) {
-        if (!Object.hasOwn(value, index))
-          throw new TypeError(`${path} must not contain sparse arrays.`);
-      }
-      if (Object.keys(descriptors).some(field => field !== 'length'
-        && (!/^(?:0|[1-9][0-9]*)$/u.test(field) || Number(field) >= value.length)))
-        throw new TypeError(`${path} arrays must not contain custom fields.`);
-      /** 逐索引读取 data descriptor，绝不通过 Array.prototype.map 触发 getter。 */
-      const result: JsonValue[] = [];
-      for (let index = 0; index < value.length; index += 1) {
-        /** 稠密索引必须仍是显式 data property。 */
-        const descriptor = descriptors[String(index)]!;
-        if (!('value' in descriptor))
-          throw new TypeError(`${path}[${index}] must be a data property.`);
-        result.push(copyJson(descriptor.value, `${path}[${index}]`, ancestors));
-      }
-      return Object.freeze(result);
-    }
-    if (!isPlainObject(value) || Object.getOwnPropertySymbols(value).length > 0)
-      throw new TypeError(`${path} must be a plain JSON object.`);
-    /** descriptor 读取保证 getter 在任何阶段都不会执行。 */
-    const descriptors = Object.getOwnPropertyDescriptors(value);
-    /** result 与作者后续 mutation 完全断开。 */
-    const result: Record<string, JsonValue> = {};
-    for (const field of Object.keys(descriptors).sort()) {
-      /** 当前字段必须是显式 data property。 */
-      const descriptor = descriptors[field]!;
-      if (!('value' in descriptor))
-        throw new TypeError(`${path}.${field} must be a data property.`);
-      if (descriptor.value === undefined)
-        throw new TypeError(`${path}.${field} must not be undefined.`);
-      result[field] = copyJson(descriptor.value, `${path}.${field}`, ancestors);
-    }
-    return Object.freeze(result);
-  } finally {
-    ancestors.delete(value);
-  }
-}
-
 /** 把已加载作者模块转换为不包含 `run` 的 immutable descriptor State。 */
 function descriptorData(value: unknown): HookDescriptorData {
   if (!isPlainObject(value) || Object.getOwnPropertySymbols(value).length > 0)
@@ -150,19 +92,19 @@ function descriptorData(value: unknown): HookDescriptorData {
   return Object.freeze({
     event: fields.event === undefined || fields.event.value === undefined
       ? null
-      : copyJson(fields.event.value, 'Hook.event'),
+      : snapshotJson(fields.event.value, 'Hook.event'),
     ...(fields.matcher === undefined || fields.matcher.value === undefined
       ? {}
-      : { matcher: copyJson(fields.matcher.value, 'Hook.matcher') }),
+      : { matcher: snapshotJson(fields.matcher.value, 'Hook.matcher') }),
     ...(fields.timeout === undefined || fields.timeout.value === undefined
       ? {}
-      : { timeout: copyJson(fields.timeout.value, 'Hook.timeout') }),
+      : { timeout: snapshotJson(fields.timeout.value, 'Hook.timeout') }),
     ...(fields.statusMessage === undefined || fields.statusMessage.value === undefined
       ? {}
-      : { statusMessage: copyJson(fields.statusMessage.value, 'Hook.statusMessage') }),
+      : { statusMessage: snapshotJson(fields.statusMessage.value, 'Hook.statusMessage') }),
     ...(fields.platforms === undefined || fields.platforms.value === undefined
       ? {}
-      : { platforms: copyJson(fields.platforms.value, 'Hook.platforms') }),
+      : { platforms: snapshotJson(fields.platforms.value, 'Hook.platforms') }),
     unknownFields: Object.freeze(unknownFields),
     runValid: typeof fields.run?.value === 'function',
   });

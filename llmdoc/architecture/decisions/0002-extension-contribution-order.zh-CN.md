@@ -36,7 +36,7 @@ Kernel v2 需要的是相互独立的集成、可并行收集和确定性冲突�
 
 ## 证据
 
-- `packages/core/src/resources/extension-provider.ts`
-- `packages/core/src/package/package-registry.ts`
-- `packages/core/src/kernel/build-session.ts`
-- `packages/core/src/kernel-types.ts`（`PlatformContributor`、`ContributionContext`、`PackageContribution`）
+- `packages/core/src/resources/extensions.ts`
+- `packages/core/src/package/registry.ts`
+- `packages/core/src/lifecycle/build-session.ts`
+- `packages/core/src/contracts/`（`PlatformContributor`、`ContributionContext`、`PackageContribution`）

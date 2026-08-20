@@ -1,9 +1,9 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import parseSpdxExpression from 'spdx-expression-parse';
-import { compareCodePoints } from '../kernel/path-policy.js';
-import type { AuditedModule } from './managed-auditor.js';
-import type { ManagedPackageScope } from './managed-boundary.js';
+import { compareCodePoints } from '../security/path-policy.js';
+import type { AuditedModule } from './managed/auditor.js';
+import type { ManagedPackageScope } from './managed/boundary.js';
 
 /** 单个法律材料文件的固定读取上限。 */
 const MAX_LEGAL_FILE_BYTES = 4 * 1024 * 1024;

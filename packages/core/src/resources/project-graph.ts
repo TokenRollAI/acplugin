@@ -1,4 +1,8 @@
-import type { CanonicalProject, NodeRuntimeResource, PublicResourceFile } from '../kernel-types.js';
+import type {
+  CanonicalProject,
+  NodeRuntimeResource,
+  PublicResourceFile,
+} from '../contracts/components.js';
 
 /**
  * 将三个 Framework Provider 的独立结果组装为唯一 Project Graph。

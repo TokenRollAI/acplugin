@@ -22,7 +22,7 @@ describe('author and SDK package boundary', () => {
     /** sdk 源码必须保持单一 re-export，以便 root/SDK/CLI 共享品牌实现。 */
     const sdk = await readFile(`${sourceRoot}sdk.ts`, 'utf8');
 
-    expect(sdk).toContain('export * from \'@acplugin/core/kernel-sdk\'');
+    expect(sdk).toContain('export * from \'@acplugin/core/integration\'');
     expect(sdk).not.toContain('@tokenroll/acplugin-platform-');
     expect(sdk).not.toContain('@tokenroll/acplugin-extension-');
   });

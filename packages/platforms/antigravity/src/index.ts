@@ -6,15 +6,15 @@ import {
   createAntigravityComponents,
   validateAntigravityComponent,
   validateGeneratedSkillIds,
-} from './components.js';
+} from './package/components.js';
 import {
   createPluginDocument,
   validatePlatformOptions,
   type AntigravityPlatformOptions,
-} from './manifest.js';
-import { validateAntigravityPackage } from './validator.js';
+} from './package/manifest.js';
+import { validateAntigravityPackage } from './package/validator.js';
 
-export type { AntigravityPlatformOptions } from './manifest.js';
+export type { AntigravityPlatformOptions } from './package/manifest.js';
 
 /** Antigravity Platform 的稳定开放 ID。 */
 export const PLATFORM_ID = 'antigravity' as const;

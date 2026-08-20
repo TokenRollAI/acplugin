@@ -37,8 +37,8 @@ Build output and schema-v2 reports must also remain deterministic and free of ma
 
 ## Evidence
 
-- `packages/core/src/kernel/build-session.ts`
-- `packages/core/src/kernel/dev-session.ts`
-- `packages/core/src/kernel/report-safety.ts`
-- `packages/core/src/transaction.ts`
-- `packages/core/src/kernel-types.ts` (`IntegrationCloseContext`, `ExecutionService`, `BuildReport`)
+- `packages/core/src/lifecycle/build-session.ts`
+- `packages/core/src/lifecycle/dev-session.ts`
+- `packages/core/src/security/report-safety.ts`
+- `packages/core/src/output/transaction.ts`
+- `packages/core/src/contracts/` (`IntegrationCloseContext`, `ExecutionService`, `BuildReport`)

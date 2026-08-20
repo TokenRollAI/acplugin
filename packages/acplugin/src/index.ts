@@ -1,17 +1,17 @@
 import type {
   BuildReport,
   UserConfigExport,
-} from '@acplugin/core/kernel-author';
-import { stableJson } from '@acplugin/core/kernel-author';
-export { createProject, ProjectConfigError, runProject } from './project.js';
-export { ACPLUGIN_VERSION } from './version.js';
+} from '@acplugin/core/author';
+import { stableJson } from '@acplugin/core/author';
+export { createProject, ProjectConfigError, runProject } from './author/project.js';
+export { ACPLUGIN_VERSION } from './ecosystem/framework-version.js';
 export {
   nodeRuntimeArtifactPath,
   nodeRuntimeLicensesArtifactPath,
-} from '@acplugin/core/kernel-author';
+} from '@acplugin/core/author';
 
-export { initializeProject } from './init.js';
-export type { InitOptions, InitPlatformId, InitResult } from './init.js';
+export { initializeProject } from './scaffolding/init.js';
+export type { InitOptions, InitPlatformId, InitResult } from './scaffolding/init.js';
 
 /**
  * 为 acplugin.config.ts 提供类型推断友好的恒等辅助函数。
@@ -79,4 +79,4 @@ export type {
   SourceLocation,
   UserConfig,
   UserConfigExport,
-} from '@acplugin/core/kernel-author';
+} from '@acplugin/core/author';

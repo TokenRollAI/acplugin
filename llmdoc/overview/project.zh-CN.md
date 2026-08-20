@@ -38,7 +38,7 @@ Node Runtime 是 Framework Resource，不是 Extension package。默认把 `src/
 
 Workspace catalog 把各 Package 的 `tsc` 映射到 `@typescript/native`。仍依赖旧 Compiler API 的工具使用隔离的 `@typescript/typescript6` 别名；生产 Package 的类型检查保持 TypeScript 7。
 
-CLI 与作者 façade 位于 `packages/acplugin/src/cli.ts`、`src/index.ts`；`src/sdk.ts` 是 Integration 实现唯一入口。Core 固定生命周期由 `packages/core/src/kernel/build-session.ts` 实现，`Project.dev()` 的每个重建轮次也委托给同一 BuildSession。
+CLI 与作者 façade 位于 `packages/acplugin/src/cli.ts`、`src/cli/`、`src/index.ts` 和 `src/author/`；`src/sdk.ts` 是 Integration 实现唯一入口。Core 固定生命周期由 `packages/core/src/lifecycle/build-session.ts` 实现，`Project.dev()` 的每个重建轮次也委托给同一 BuildSession。
 
 ## Migration 边界
 

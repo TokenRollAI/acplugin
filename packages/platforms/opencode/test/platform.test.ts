@@ -13,7 +13,7 @@ import {
   type JsonValue,
 } from '@tokenroll/acplugin/sdk';
 import { openCode } from '../src/index.js';
-import { WORKSPACE_CONFIG_PATH } from '../src/config-document.js';
+import { WORKSPACE_CONFIG_PATH } from '../src/package/config-document.js';
 
 /** 测试结束后统一删除的临时工程根目录。 */
 const temporaryRoots: string[] = [];

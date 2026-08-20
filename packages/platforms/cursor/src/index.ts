@@ -3,10 +3,10 @@ import {
   type AcpluginPlatform,
   type JsonObject,
 } from '@tokenroll/acplugin/sdk';
-import { createCursorComponents, validateCursorComponent } from './components.js';
-import { createPluginDocument, validatePlatformOptions } from './manifest.js';
+import { createCursorComponents, validateCursorComponent } from './package/components.js';
+import { createPluginDocument, validatePlatformOptions } from './package/manifest.js';
 import type { CursorPlatformOptions } from './types.js';
-import { validateCursorPackage } from './validator.js';
+import { validateCursorPackage } from './package/validator.js';
 
 export type { CursorPlatformOptions } from './types.js';
 

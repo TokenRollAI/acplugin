@@ -4,8 +4,8 @@ import type {
   PortableNodeCompileOptions,
 } from '@tokenroll/acplugin/sdk';
 import type { HookDescriptorData, ValidatedHooks } from './discovery.js';
-import { createRunnerSource } from './runtime-source.js';
-import { createWireSource } from './wire-source.js';
+import { createRunnerSource } from './runtime/runner.js';
+import { createWireSource } from './runtime/wire.js';
 
 /** portable Handler 内联官方平台协议的稳定虚拟模块。 */
 const HOOK_WIRE_MODULE_ID = 'acplugin:hook-wire';

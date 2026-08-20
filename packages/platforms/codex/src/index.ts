@@ -7,14 +7,14 @@ import {
   createCodexComponents,
   validateCodexComponent,
   validateGeneratedSkillIds,
-} from './components.js';
+} from './package/components.js';
 import {
   createMarketplaceAssets,
   createPluginDocument,
   validatePlatformOptions,
-} from './manifest.js';
+} from './package/manifest.js';
 import type { CodexInterfaceOptions, CodexMarketplaceOptions, CodexPlatformOptions } from './types.js';
-import { validateCodexPackage } from './validator.js';
+import { validateCodexPackage } from './package/validation/index.js';
 
 export type {
   CodexCategory,
