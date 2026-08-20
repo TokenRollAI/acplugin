@@ -4,7 +4,6 @@ import {
   serializeBuildReport,
   type BuildReport,
 } from '../index.js';
-import { InitError } from '../scaffolding/init.js';
 
 /** CLI 边界失败使用的脱敏诊断。 */
 interface CliFailureDiagnostic {
@@ -73,30 +72,39 @@ export function writeDevProgress(report: BuildReport): void {
 
 /** 将配置或命令异常转换为不泄露内部详情的 CLI 报告。 */
 function failureReport(command: string, error: unknown, internal: boolean): CliFailureReport {
-  /** 配置和 init 错误保留安全原因，其余异常只输出固定消息。 */
+  /** 配置错误保留安全原因，其余异常只输出固定消息。 */
   const diagnostics: readonly CliFailureDiagnostic[] = error instanceof ProjectConfigError
     ? error.diagnostics
-    : error instanceof InitError
-      ? [{ code: 'INIT_INVALID', severity: 'error', message: error.message, phase: command }]
-      : [{
-          code: internal ? 'FRAMEWORK_INTERNAL_FAILED' : 'COMMAND_FAILED',
-          severity: 'error',
-          message: internal ? 'The command failed inside the framework.' : `${command} failed.`,
-          phase: internal ? 'internal' : command,
-        }];
+    : [{
+        code: internal ? 'FRAMEWORK_INTERNAL_FAILED' : 'COMMAND_FAILED',
+        severity: 'error',
+        message: internal ? 'The command failed inside the framework.' : `${command} failed.`,
+        phase: internal ? 'internal' : command,
+      }];
   return { schemaVersion: 2, command, diagnostics, success: false };
 }
 
-/** 展示尚未进入 Core 报告阶段的失败。 */
-export function writeFailure(command: string, error: unknown, json: boolean | undefined, internal: boolean): void {
-  /** 从未知异常收敛出的安全失败报告。 */
-  const report = failureReport(command, error, internal);
+/** 以统一 CLI 格式写出已由命令层脱敏分类的预期失败。 */
+export function writeKnownFailure(
+  command: string,
+  diagnostics: readonly CliFailureDiagnostic[],
+  json: boolean | undefined,
+): void {
+  /** 命令层只允许提交稳定的用户可见诊断。 */
+  const report: CliFailureReport = { schemaVersion: 2, command, diagnostics, success: false };
   if (json) {
     process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
     return;
   }
   for (const diagnostic of report.diagnostics)
     process.stderr.write(`${diagnostic.severity} ${diagnostic.code}: ${diagnostic.message}\n`);
+}
+
+/** 展示尚未进入 Core 报告阶段的失败。 */
+export function writeFailure(command: string, error: unknown, json: boolean | undefined, internal: boolean): void {
+  /** 从未知异常收敛出的安全失败报告。 */
+  const report = failureReport(command, error, internal);
+  writeKnownFailure(command, report.diagnostics, json);
 }
 
 /** 根据最终结构化诊断区分成功、项目失败和框架内部失败。 */

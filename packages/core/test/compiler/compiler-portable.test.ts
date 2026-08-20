@@ -6,7 +6,7 @@ import type { CompileJob, SourceFileRef } from '../../src/contracts/index.js';
 import { CompilerHost } from '../../src/compiler/compiler-service.js';
 import { packageScope } from '../../src/compiler/managed/boundary.js';
 import { AssetRegistry } from '../../src/services/assets.js';
-import { BuildSessionScope } from '../../src/lifecycle/session-scope.js';
+import { BuildSessionScope } from '../../src/services/session-scope.js';
 import { SourceRegistry } from '../../src/services/sources.js';
 import { WatchRegistry } from '../../src/services/watch.js';
 import { WorkDirectoryRegistry } from '../../src/services/work-directories.js';

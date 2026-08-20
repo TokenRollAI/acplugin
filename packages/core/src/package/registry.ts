@@ -20,6 +20,7 @@ import type {
 } from '../contracts/packages.js';
 import { AssetRegistry } from '../services/assets.js';
 import { dataArrayItems, dataObjectFields } from '../security/data-boundary.js';
+import { snapshotJson } from '../security/json-snapshot.js';
 import { compareCodePoints, safeRelativePath, sourceCollisionKey } from '../security/path-policy.js';
 import { snapshotCompatibility, snapshotMetadata } from './compatibility.js';
 import { documentIsEmpty, encodePackageDocument } from './documents.js';
@@ -28,7 +29,6 @@ import {
   documentFieldAvailable,
   documentFieldKey,
   snapshotFieldPath,
-  snapshotJson,
 } from './json-snapshot.js';
 
 /** Package、Document 与 Unit ID 共用的稳定标识规则。 */

@@ -11,7 +11,7 @@ import {
   stableJson,
   type Diagnostic,
   type PluginMetadata,
-} from '@acplugin/core';
+} from '@acplugin/core/integration';
 import { copyText } from './writers/shared.js';
 
 /** 只在生成工程验证期间向临时 ESM 代理暴露真实公开 API 的全局键。 */

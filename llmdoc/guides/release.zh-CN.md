@@ -20,11 +20,11 @@ Core、测试工作区、Docs 和 Playground 是私有包，不能发布，也�
 
 ## 仓库工作流
 
-`Check` 在 Pull Request 创建时自动执行：一个 Job 运行 lint/typecheck，另一个独立 Job 运行 `docs:check`，重新生成 API 页面、检查 VitePress 链接/结构，并验证及构建真实 Playground。
+`Check` 在 Pull Request 创建时自动执行：一个 Job 运行 lint/typecheck，一个独立 Job 运行完整 `test` 套件，另一个独立 Job 运行 `docs:check`，重新生成 API 页面、检查 VitePress 链接/结构，并验证及构建真实 Playground。
 
 `Verify` 仅能手工触发，并使用只读仓库权限。它在 Node 22.18 上从同一 Revision 构建和验证九个 tarball，上传这组精确 Artifact，再在干净的 Node 20.19 工程中消费同一组文件；不会发布或创建 Release 引用。同一 Revision 一起验证不代表这些 package 属于固定版本组。
 
-`Patch` 从仓库默认分支手工触发，必须提供目标分支。目标分支必须至少包含一个让公开 package 产生发布的有效 Changeset；空 Changeset 不满足门禁。工作流会在任何版本写入前使用 `pnpm changeset status` 验证发布计划，再用 `pnpm version-packages` 消费全部 Changeset，确认至少一个公开版本发生变化，刷新 pnpm lockfile，运行 lint 和 typecheck，然后创建或更新一个以所选目标分支为 base 的版本 PR。
+`Patch` 从仓库默认分支手工触发，必须提供目标分支。目标分支必须至少包含一个让公开 package 产生发布的有效 Changeset；空 Changeset 不满足门禁。工作流会在任何版本写入前使用 `pnpm changeset status` 验证发布计划，再用 `pnpm version-packages` 消费全部 Changeset，确认至少一个公开版本发生变化，刷新 pnpm lockfile，依次运行 versions check、lint、typecheck 和完整 `test` 套件，然后创建或更新一个以所选目标分支为 base 的版本 PR。
 
 为了让 `Patch` 使用 `GITHUB_TOKEN` 创建 PR，必须启用仓库设置 **Actions → General → Workflow permissions → Allow GitHub Actions to create and approve pull requests**。该工作流不会发布 package，也不会创建任何 Release 引用。
 

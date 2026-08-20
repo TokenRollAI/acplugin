@@ -18,11 +18,13 @@ import type {
   RunProjectOptions,
 } from '../contracts/project.js';
 import {
-  createKernelBuildEnvironment,
-  disposeKernelBuildEnvironment,
   normalizeProjectRunOptions,
   runKernelBuildSession,
 } from '../lifecycle/build-session.js';
+import {
+  createKernelBuildEnvironment,
+  disposeKernelBuildEnvironment,
+} from '../lifecycle/build-environment.js';
 import { createDevSession } from '../lifecycle/dev-session.js';
 import { resolveKernelConfig } from '../config/resolver.js';
 import { isInsidePath, safeRelativePath } from '../security/path-policy.js';

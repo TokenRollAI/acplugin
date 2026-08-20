@@ -1,7 +1,8 @@
 import process from 'node:process';
 import type { Command } from 'commander';
 import { initializeProject, type InitPlatformId } from '../../index.js';
-import { writeFailure } from '../output.js';
+import { InitError } from '../../scaffolding/prompts.js';
+import { writeFailure, writeKnownFailure } from '../output.js';
 
 /** Commander 解析后的 init 选项。 */
 interface InitCliOptions {
@@ -54,7 +55,16 @@ export function registerInitCommand(program: Command): void {
         if (options.install && !result.installed)
           process.exitCode = 1;
       } catch (error) {
-        writeFailure('init', error, options.json, false);
+        if (error instanceof InitError) {
+          writeKnownFailure('init', [{
+            code: 'INIT_INVALID',
+            severity: 'error',
+            message: error.message,
+            phase: 'init',
+          }], options.json);
+        } else {
+          writeFailure('init', error, options.json, false);
+        }
         process.exitCode = 1;
       }
     });

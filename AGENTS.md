@@ -136,7 +136,7 @@ pnpm run release:verify
 ## 发行
 
 - 九个公开包由 Changesets 独立版本化；兼容性由 lifecycle `apiVersion` 和主包 peer range 表达，不使用 fixed group。
-- `Check` Workflow 在 PR 上自动执行 lint/typecheck，并通过独立 Job 执行 `docs:check`。
+- `Check` Workflow 在 PR 上自动执行 lint/typecheck，并通过独立 Job 执行完整 `test` 与 `docs:check`。
 - `Patch` Workflow 只能手工触发；从默认分支选择目标分支，在写版本前确认至少一个有效 Changeset 会升级公开包，再消费 Changesets、生成 changelog、升级各自声明的公开包版本，并创建回到该目标分支的版本 PR。
 - 所有版本均由维护者从已验证 tarball 手工发布；仓库不得添加 Tag/npm 自动发布 Workflow。
 - 每个变更的公开包都要验证 Registry 精确版本；依赖新的主包 peer range 时先发布主包，再发布对应 Platform/Extension。

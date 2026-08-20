@@ -121,8 +121,10 @@ jobs:
           NODE
           pnpm install --lockfile-only
 
+      - run: pnpm run versions:check
       - run: pnpm run lint
       - run: pnpm run typecheck
+      - run: pnpm run test
 
       - name: Create or update the version PR
         id: version-pr

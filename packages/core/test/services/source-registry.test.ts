@@ -2,7 +2,7 @@ import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { BuildSessionScope } from '../../src/lifecycle/session-scope.js';
+import { BuildSessionScope } from '../../src/services/session-scope.js';
 import { SourcePathCollisionRegistry } from '../../src/security/path-policy.js';
 import { SourceRegistry } from '../../src/services/sources.js';
 

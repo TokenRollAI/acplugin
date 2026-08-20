@@ -4,7 +4,7 @@ import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { defineExtension, definePlatform } from '../../src/api/definitions.js';
 import { resolveKernelConfig, type ResolvedKernelConfig } from '../../src/config/resolver.js';
-import { BuildSessionScope } from '../../src/lifecycle/session-scope.js';
+import { BuildSessionScope } from '../../src/services/session-scope.js';
 import { DiagnosticRegistry } from '../../src/services/diagnostics.js';
 import { SourceRegistry } from '../../src/services/sources.js';
 import { WatchRegistry } from '../../src/services/watch.js';

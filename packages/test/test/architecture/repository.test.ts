@@ -58,7 +58,7 @@ describe('repository release and documentation guards', () => {
   });
 
   it('does not expose an automated publication path', async () => {
-    /** PR 阶段只做静态检查的 Action 内容。 */
+    /** PR 阶段执行静态与行为检查的 Action 内容。 */
     const check = await read('.github/workflows/check.yml');
     /** 手动消费 Changeset 并创建版本 PR 的 Action 内容。 */
     const patch = await read('.github/workflows/patch.yml');
@@ -83,7 +83,8 @@ describe('repository release and documentation guards', () => {
     expect(check).not.toMatch(/\bpush:/);
     expect(check).toContain('pnpm run lint');
     expect(check).toContain('pnpm run typecheck');
-    expect(check).not.toMatch(/pnpm run (?:test|build|release:verify)/);
+    expect(check).toContain('pnpm run test');
+    expect(check).not.toMatch(/pnpm run (?:build|release:verify)/);
     expect(check).toContain('pnpm run versions:check');
     expect(check).toContain('node-version: 22.18.0');
     expect(patch).toContain('workflow_dispatch:');
@@ -91,6 +92,20 @@ describe('repository release and documentation guards', () => {
     expect(patch).toContain('pnpm changeset status --output');
     expect(patch).toContain('status.releases.length === 0');
     expect(patch).toContain('pnpm version-packages');
+    expect(patch).toContain('pnpm run versions:check');
+    expect(patch).toContain('pnpm run lint');
+    expect(patch).toContain('pnpm run typecheck');
+    expect(patch).toContain('pnpm run test');
+    /** Version PR 必须验证消费 Changeset 后的最终 lockfile 与源码，且门禁顺序固定。 */
+    const patchStepOffsets = [
+      'pnpm version-packages',
+      'pnpm install --lockfile-only',
+      'pnpm run versions:check',
+      'pnpm run lint',
+      'pnpm run typecheck',
+      'pnpm run test',
+    ].map(step => patch.indexOf(step));
+    expect(patchStepOffsets).toEqual([...patchStepOffsets].sort((left, right) => left - right));
     expect(patch).toContain('beta prerelease versions');
     expect(patch).toContain('peter-evans/create-pull-request@v8');
     expect(patch).toContain('base: ${{ inputs.target_branch }}');

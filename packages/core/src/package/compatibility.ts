@@ -11,9 +11,9 @@ import type {
 } from '../contracts/integrations.js';
 import type { PluginMetadata } from '../contracts/config.js';
 import { DiagnosticRegistry } from '../services/diagnostics.js';
+import { snapshotJson } from '../security/json-snapshot.js';
 import { compareCodePoints, safeRelativePath } from '../security/path-policy.js';
 import { sanitizeStableText } from '../security/report-safety.js';
-import { snapshotJson } from './json-snapshot.js';
 
 /** subject/capability/field/transformation/cause 使用的稳定结构化身份。 */
 const STABLE_REFERENCE = /^[a-z0-9]+(?:[-.:/][a-z0-9]+)*$/u;

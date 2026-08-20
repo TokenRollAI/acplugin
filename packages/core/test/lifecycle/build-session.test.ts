@@ -5,10 +5,12 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { BytesAssetRef, SourceAssetRef, SourceFileRef } from '../../src/contracts/index.js';
 import { defineExtension, definePlatform } from '../../src/api/definitions.js';
 import {
-  createKernelBuildEnvironment,
-  disposeKernelBuildEnvironment,
   runKernelBuildSession,
 } from '../../src/lifecycle/build-session.js';
+import {
+  createKernelBuildEnvironment,
+  disposeKernelBuildEnvironment,
+} from '../../src/lifecycle/build-environment.js';
 import { resolveKernelConfig } from '../../src/config/resolver.js';
 
 /** 当前套件创建并统一删除的临时工程。 */

@@ -13,11 +13,13 @@ import type {
 } from '../contracts/project.js';
 import { createBuildReport } from '../package/report-builder.js';
 import {
-  createKernelBuildEnvironment,
-  disposeKernelBuildEnvironment,
   runKernelBuildSession,
   type KernelBuildSessionResult,
 } from './build-session.js';
+import {
+  createKernelBuildEnvironment,
+  disposeKernelBuildEnvironment,
+} from './build-environment.js';
 
 /** Dev coordinator 向配置 loader 请求的固定命令。 */
 export interface DevSessionRoundInput {

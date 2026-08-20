@@ -19,6 +19,11 @@ describe('init', () => {
     roots.push(cwd);
     /** 非交互初始化返回的脚手架摘要。 */
     const result = await initializeProject({ cwd, directory: 'demo-plugin', yes: true });
+    /** 由公开 package manifests 生成、并由脚手架消费的当前生态版本快照。 */
+    const versions = JSON.parse(await fs.readFile(
+      new URL('../../../acplugin/src/ecosystem/versions.json', import.meta.url),
+      'utf8',
+    )) as Record<string, string>;
 
     expect(result.directory).toBe('demo-plugin');
     expect(result.platforms).toEqual(['claude-code', 'codex']);
@@ -32,8 +37,8 @@ describe('init', () => {
     expect(JSON.parse(await fs.readFile(path.join(cwd, 'demo-plugin/package.json'), 'utf8'))).toMatchObject({
       engines: { node: '^20.19.0 || ^22.13.0 || >=23.5.0' },
       devDependencies: {
-        '@tokenroll/acplugin-platform-claude-code': '^0.0.2-beta',
-        '@tokenroll/acplugin-platform-codex': '^0.0.3-beta',
+        '@tokenroll/acplugin-platform-claude-code': `^${versions['@tokenroll/acplugin-platform-claude-code']}`,
+        '@tokenroll/acplugin-platform-codex': `^${versions['@tokenroll/acplugin-platform-codex']}`,
         'typescript': '^7.0.2',
       },
     });

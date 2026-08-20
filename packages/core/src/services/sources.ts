@@ -8,7 +8,7 @@ import type {
   SourceFileRef,
   SourceService,
 } from '../contracts/services.js';
-import { BuildSessionScope } from '../lifecycle/session-scope.js';
+import { BuildSessionScope } from './session-scope.js';
 import {
   compareCodePoints,
   isInsidePath,

@@ -6,12 +6,12 @@ import type {
   SourceFileRef,
 } from '../contracts/services.js';
 import { safeRelativePath, validatePhysicalEntry } from '../security/path-policy.js';
-import { SourceRegistry } from './sources.js';
-import { WatchRegistry, type WatchObservation } from './watch.js';
-import { WorkDirectoryRegistry } from './work-directories.js';
-import { loadManagedEngine, type EngineInputOptions, type EngineOutputOptions, type ManagedEngine } from '../compiler/engine-loader.js';
-import { packageScope, type ManagedPackageScope } from '../compiler/managed/boundary.js';
-import { normalizeNodeBuiltin, portableNodePolicyPlugin } from '../compiler/portable-node/policy.js';
+import { SourceRegistry } from '../services/sources.js';
+import { WatchRegistry, type WatchObservation } from '../services/watch.js';
+import { WorkDirectoryRegistry } from '../services/work-directories.js';
+import { loadManagedEngine, type EngineInputOptions, type EngineOutputOptions, type ManagedEngine } from './engine-loader.js';
+import { packageScope, type ManagedPackageScope } from './managed/boundary.js';
+import { normalizeNodeBuiltin, portableNodePolicyPlugin } from './portable-node/policy.js';
 
 /** Module Host operation 使用的稳定 ID。 */
 const MODULE_ID = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
@@ -139,7 +139,7 @@ export interface ModuleHostOptions {
   readonly watch: WatchRegistry;
 }
 
-/** Core 唯一、按 owner 签发可信 TS/JS loader 的 Module Host。 */
+/** Core 唯一、按 owner 签发可信 TS/JS Rolldown loader 的 Module Host。 */
 export class ModuleHost {
   /** 工程解析根。 */
   readonly #projectRoot: string;

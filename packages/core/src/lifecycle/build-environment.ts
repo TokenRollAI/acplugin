@@ -5,11 +5,11 @@ import { CompilerHost } from '../compiler/compiler-service.js';
 import { AssetRegistry } from '../services/assets.js';
 import { DiagnosticRegistry } from '../services/diagnostics.js';
 import { ExecutionHost } from '../services/execution.js';
-import { ModuleHost } from '../services/modules.js';
+import { ModuleHost } from '../compiler/module-host.js';
 import { SourceRegistry } from '../services/sources.js';
 import { WatchRegistry } from '../services/watch.js';
 import { WorkDirectoryRegistry } from '../services/work-directories.js';
-import { BuildSessionScope } from './session-scope.js';
+import { BuildSessionScope } from '../services/session-scope.js';
 
 /** Project config loader 与 BuildSession 共享的唯一 Host/Registry 环境。 */
 export interface KernelBuildEnvironment {

@@ -45,12 +45,6 @@ import {
   type KernelBuildEnvironment,
 } from './build-environment.js';
 
-export {
-  createKernelBuildEnvironment,
-  disposeKernelBuildEnvironment,
-  type KernelBuildEnvironment,
-} from './build-environment.js';
-
 /** Kernel one-shot 执行所需的内部输入。 */
 export interface KernelBuildSessionInput {
   readonly config: ResolvedKernelConfig;

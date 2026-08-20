@@ -20,11 +20,11 @@ Repository build and release tooling requires Node.js `^22.18.0 || >=24.11.0`; C
 
 ## Repository workflows
 
-`Check` runs automatically for pull requests. One job performs lint and typecheck; an independent job runs `docs:check`, which rebuilds generated API pages, checks VitePress links/structure, and validates/builds the real Playground.
+`Check` runs automatically for pull requests. One job performs lint and typecheck; an independent job runs the complete `test` suite; another independent job runs `docs:check`, which rebuilds generated API pages, checks VitePress links/structure, and validates/builds the real Playground.
 
 `Verify` is manually dispatched with read-only repository permissions. It builds and validates all nine tarballs from one revision on Node 22.18, uploads that exact artifact set, then consumes it in a clean Node 20.19 project. It never publishes or creates release references. Verifying one revision together does not make the packages a fixed version cohort.
 
-`Patch` is manually dispatched from the repository default branch with a required target-branch input. The target branch must contain at least one effective Changeset that releases a public package; an empty Changeset does not pass the gate. Before any version write, the workflow checks the release plan with `pnpm changeset status`. It then consumes all Changesets with `pnpm version-packages`, verifies that at least one public version changed, refreshes the pnpm lockfile, runs lint and typecheck, and creates or updates a version PR whose base is the selected target branch.
+`Patch` is manually dispatched from the repository default branch with a required target-branch input. The target branch must contain at least one effective Changeset that releases a public package; an empty Changeset does not pass the gate. Before any version write, the workflow checks the release plan with `pnpm changeset status`. It then consumes all Changesets with `pnpm version-packages`, verifies that at least one public version changed, refreshes the pnpm lockfile, runs versions check, lint, typecheck, and the complete test suite, and creates or updates a version PR whose base is the selected target branch.
 
 The repository setting **Actions → General → Workflow permissions → Allow GitHub Actions to create and approve pull requests** must be enabled for `Patch` to create the PR with `GITHUB_TOKEN`. The workflow does not publish packages or create release references.
 

@@ -82,13 +82,13 @@ Kernel 不把物理路径和任意文件系统权限交给 Integration，而是�
 | 模块 | 能力 |
 | --- | --- |
 | `services/sources.ts` | 验证来源根、普通文件、symlink/特殊文件、SourceRef 授权 |
-| `services/modules.ts` | 通过受管 ESM 图加载可信 TypeScript/JavaScript config/descriptor |
+| `compiler/module-host.ts` | 通过唯一受管 Rolldown ESM 图加载可信 TypeScript/JavaScript config/descriptor |
 | `compiler/compiler-service.ts` | 当前 Session 唯一 Rolldown owner，返回 GeneratedAssetRef 与脱敏模块图 |
 | `services/execution.ts` | 在隔离 cwd、最小显式环境、超时和输出上限内执行 portable Node Asset |
 | `services/assets.ts` | 签发 Source/Generated/Bytes AssetRef，记录 owner/origin/mode/size/hash 与 grant |
 | `services/watch.ts` | 集中记录 Resource、Module、Compiler 实际读取的依赖 |
 | `services/work-directories.ts` | 为 owner 管理不可伪造的内部 workDir；不公开物理写权限 |
-| `lifecycle/session-scope.ts` | Session 结束后统一撤销所有 capability identity |
+| `services/session-scope.ts` | Session 结束后统一撤销所有 capability identity |
 
 AssetRef 不是可伪造的 `{ path }`。Registry 使用对象身份验证当前 Session、真实 issuer 与 consumer grant；报告中的 origin 为结构化工程相对来源，不影响内容 hash。
 

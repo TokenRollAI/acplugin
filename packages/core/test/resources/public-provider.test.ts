@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { definePlatform } from '../../src/api/definitions.js';
 import { resolveKernelConfig } from '../../src/config/resolver.js';
 import { AssetRegistry } from '../../src/services/assets.js';
-import { BuildSessionScope } from '../../src/lifecycle/session-scope.js';
+import { BuildSessionScope } from '../../src/services/session-scope.js';
 import { DiagnosticRegistry } from '../../src/services/diagnostics.js';
 import { SourceRegistry } from '../../src/services/sources.js';
 import { WatchRegistry } from '../../src/services/watch.js';

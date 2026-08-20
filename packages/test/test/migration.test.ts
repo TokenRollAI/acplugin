@@ -642,6 +642,11 @@ Review code.
     const manifest = JSON.parse(await fs.readFile(path.join(root, 'migrated/package.json'), 'utf8')) as {
       readonly devDependencies: Record<string, string>;
     };
+    /** Migration 与 init 共用的、由公开 package manifests 生成的生态版本快照。 */
+    const versions = JSON.parse(await fs.readFile(
+      new URL('../../acplugin/src/ecosystem/versions.json', import.meta.url),
+      'utf8',
+    )) as Record<string, string>;
 
     expect(report.success, JSON.stringify(report.diagnostics)).toBe(true);
     expect(report.items).toContainEqual(expect.objectContaining({
@@ -657,7 +662,8 @@ Review code.
     expect(descriptor).toContain('from \'@tokenroll/acplugin-extension-mcp\'');
     expect(descriptor).toContain('"env":"DOCS_TOKEN"');
     expect(descriptor).toContain('"env": "TENANT_ID"');
-    expect(manifest.devDependencies['@tokenroll/acplugin-extension-mcp']).toBe('^0.0.2-beta');
+    expect(manifest.devDependencies['@tokenroll/acplugin-extension-mcp'])
+      .toBe(`^${versions['@tokenroll/acplugin-extension-mcp']}`);
     await expect(fs.access(path.join(root, 'migrated/node_modules'))).rejects.toThrow();
   });
 });

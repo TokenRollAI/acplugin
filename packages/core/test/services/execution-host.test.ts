@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import type { AssetMode, GeneratedAssetRef } from '../../src/contracts/index.js';
 import { CompilerHost } from '../../src/compiler/compiler-service.js';
 import { AssetRegistry } from '../../src/services/assets.js';
-import { BuildSessionScope } from '../../src/lifecycle/session-scope.js';
+import { BuildSessionScope } from '../../src/services/session-scope.js';
 import { ExecutionHost } from '../../src/services/execution.js';
 import { SourceRegistry } from '../../src/services/sources.js';
 import { WatchRegistry } from '../../src/services/watch.js';

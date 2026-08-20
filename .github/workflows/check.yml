@@ -22,6 +22,19 @@ jobs:
       - run: pnpm run lint
       - run: pnpm run typecheck
 
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22.18.0
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm run test
+
   docs:
     name: Docs and playground
     runs-on: ubuntu-latest

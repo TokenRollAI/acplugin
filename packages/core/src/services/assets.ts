@@ -12,7 +12,7 @@ import type {
 } from '../contracts/services.js';
 import type { AssetOrigin } from '../contracts/reports.js';
 import type { CompileAssetOriginInput } from '../contracts/compiler.js';
-import { BuildSessionScope } from '../lifecycle/session-scope.js';
+import { BuildSessionScope } from './session-scope.js';
 import { compareCodePoints, safeRelativePath, validatePhysicalEntry } from '../security/path-policy.js';
 import { SourceRegistry } from './sources.js';
 import type { WorkDirectoryHandle } from './work-directories.js';

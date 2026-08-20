@@ -3,7 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { AssetRegistry } from '../../src/services/assets.js';
-import { BuildSessionScope } from '../../src/lifecycle/session-scope.js';
+import { BuildSessionScope } from '../../src/services/session-scope.js';
 import { DiagnosticRegistry } from '../../src/services/diagnostics.js';
 import { SourceRegistry } from '../../src/services/sources.js';
 import { WatchRegistry } from '../../src/services/watch.js';

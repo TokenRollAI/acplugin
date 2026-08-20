@@ -21,6 +21,28 @@ const watcherPattern = /(?:from\s+['"]chokidar['"]|import\(\s*['"]chokidar['"])/
 /** 主包 bundle 私有 Core 时允许保留的精确源码入口。 */
 const privateCoreImportPattern = /(?:from\s+['"]@acplugin\/core(?:\/[^'"]+)?['"]|import\(\s*['"]@acplugin\/core(?:\/[^'"]+)?['"])/;
 
+/** 底层 Registry 不得动态或为运行时值反向加载 Compiler/lifecycle。 */
+function hasServiceLayerRuntimeImport(source: string): boolean {
+  if (/import\s*\(\s*['"]\.\.\/(?:compiler|lifecycle)\//u.test(source)
+    || /^[ \t]*import[ \t]*['"]\.\.\/(?:compiler|lifecycle)\//mu.test(source)) {
+    return true;
+  }
+  /** 每个指向上层的静态 import clause 用于区分 value 与纯 type specifier。 */
+  const staticImports = source.matchAll(/^[ \t]*import\s+([^;]*?)\s+from\s+['"]\.\.\/(?:compiler|lifecycle)\//gmu);
+  for (const match of staticImports) {
+    /** import type 声明整体不会建立运行时依赖。 */
+    const clause = match[1]!.trim();
+    if (/^type\b/u.test(clause))
+      continue;
+    /** 命名 import 只有全部 specifier 都带 inline type 时才是纯类型依赖。 */
+    const named = /^\{([\s\S]*)\}$/u.exec(clause);
+    if (named !== null && named[1]!.split(',').every(specifier => /^type\b/u.test(specifier.trim())))
+      continue;
+    return true;
+  }
+  return false;
+}
+
 /** 架构重构完成后正式生产源码不允许保留任何 v1 架构符号。 */
 const v1ArchitectureAllowlist = [] as const;
 
@@ -100,6 +122,18 @@ async function matchingFiles(pattern: RegExp): Promise<string[]> {
     .sort();
 }
 
+/** 返回 services 生产文件中命中层级反向依赖的稳定路径。 */
+async function matchingServiceLayerImports(): Promise<readonly string[]> {
+  /** 只检查 Core services 本身，Compiler 可以合法消费这些 registry。 */
+  const files = await sourceFiles('packages/core/src/services');
+  /** 每个 Service 源码与其路径配对后检查静态 import。 */
+  const sources = await Promise.all(files.map(async file => ({ file, source: await fs.readFile(path.join(root, file), 'utf8') })));
+  return sources
+    .filter(({ source }) => hasServiceLayerRuntimeImport(source))
+    .map(({ file }) => file)
+    .sort();
+}
+
 describe('Integration architecture boundary guard', () => {
   it('only shrinks the exact v1 architecture baseline', async () => {
     expect(await matchingFiles(v1ArchitecturePattern)).toEqual([...v1ArchitectureAllowlist].sort());
@@ -121,6 +155,28 @@ describe('Integration architecture boundary guard', () => {
 
   it('keeps private Core imports confined to the bundled main package facade', async () => {
     expect(await matchingFiles(privateCoreImportPattern)).toEqual([...privateCoreImportAllowlist].sort());
+  });
+
+  it('keeps Core registries below compiler and lifecycle orchestration', async () => {
+    expect(await matchingServiceLayerImports()).toEqual([]);
+  });
+
+  it('recognizes every runtime import form in the service-layer guard', () => {
+    /** 普通、side-effect 与动态 import 都会建立运行时依赖。 */
+    const runtimeImports = [
+      'import { CompilerHost } from "../compiler/compiler-service.js";',
+      'import "../lifecycle/build-session.js";',
+      'const module = await import("../compiler/module-host.js");',
+    ];
+    for (const source of runtimeImports)
+      expect(hasServiceLayerRuntimeImport(source)).toBe(true);
+    expect(hasServiceLayerRuntimeImport('import { type Scope, CompilerHost } from "../compiler/compiler-service.js";')).toBe(true);
+    expect(hasServiceLayerRuntimeImport('import type { Scope } from "../services/types.js";\nimport { CompilerHost } from "../compiler/compiler-service.js";')).toBe(true);
+    /** 整体或逐 specifier 的纯类型依赖和同层 Service 依赖都不违反运行时层级。 */
+    expect(hasServiceLayerRuntimeImport('import type { KernelBuildEnvironment } from "../lifecycle/build-environment.js";')).toBe(false);
+    expect(hasServiceLayerRuntimeImport('import { type KernelBuildEnvironment } from "../lifecycle/build-environment.js";')).toBe(false);
+    expect(hasServiceLayerRuntimeImport('import { type Scope, type Token as Identity } from "../compiler/types.js";')).toBe(false);
+    expect(hasServiceLayerRuntimeImport('import { SourceRegistry } from "../services/sources.js";')).toBe(false);
   });
 
   it('keeps the removed Node Runtime Extension absent from the workspace', async () => {

@@ -13,7 +13,7 @@ import type {
 } from '../../src/contracts/index.js';
 import { defineExtension } from '../../src/api/definitions.js';
 import { AssetRegistry } from '../../src/services/assets.js';
-import { BuildSessionScope } from '../../src/lifecycle/session-scope.js';
+import { BuildSessionScope } from '../../src/services/session-scope.js';
 import { DiagnosticRegistry } from '../../src/services/diagnostics.js';
 import { SourceRegistry } from '../../src/services/sources.js';
 import { WorkDirectoryRegistry } from '../../src/services/work-directories.js';

@@ -1,5 +1,5 @@
 /**
- * 绑定一次 BuildSession 内所有 capability registry 的存活状态。
+ * 为一次 BuildSession 的 capability registry 绑定共同存活状态。
  *
  * Scope 本身不通过 SDK 暴露；SourceRef/AssetRef 的运行时授权仍由各 Registry
  * 的 WeakMap 对象身份记录完成。

@@ -3,11 +3,7 @@ import type {
   JsonObject,
   JsonValue,
 } from '../contracts/common.js';
-import { snapshotJson } from '../security/json-snapshot.js';
 import { compareCodePoints } from '../security/path-policy.js';
-
-/** Package 领域沿用唯一的 Core strict JSON snapshot 实现。 */
-export { snapshotJson };
 
 /**
  * 验证并复制非空 Document 字段路径。

@@ -1,6 +1,6 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
-import { BuildSessionScope } from '../lifecycle/session-scope.js';
+import { BuildSessionScope } from './session-scope.js';
 import { compareCodePoints, isInsidePath, projectReportPath, sourceCollisionKey } from '../security/path-policy.js';
 
 /** Host 向唯一 Watch Registry 提交的单个物理观察。 */

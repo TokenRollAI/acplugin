@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
-import { BuildSessionScope } from '../lifecycle/session-scope.js';
+import { BuildSessionScope } from './session-scope.js';
 import { isInsidePath, safeRelativePath, validatePhysicalEntry } from '../security/path-policy.js';
 
 /** WorkDirectoryRegistry 私有的不可伪造目录句柄。 */

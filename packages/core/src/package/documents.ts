@@ -6,7 +6,7 @@ import type {
   JsonValue,
 } from '../contracts/common.js';
 import type { PackageDocumentSnapshot } from '../contracts/packages.js';
-import { snapshotJson } from './json-snapshot.js';
+import { snapshotJson } from '../security/json-snapshot.js';
 
 /** Frontmatter Document 的唯一结构化 schema。 */
 interface FrontmatterDocumentValue extends JsonObject {
