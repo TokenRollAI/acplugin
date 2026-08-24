@@ -1,7 +1,17 @@
 import type { Hooks, Platform, ConvertedFile } from '../types.js';
 
 // Events that have reasonable mapping across platforms
-const PORTABLE_EVENTS = ['PostToolUse', 'PreToolUse', 'Stop', 'SessionStart'];
+const PORTABLE_EVENTS = ['PostToolUse', 'PreToolUse', 'Stop', 'SessionStart', 'PreCompact'];
+
+// Human-readable timing phrase per event, used when degrading a hook to an
+// AGENTS.md note. "Run after PreCompact" would be semantically wrong.
+const EVENT_TIMING: Record<string, string> = {
+  'SessionStart': 'At the start of every session, run',
+  'Stop': 'When the session stops, run',
+  'PreCompact': 'Right before context compaction, run',
+  'PreToolUse': 'Before each tool use, run',
+  'PostToolUse': 'After each tool use, run',
+};
 
 // Claude Code PascalCase → Cursor camelCase event name mapping
 const CURSOR_EVENT_MAP: Record<string, string> = {
@@ -113,14 +123,14 @@ function convertCommandHook(
       // Codex doesn't have hooks — add as a note in AGENTS.md
       return {
         path: `AGENTS.md.hook-${event}`,
-        content: `## Hook: ${event}${matcher ? ` (${matcher})` : ''}\n\nRun after ${event}: \`${command}\`\n`,
+        content: `## Hook: ${event}${matcher ? ` (${matcher})` : ''}\n\n${EVENT_TIMING[event] || `On ${event}, run`}: \`${command}\`\n`,
         type: 'hook',
       };
     case 'opencode':
       // OpenCode doesn't have a public hooks system — add as a note
       return {
         path: `AGENTS.md.hook-${event}`,
-        content: `## Hook: ${event}${matcher ? ` (${matcher})` : ''}\n\nRun after ${event}: \`${command}\`\n`,
+        content: `## Hook: ${event}${matcher ? ` (${matcher})` : ''}\n\n${EVENT_TIMING[event] || `On ${event}, run`}: \`${command}\`\n`,
         type: 'hook',
       };
     case 'antigravity':

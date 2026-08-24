@@ -22,6 +22,25 @@ const sampleHooks: Hooks = {
 };
 
 describe('convertHooks', () => {
+  it('degrades PreCompact to a codex note instead of skipping it', () => {
+    const hooks: Hooks = {
+      PreCompact: [{ hooks: [{ type: 'command', command: 'npx --no-install llmdoc hook compact' }] }],
+    };
+    const result = convertHooks(hooks, 'codex');
+    const note = result.converted.find(f => f.content.includes('PreCompact'));
+    expect(note).toBeDefined();
+    expect(note!.content).toContain('Right before context compaction');
+    expect(note!.content).toContain('npx --no-install llmdoc hook compact');
+    expect(result.warnings.find(w => w.includes('PreCompact'))).toBeUndefined();
+  });
+
+  it('uses event-appropriate timing phrases in degraded notes', () => {
+    const result = convertHooks(sampleHooks, 'codex');
+    const sessionStart = result.converted.find(f => f.content.includes('SessionStart'));
+    expect(sessionStart!.content).toContain('At the start of every session');
+    expect(sessionStart!.content).not.toContain('Run after SessionStart');
+  });
+
   it('converts portable command hooks to codex notes', () => {
     const result = convertHooks(sampleHooks, 'codex');
     expect(result.converted.length).toBeGreaterThan(0);
