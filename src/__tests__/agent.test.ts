@@ -33,13 +33,25 @@ describe('convertAgent', () => {
     expect(result.content).not.toContain('sonnet');
   });
 
-  it('defaults to gpt-5.6-sol when no model specified', () => {
+  it('omits model when none specified so the platform default applies', () => {
     const noModelAgent: Agent = {
       ...sampleAgent,
       frontmatter: { ...sampleAgent.frontmatter, model: undefined },
     };
     const result = convertAgent(noModelAgent, 'codex');
-    expect(result.content).toContain('model = "gpt-5.6-sol"');
+    expect(result.content).not.toContain('model =');
+    expect(result.content).toContain('model_reasoning_effort');
+  });
+
+  it('omits model for model: inherit on every platform', () => {
+    const inheritAgent: Agent = {
+      ...sampleAgent,
+      frontmatter: { ...sampleAgent.frontmatter, model: 'inherit' },
+    };
+    expect(convertAgent(inheritAgent, 'codex').content).not.toContain('model =');
+    expect(convertAgent(inheritAgent, 'opencode').content).not.toContain('model:');
+    expect(convertAgent(inheritAgent, 'cursor').content).not.toContain('model:');
+    expect(convertAgent(inheritAgent, 'antigravity').content).not.toContain('model:');
   });
 
   it('maps tools to sandbox_mode for codex', () => {

@@ -3,6 +3,18 @@ import { stringifyFrontmatter } from '../utils/frontmatter.js';
 import { toToml } from '../utils/toml.js';
 import { mapModel } from '../utils/model.js';
 
+// 'inherit' (and an absent model field) means "use the session's default
+// model". Hardcoding a mapped model name here would freeze today's default
+// into the output and rot; omitting the field lets the target platform pick
+// its own current default.
+function resolvedModel(agent: Agent, platform: Platform): string | undefined {
+  const model = agent.frontmatter.model;
+  if (!model || model === 'inherit') {
+    return undefined;
+  }
+  return mapModel(model, platform);
+}
+
 export function convertAgent(agent: Agent, platform: Platform): ConvertedFile {
   switch (platform) {
     case 'codex':
@@ -30,10 +42,9 @@ function convertToCodex(agent: Agent): ConvertedFile {
     developer_instructions: agent.body.trim(),
   };
 
-  if (agent.frontmatter.model) {
-    tomlData.model = mapModel(agent.frontmatter.model, 'codex');
-  } else {
-    tomlData.model = mapModel('inherit', 'codex');
+  const model = resolvedModel(agent, 'codex');
+  if (model) {
+    tomlData.model = model;
   }
 
   if (agent.frontmatter.tools) {
@@ -62,8 +73,9 @@ function convertToOpenCode(agent: Agent): ConvertedFile {
     mode: 'subagent',
   };
 
-  if (agent.frontmatter.model) {
-    fm.model = mapModel(agent.frontmatter.model, 'opencode');
+  const model = resolvedModel(agent, 'opencode');
+  if (model) {
+    fm.model = model;
   }
 
   if (agent.frontmatter.maxTurns) {
@@ -98,8 +110,9 @@ function convertToCursor(agent: Agent): ConvertedFile {
     description: agent.frontmatter.description || `Agent: ${name}`,
   };
 
-  if (agent.frontmatter.model) {
-    fm.model = mapModel(agent.frontmatter.model, 'cursor');
+  const model = resolvedModel(agent, 'cursor');
+  if (model) {
+    fm.model = model;
   }
 
   // Map tools to readonly
@@ -123,8 +136,9 @@ function convertToAntigravity(agent: Agent): ConvertedFile {
     description: agent.frontmatter.description || `Agent: ${name}`,
   };
 
-  if (agent.frontmatter.model) {
-    fm.model = mapModel(agent.frontmatter.model, 'antigravity');
+  const model = resolvedModel(agent, 'antigravity');
+  if (model) {
+    fm.model = model;
   }
 
   // Antigravity's internal tool identifiers are not published, so we cannot

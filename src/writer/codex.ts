@@ -45,13 +45,16 @@ export function generateCodex(scan: ScanResult): ConvertResult {
 
     // Merge hook notes into AGENTS.md
     if (hookResult.converted.length > 0) {
-      const hookContent = '\n\n---\n\n# Hooks (from Claude Code)\n\n' +
+      const hookSection = '# Hooks (from Claude Code)\n\n' +
         hookResult.converted.map(f => f.content).join('\n\n');
       const existingAgentsMd = files.find(f => f.path === 'AGENTS.md');
       if (existingAgentsMd) {
-        existingAgentsMd.content += hookContent;
+        // Separate from prior instructions with a thematic break.
+        existingAgentsMd.content = existingAgentsMd.content.trimEnd() + '\n\n---\n\n' + hookSection + '\n';
       } else {
-        files.push({ path: 'AGENTS.md', content: hookContent.trim(), type: 'hook' });
+        // A fresh AGENTS.md must not open with "---": that reads as a
+        // frontmatter fence / stray horizontal rule.
+        files.push({ path: 'AGENTS.md', content: hookSection + '\n', type: 'hook' });
       }
     }
   }
