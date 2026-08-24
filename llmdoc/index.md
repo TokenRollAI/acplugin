@@ -13,7 +13,6 @@ ACPlugin is a canonical AI Plugin framework and CLI. Authors write Commands, Ski
 - [Using ACPlugin](guides/usage.md) · [使用 ACPlugin](guides/usage.zh-CN.md) — scaffold, author, validate, build, and migrate.
 - [按 Package 代码导览](guides/package-code-tour.zh-CN.md) — 每个 workspace package 的职责、架构、数据流、实现伪代码与修改入口。
 - [Release guide](guides/release.md) · [手动发布指南](guides/release.zh-CN.md) — independent public-package verification and fully manual publishing.
-- [中文代码注释规范](guides/commenting.zh-CN.md) — 中文声明注释、关键逻辑注释与自动守卫规则。
 
 ## Architecture
 

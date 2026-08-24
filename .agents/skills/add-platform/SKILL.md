@@ -27,5 +27,4 @@ pnpm run typecheck
 pnpm run test
 pnpm run build
 pnpm run docs:check
-pnpm run release:verify
 ```

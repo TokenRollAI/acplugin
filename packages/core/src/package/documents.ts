@@ -1,5 +1,5 @@
 /** Core 确定性编解码结构化 Package Document。 */
-import { stringify as stringifyToml } from '@iarna/toml';
+import { stringify as stringifyToml } from 'smol-toml';
 import { stringify as stringifyYaml } from 'yaml';
 import type {
   JsonObject,

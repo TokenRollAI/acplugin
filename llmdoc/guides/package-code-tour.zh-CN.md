@@ -250,7 +250,8 @@ schema-v2 `BuildReport` 包含：
 | `packages/extensions/*/test/` | descriptor、build、Contributor、compatibility、真实 runtime/protocol |
 | `packages/test/test/{architecture,api,cli,platforms,extensions,release}/` | 架构、公开 API、CLI、六平台、Extension 与发行边界集成；Migration 保持根测试路径 |
 | `scripts/verify-playground.mjs` | 全能力文件树、协议执行、Secret、双构建确定性 |
-| `scripts/verify-release.mjs` | 九个 tarball、ATTW/publint、peer rewrite、clean consumer |
+| `.github/workflows/changelog.yml` | `main` 合并后消费 Changeset 并维护版本/CHANGELOG PR |
+| `.github/workflows/release.yml` | 手工发布稳定 npm 版本；beta 使用本地 pnpm 命令 |
 
 完整门禁：
 
@@ -260,7 +261,6 @@ pnpm run typecheck
 pnpm run test
 pnpm run build
 pnpm run docs:check
-pnpm run release:verify
 ```
 
 ## 15. 修改入口速查

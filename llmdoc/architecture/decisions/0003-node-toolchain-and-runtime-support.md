@@ -15,13 +15,13 @@ The repository build tool and the published packages have different Node.js cons
 3. All public packages declare the intersection supported by their current direct runtime dependencies: `^20.19.0 || ^22.13.0 || >=23.5.0`.
 4. Generated Hooks/MCP code and package bundles retain the `node20` target. `@types/node` remains on the Node 20.19 API baseline.
 5. Private package manifests are not mass-rewritten to the repository toolchain range. Core is not published and its emitted code remains part of the Node 20-targeted main-package bundle.
-6. Release verification builds and packs on Node 22.18, then installs the exact verified tarballs in a separate Node 20.19 clean consumer smoke test.
+6. The repository Actions use Node 22.18 while published package manifests keep the separately declared Node 20.19-compatible runtime range.
 
 ## Consequences
 
-- Node 20 support is a tested product capability rather than an inaccurate broad manifest claim.
+- Node 20 support is expressed by the package runtime range rather than the repository build-tool range.
 - Contributors use the Node version required by the build tool without forcing every consumer to use it.
-- Runtime dependency upgrades must re-check the public engine intersection and the Node 20.19 consumer test.
+- Runtime dependency upgrades must re-check the public engine intersection.
 - Commander 15 features cannot be used while Node 20 remains supported; such an upgrade requires a new runtime-floor decision.
 
 ## Rejected alternatives
@@ -38,6 +38,6 @@ The repository build tool and the published packages have different Node.js cons
 - `packages/platforms/*/package.json:11`
 - `packages/extensions/hooks/package.json:11,21-28`
 - `packages/extensions/mcp/package.json:11,20-27`
-- `.github/workflows/check.yml:16-19`
-- `.github/workflows/patch.yml:42-46`
+- `.github/workflows/lint.yml`
+- `.github/workflows/typecheck.yml`
 - Locked manifests: tsdown 0.22.14, Commander 14.0.1, Chokidar 5.0.0, Rolldown 1.2.2, and `@inquirer/prompts` 8.5.2

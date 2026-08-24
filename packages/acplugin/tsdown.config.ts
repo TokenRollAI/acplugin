@@ -17,6 +17,7 @@ export default defineConfig({
   publint: true,
   attw: { profile: 'esm-only', level: 'error' },
   deps: {
-    alwaysBundle: ['@acplugin/core'],
+    // 主包内联私有 Core 与其闭包；新增 node_modules 依赖必须显式审阅后才能进入 tarball。
+    onlyBundle: ['chokidar', 'readdirp', 'smol-toml', 'yaml'],
   },
 });

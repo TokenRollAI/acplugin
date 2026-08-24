@@ -15,13 +15,13 @@
 3. 全部公开 package 声明当前直接运行依赖的支持交集：`^20.19.0 || ^22.13.0 || >=23.5.0`。
 4. 生成的 Hooks/MCP 代码与 package bundle 保持 `node20` target；`@types/node` 保持 Node 20.19 API 基线。
 5. 不把私有 package manifest 批量改成仓库工具链范围。Core 不发布，其 emitted code 最终属于以 Node 20 为目标的主包 bundle。
-6. 发布验证在 Node 22.18 构建并打包，再用单独的 Node 20.19 clean consumer smoke 安装同一批已验证 tarball。
+6. 仓库 Action 使用 Node 22.18；已发布 package manifest 继续声明独立的 Node 20.19 兼容运行时范围。
 
 ## 影响
 
-- Node 20 支持成为有测试的产品能力，而不是不准确的宽范围声明。
+- Node 20 支持由 package 运行时范围表达，而不受仓库构建工具范围牵连。
 - 贡献者使用构建工具所需版本，但消费者无需被迫跟随仓库工具链。
-- 升级运行依赖时必须重新检查公开 engine 交集与 Node 20.19 consumer 测试。
+- 升级运行依赖时必须重新检查公开 engine 交集。
 - 保留 Node 20 期间不能使用 Commander 15 专属能力；升级需要新的 runtime-floor 决策。
 
 ## 未采用方案
@@ -38,6 +38,6 @@
 - `packages/platforms/*/package.json:11`
 - `packages/extensions/hooks/package.json:11,21-28`
 - `packages/extensions/mcp/package.json:11,20-27`
-- `.github/workflows/check.yml:16-19`
-- `.github/workflows/patch.yml:42-46`
+- `.github/workflows/lint.yml`
+- `.github/workflows/typecheck.yml`
 - lock 中固定的 tsdown 0.22.14、Commander 14.0.1、Chokidar 5.0.0、Rolldown 1.2.2 与 `@inquirer/prompts` 8.5.2 manifest

@@ -12,4 +12,4 @@ Keep these invariants:
 - Migration stays lazy and isolated under `packages/acplugin/src/migration/`; legacy code is not normal runtime architecture.
 - Preserve deterministic, strict, whole-output builds. Official integrations import only the public main-package SDK through peer dependencies, and no public package exposes a private `@acplugin/*` runtime dependency.
 
-Use `pnpm run check` for runtime repository validation, `pnpm run docs:check` for Docs/Playground validation, and `pnpm run release:verify` for packed external-consumer verification.
+Use `pnpm run check` for runtime repository validation and `pnpm run docs:check` for Docs/Playground validation. PR automation intentionally runs only separate lint and typecheck Actions; run behavior, Docs, Playground, and packed-consumer checks in proportion to the change.

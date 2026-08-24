@@ -16,5 +16,7 @@
     "@acplugin/playground": "0.0.1-beta",
     "@acplugin/test": "0.0.1-beta"
   },
-  "changesets": []
+  "changesets": [
+    "kernel-v2-sdk-boundary"
+  ]
 }

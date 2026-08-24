@@ -14,7 +14,6 @@
   "publishConfig": { "access": "public" },
   "scripts": {
     "build": "tsdown",
-    "prepublishOnly": "pnpm run build",
     "test": "vitest run --passWithNoTests",
     "typecheck": "tsc -p tsconfig.json"
   },

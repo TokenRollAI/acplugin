@@ -26,10 +26,10 @@
     "typecheck": "tsc -p tsconfig.json"
   },
   "dependencies": {
-    "@iarna/toml": "^2.2.5",
     "chokidar": "^5.0.0",
     "rolldown": "catalog:",
     "semver": "^7.8.5",
+    "smol-toml": "^1.8.0",
     "spdx-expression-parse": "^5.0.0",
     "yaml": "^2.9.0"
   },

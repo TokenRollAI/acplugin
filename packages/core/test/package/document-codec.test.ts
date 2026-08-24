@@ -37,6 +37,23 @@ describe('Core Package Document codec', () => {
     }))).toBe('---\na: value\nz: 2\n---\nBody.\n');
   });
 
+  it('serializes TOML strings, arrays and nested tables deterministically', () => {
+    const value = {
+      title: 'Needs "quotes" and a newline\n',
+      values: ['first', 2, true],
+      nested: {
+        'a.b': 'quoted key',
+        'ratio': 1.5,
+        'zero': 0,
+      },
+    };
+    const first = text(document('toml', value));
+    const second = text(document('toml', value));
+
+    expect(first).toBe('title = "Needs \\"quotes\\" and a newline\\n"\nvalues = [ "first", 2, true ]\n\n[nested]\n"a.b" = "quoted key"\nratio = 1.5\nzero = 0\n');
+    expect(second).toBe(first);
+  });
+
   it('rejects unsupported roots and malformed frontmatter without lossy coercion', () => {
     expect(() => text(document('toml', ['not', 'an', 'object']))).toThrow('TOML Document root');
     expect(() => text(document('frontmatter', { frontmatter: {}, body: 'Body.', extra: true }))).toThrow('exactly');

@@ -415,14 +415,18 @@ The official integrations use the same public lifecycle SDK available to third-p
 pnpm install
 pnpm run check
 pnpm run docs:check
-pnpm run release:verify
 ```
 
-`release:verify` creates all nine public tarballs from one revision, inspects their files/manifests and type resolution, verifies peer rewriting and brand interoperability, and installs a six-Platform/two-Extension scaffold into a clean external consumer while exercising the built-in Runtime. It performs no npm publication.
+Pull requests run separate Lint and Typecheck Actions. After a feature PR containing Changesets merges into `main`, the Changelog Action consumes the pending Changesets and opens or updates a version PR containing the independent package version bumps and changelogs. It never publishes packages.
 
-Pull requests automatically run lint/typecheck and an independent Docs/Playground quality gate. The manually dispatched `Patch` workflow accepts a target branch containing at least one effective Changeset that bumps a public package, consumes its Changesets to bump versions and generate changelogs, and opens a version PR back to that branch.
+The manually dispatched Release Action only publishes stable semver versions to npm `latest`; it does not create tags or GitHub Releases. Beta publication stays local to an authorized maintainer:
 
-Every package is versioned independently and only changed packages are published. If a new integration release requires a newly published main-package peer range, publish and verify that main-package version first; otherwise unrelated integrations have no prescribed order. Each exact Registry version, package-specific tag, and GitHub Release is handled manually. The repository contains no automated publication workflow.
+```bash
+pnpm run publish:beta:dry-run
+pnpm run publish:beta
+```
+
+Both beta and stable release commands build once and then use pnpm's recursive public-workspace publish flow, which rewrites `workspace:^` peer ranges in packed manifests. Packages are independently versioned; do not create tags or GitHub Releases unless separately authorized.
 
 ## License
 

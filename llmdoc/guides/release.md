@@ -1,84 +1,49 @@
-# Manually releasing independently versioned public packages
+# Releasing independently versioned public packages
 
 > [中文对照](release.zh-CN.md)
 
-The repository has nine independently versioned public packages:
+ACPlugin has nine independently versioned public npm packages: the main package, six Platform packages, and Hooks/MCP Extensions. Core, Test, Docs, and Playground are private and must never be published.
 
-- `@tokenroll/acplugin`
-- `@tokenroll/acplugin-platform-claude-code`
-- `@tokenroll/acplugin-platform-codex`
-- `@tokenroll/acplugin-platform-cursor`
-- `@tokenroll/acplugin-platform-antigravity`
-- `@tokenroll/acplugin-platform-opencode`
-- `@tokenroll/acplugin-platform-pi`
-- `@tokenroll/acplugin-extension-hooks`
-- `@tokenroll/acplugin-extension-mcp`
+Repository tooling requires Node.js `^22.18.0 || >=24.11.0`. Published packages separately support `^20.19.0 || ^22.13.0 || >=23.5.0`.
 
-Core, the test workspace, Docs, and Playground are private and must not be published or appear as packed runtime dependencies. Every npm publication, Registry check, Git tag, and GitHub Release is performed manually by an authorized maintainer. The repository has no automated publication workflow.
+## Workflow
 
-Repository build and release tooling requires Node.js `^22.18.0 || >=24.11.0`; CI uses 22.18.0. All nine public packages currently declare the separate runtime range `^20.19.0 || ^22.13.0 || >=23.5.0`.
+1. A feature pull request targeting `main` includes a Changeset for every affected public package.
+2. `Lint` and `Typecheck` Actions run independently when that pull request is created or updated.
+3. After the feature merges into `main`, `Changelog` consumes pending Changesets and creates or updates `chore(release): version packages`. The version PR contains package manifest versions, changelogs, and the generated public-version snapshot. It does not publish.
+4. Merge the version PR only after reviewing the intended independent version bumps.
+5. Publish a beta locally, or manually dispatch `Release` for stable versions.
 
-## Repository workflows
+The repository setting **Actions → General → Workflow permissions → Allow GitHub Actions to create and approve pull requests** must be enabled for `Changelog` to create its version PR with `GITHUB_TOKEN`.
 
-`Check` runs automatically for pull requests. One job performs lint and typecheck; an independent job runs the complete `test` suite; another independent job runs `docs:check`, which rebuilds generated API pages, checks VitePress links/structure, and validates/builds the real Playground.
+## Prepare a beta
 
-`Verify` is manually dispatched with read-only repository permissions. It builds and validates all nine tarballs from one revision on Node 22.18, uploads that exact artifact set, then consumes it in a clean Node 20.19 project. It never publishes or creates release references. Verifying one revision together does not make the packages a fixed version cohort.
-
-`Patch` is manually dispatched from the repository default branch with a required target-branch input. The target branch must contain at least one effective Changeset that releases a public package; an empty Changeset does not pass the gate. Before any version write, the workflow checks the release plan with `pnpm changeset status`. It then consumes all Changesets with `pnpm version-packages`, verifies that at least one public version changed, refreshes the pnpm lockfile, runs versions check, lint, typecheck, and the complete test suite, and creates or updates a version PR whose base is the selected target branch.
-
-The repository setting **Actions → General → Workflow permissions → Allow GitHub Actions to create and approve pull requests** must be enabled for `Patch` to create the PR with `GITHUB_TOKEN`. The workflow does not publish packages or create release references.
-
-## Prepare a release
-
-1. Add Changesets for the affected public packages. Integration changes should name their owning Platform or Extension package; change the main package only when its CLI or public SDK changes.
-2. Inspect `pnpm changeset status`, consume the Changesets with `pnpm version-packages`, refresh the lockfile with `pnpm install --lockfile-only`, and confirm only the intended manifests changed. Versions need not match.
-3. Confirm every official Platform/Extension still declares `@tokenroll/acplugin` as `workspace:^` in the repository. Packing must rewrite it to a normal `^x.y.z` peer range.
-4. Run:
-
-   ```bash
-   pnpm install --frozen-lockfile
-   pnpm run check
-   pnpm run docs:check
-   pnpm run release:verify
-   ```
-
-`release:verify` packs all nine packages in a temporary directory, runs type-resolution and package-lint checks on the actual tarballs, validates manifests and contents, verifies peer rewriting and shared registry-brand interoperability through one main-package peer instance, then installs and builds a six-Platform/two-Extension scaffold in a clean external consumer. The consumer executes the Core Runtime output and proves Claude Code/Codex receive identical bytes. For the main package it parses the packed ESM graph, proves the CLI-to-Migration edge remains lazy, checks every external import against declared runtime dependencies, and rejects both external and bundled official integrations. It never publishes. CI passes `--tarball-dir <empty-directory>` to retain the exact verified files for the separate Node 20.19 consumer job; local calls can use the same option when tarballs need to be retained for release.
-
-Commit the exact verified release preparation before publishing. Do not rebuild from another revision after verification.
-
-## Select the tarballs to publish
-
-Publish only packages whose versions changed in the release plan. Retain or download the exact nine-tarball artifact set produced by `release:verify`, then select the changed package tarballs from that set. The unchanged tarballs are cross-package verification inputs, not releases.
-
-Before publishing an integration, inspect its packed peer range for `@tokenroll/acplugin`:
-
-- if that range requires a new main-package version from the same release, publish and verify the main package first;
-- if the range is already satisfied in the Registry, the integration can be published independently;
-- Platform and Extension packages have no ordering dependency on one another.
-
-## Publish manually
-
-An authorized TokenRoll npm organization maintainer publishes each selected tarball with 2FA and immediately checks its exact version:
+From the merged version revision, inspect pnpm's no-write plan:
 
 ```bash
-npm publish <tarball-path> --access public --otp <OTP>
-npm view <package-name>@<version> version
+pnpm install --frozen-lockfile
+pnpm run publish:beta:dry-run
 ```
 
-The initial cohort has already been published, so the repository intentionally has no root command that publishes every public package. Run `release:preflight`, then publish only the selected, already verified tarballs with the explicit command above.
+When the plan is correct, an authorized npm maintainer publishes locally:
 
-If publication is interrupted, query every planned exact version and continue only with missing versions whose peer dependencies are already available. npm versions are immutable and must not be republished.
+```bash
+pnpm run publish:beta
+```
 
-## Create release references manually
+Append `--otp <OTP>` when npm requires a command-line one-time password. The root command builds the workspace and then uses pnpm's recursive `@tokenroll/*` workspace publish flow. It intentionally skips repeated package lifecycle scripts because the root build already produced the artifacts. pnpm packs each public package and rewrites repository `workspace:^` peer ranges to ordinary published ranges.
 
-The old single-cohort `tokenroll-vX.Y.Z` tag cannot represent independently versioned packages and no longer applies. After an exact package version is visible in the Registry, a maintainer may create its package-specific tag and GitHub Release using the repository's separately approved naming convention. Do not guess or automate that convention in a workflow.
+## Publish a stable release
+
+Exit Changesets prerelease mode and merge the stable version PR first. Then manually dispatch the `Release` Action from `main`. The Action rejects prerelease versions and runs the same recursive public-workspace publish command with npm `latest`.
+
+`Release` is intentionally manual: it requires the repository `NPM_TOKEN` secret but is never triggered by a pull request or push. It does not create a Git tag, GitHub Release, or separate dist-tag mutation.
 
 ## Safety rules
 
-- Never use `npm unpublish` or mutate dist-tags as part of recovery.
-- Never publish an integration before its packed main-package peer range exists in the Registry.
-- Never publish private `@acplugin/*` workspace packages.
-- Never publish an unchanged package merely because all nine were verified together.
-- Never create or push release references before their exact npm versions are verified.
-- Never add or invoke automated npm publication, Tag creation, or GitHub Release automation without an explicit project decision.
-- Remove private temporary tarball directories after the release audit is complete.
+- Do not publish private `@acplugin/*` packages; root publish scripts filter only `@tokenroll/*`.
+- Do not use `npm unpublish` to recover from a failed release.
+- Do not create a tag or GitHub Release unless separately authorized.
+- If an npm exact version already exists, let pnpm report and skip it; bump the package version before retrying a package that needs changed contents.
+- Keep official Platform/Extension manifests on `@tokenroll/acplugin: workspace:^`; pnpm owns the packed peer-range rewrite.
+- Run `pnpm run test` and `pnpm run docs:check` for changes that affect behavior, package boundaries, Docs, or Playground. The PR Actions intentionally remain limited to lint and typecheck.

@@ -1,0 +1,37 @@
+name: Release
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22.18.0
+          cache: pnpm
+          registry-url: https://registry.npmjs.org/
+      - run: pnpm install --frozen-lockfile
+      - name: Require stable public package versions
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE'
+          import { readFile } from 'node:fs/promises'
+          import { publicPackageManifestPaths } from './scripts/public-packages.mjs'
+
+          for (const file of publicPackageManifestPaths) {
+            const manifest = JSON.parse(await readFile(file, 'utf8'))
+            if (!/^\d+\.\d+\.\d+$/u.test(manifest.version))
+              throw new Error(`Release only publishes stable versions; found ${manifest.name}@${manifest.version}.`)
+          }
+          NODE
+      - name: Publish stable public packages
+        run: pnpm run release
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

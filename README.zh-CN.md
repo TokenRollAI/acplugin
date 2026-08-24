@@ -411,14 +411,18 @@ pnpm run docs:check     # 检查文档结构/构建和真实 Playground
 pnpm install
 pnpm run check
 pnpm run docs:check
-pnpm run release:verify
 ```
 
-`release:verify` 会从同一 Revision 创建九个公开 tarball，检查 Manifest、文件列表、类型解析、peer rewrite 和品牌互操作，并在 monorepo 外的干净消费者中构建六 Platform/两个 Extension 脚手架并验证内建 Runtime；不会发布 npm。
+PR 会分别触发 Lint 与 Typecheck Action。带有 Changeset 的功能 PR 合并到 `main` 后，Changelog Action 会消费待处理 Changeset，并创建或更新包含独立 package 版本升级和 changelog 的版本 PR；它绝不发布 package。
 
-PR 会自动执行 lint/typecheck，并通过独立的 Docs/Playground 质量门。手工触发的 `Patch` Workflow 接收一个至少包含一份会升级公开包的有效 Changeset 的目标分支，消费 Changesets 以升级版本并生成 changelog，随后创建一个合并回该目标分支的版本 PR。
+手工触发的 Release Action 只发布稳定 semver 版本到 npm `latest`，不会创建 Tag 或 GitHub Release。beta 仍由获得授权的维护者在本地发布：
 
-九个公开 package 独立版本化，只发布发生版本变化的 package。如果新的集成版本要求尚未发布的主包 peer range，先发布并验证该主包版本；除此之外，各集成之间没有固定顺序。每个 Registry 精确版本、package 对应的 Tag 和 GitHub Release 都由维护者手工处理；仓库不包含自动发布 Workflow。
+```bash
+pnpm run publish:beta:dry-run
+pnpm run publish:beta
+```
+
+beta 与稳定版命令均先构建一次，再使用 pnpm 的递归公开 workspace 发布流程；pnpm 会在打包 manifest 中改写 `workspace:^` peer range。九个 package 独立版本化；除非另获授权，不要创建 Tag 或 GitHub Release。
 
 ## License
 

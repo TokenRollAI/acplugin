@@ -57,68 +57,40 @@ describe('repository release and documentation guards', () => {
     expect(changeset.fixed).toEqual([]);
   });
 
-  it('does not expose an automated publication path', async () => {
-    /** PR 阶段执行静态与行为检查的 Action 内容。 */
-    const check = await read('.github/workflows/check.yml');
-    /** 手动消费 Changeset 并创建版本 PR 的 Action 内容。 */
-    const patch = await read('.github/workflows/patch.yml');
-    /** 手工构建并跨 Node 版本消费 tarball 的只读 Action 内容。 */
-    const verify = await read('.github/workflows/verify.yml');
+  it('keeps pull-request checks, version PRs, and stable publication separate', async () => {
+    /** 四条有意保持单一职责的发行工作流。 */
+    const [lint, typecheck, changelog, release] = await Promise.all([
+      read('.github/workflows/lint.yml'),
+      read('.github/workflows/typecheck.yml'),
+      read('.github/workflows/changelog.yml'),
+      read('.github/workflows/release.yml'),
+    ]);
+    /** 根命令定义本地 beta 与手工 stable 的同一发布边界。 */
+    const manifest = JSON.parse(await read('package.json')) as { scripts?: Record<string, string> };
 
-    await expect(fs.access(path.join(root, '.github/workflows/publish-npm.yml'))).rejects.toThrow();
-    await expect(fs.access(path.join(root, 'scripts/publish-release-cohort.mjs'))).rejects.toThrow();
-    await expect(fs.access(path.join(root, 'scripts/verify-release-cohort.mjs'))).rejects.toThrow();
-    expect(`${check}\n${patch}\n${verify}`).not.toMatch(/npm publish|pnpm publish|gh release|dist-tag|id-token: write|NPM_TOKEN/i);
-  });
+    expect(lint).toContain('pull_request:');
+    expect(lint).toContain('pnpm run lint');
+    expect(lint).not.toMatch(/(?:pnpm|npm) publish|NPM_TOKEN|changesets\/action/u);
+    expect(typecheck).toContain('pull_request:');
+    expect(typecheck).toContain('pnpm run typecheck');
+    expect(typecheck).not.toMatch(/(?:pnpm|npm) publish|NPM_TOKEN|changesets\/action/u);
 
-  it('checks pull requests and creates version PRs only on manual dispatch', async () => {
-    /** 用于验证 PR 触发器和命令边界的 Check Action。 */
-    const check = await read('.github/workflows/check.yml');
-    /** 用于验证手动分支输入和版本 PR 的 Patch Action。 */
-    const patch = await read('.github/workflows/patch.yml');
-    /** 用于验证手动只读 tarball 构建和 Node 20 消费边界的 Verify Action。 */
-    const verify = await read('.github/workflows/verify.yml');
+    expect(changelog).toContain('push:');
+    expect(changelog).toContain('branches: [main]');
+    expect(changelog).toContain('changesets/action@v1');
+    expect(changelog).toContain('version: pnpm run version-packages');
+    expect(changelog).not.toMatch(/(?:pnpm|npm) publish|NPM_TOKEN/u);
 
-    expect(check).toContain('pull_request:');
-    expect(check).not.toMatch(/\bpush:/);
-    expect(check).toContain('pnpm run lint');
-    expect(check).toContain('pnpm run typecheck');
-    expect(check).toContain('pnpm run test');
-    expect(check).not.toMatch(/pnpm run (?:build|release:verify)/);
-    expect(check).toContain('pnpm run versions:check');
-    expect(check).toContain('node-version: 22.18.0');
-    expect(patch).toContain('workflow_dispatch:');
-    expect(patch).toContain('target_branch:');
-    expect(patch).toContain('pnpm changeset status --output');
-    expect(patch).toContain('status.releases.length === 0');
-    expect(patch).toContain('pnpm version-packages');
-    expect(patch).toContain('pnpm run versions:check');
-    expect(patch).toContain('pnpm run lint');
-    expect(patch).toContain('pnpm run typecheck');
-    expect(patch).toContain('pnpm run test');
-    /** Version PR 必须验证消费 Changeset 后的最终 lockfile 与源码，且门禁顺序固定。 */
-    const patchStepOffsets = [
-      'pnpm version-packages',
-      'pnpm install --lockfile-only',
-      'pnpm run versions:check',
-      'pnpm run lint',
-      'pnpm run typecheck',
-      'pnpm run test',
-    ].map(step => patch.indexOf(step));
-    expect(patchStepOffsets).toEqual([...patchStepOffsets].sort((left, right) => left - right));
-    expect(patch).toContain('beta prerelease versions');
-    expect(patch).toContain('peter-evans/create-pull-request@v8');
-    expect(patch).toContain('base: ${{ inputs.target_branch }}');
-    expect(patch).toContain('node-version: 22.18.0');
-    expect(verify).toContain('workflow_dispatch:');
-    expect(verify).not.toMatch(/\b(?:pull_request|push|schedule):/);
-    expect(verify).toContain('permissions:\n  contents: read');
-    expect(verify).toContain('node-version: 22.18.0');
-    expect(verify).toContain('node-version: 20.19.0');
-    expect(verify).toContain('release:verify -- --tarball-dir');
-    expect(verify.match(/name: acplugin-verified-tarballs/g)).toHaveLength(2);
-    expect(verify).toContain('actions/upload-artifact@v7');
-    expect(verify).toContain('actions/download-artifact@v8');
+    expect(release).toContain('workflow_dispatch:');
+    expect(release).not.toMatch(/\b(?:pull_request|push):/u);
+    expect(release).toContain('pnpm run release');
+    expect(release).toContain('NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}');
+
+    expect(manifest.scripts?.['publish:beta:dry-run']).toContain('pnpm -r --filter \'@tokenroll/*\' publish');
+    expect(manifest.scripts?.['publish:beta']).toContain('--tag beta');
+    expect(manifest.scripts?.release).toContain('--tag latest');
+    expect(manifest.scripts?.['publish:beta']).toContain('--ignore-scripts');
+    expect(manifest.scripts?.release).toContain('--ignore-scripts');
   });
 
   it('separates the repository Node toolchain from published runtime support', async () => {

@@ -128,7 +128,6 @@ pnpm run typecheck
 pnpm run test
 pnpm run build
 pnpm run docs:check
-pnpm run release:verify
 ```
 
 新增功能必须按风险补充：schema/graph、Platform golden、Extension/Contributor 生命周期、Runtime 单次构建与能力交付、Asset owner 隔离、事务故障、CLI 子进程/退出码、Watch 恢复、Hook Contributor、MCP 协议、Migration 和 tarball consumer 测试。不得用缺少 fixture 的大面积 skip 代替验证。
@@ -136,12 +135,12 @@ pnpm run release:verify
 ## 发行
 
 - 九个公开包由 Changesets 独立版本化；兼容性由 lifecycle `apiVersion` 和主包 peer range 表达，不使用 fixed group。
-- `Check` Workflow 在 PR 上自动执行 lint/typecheck，并通过独立 Job 执行完整 `test` 与 `docs:check`。
-- `Patch` Workflow 只能手工触发；从默认分支选择目标分支，在写版本前确认至少一个有效 Changeset 会升级公开包，再消费 Changesets、生成 changelog、升级各自声明的公开包版本，并创建回到该目标分支的版本 PR。
-- 所有版本均由维护者从已验证 tarball 手工发布；仓库不得添加 Tag/npm 自动发布 Workflow。
-- 每个变更的公开包都要验证 Registry 精确版本；依赖新的主包 peer range 时先发布主包，再发布对应 Platform/Extension。
-- 对应 npm 版本存在后，再由维护者手工创建该版本的 Tag 和 GitHub Release。
-- 禁止自动 publish/unpublish、修改 dist-tag、创建 Tag 或 GitHub Release，除非用户明确要求执行对应操作。
+- `Lint` 与 `Typecheck` Workflows 在 PR 创建、更新时独立执行；完整测试、Docs/Playground 和 tarball consumer 检查由开发者按改动风险运行。
+- `Changelog` Workflow 在 `main` 收到合并后检查未消费 Changeset，并只创建或更新版本与 CHANGELOG PR；它不发布任何 package。
+- `Release` Workflow 只能手工触发，只发布稳定 semver 版本到 npm `latest`；它不创建 Tag、GitHub Release 或独立 dist-tag 操作。
+- beta 版本由维护者在本地使用 `pnpm run publish:beta` 发布；先使用 `pnpm run publish:beta:dry-run` 检查结果。
+- 发布一律使用根命令的 `pnpm -r --filter '@tokenroll/*' publish --ignore-scripts`，让 pnpm 在已完成的根构建后打包公开 workspace、改写 `workspace:^` 并按依赖拓扑处理；不得恢复自定义 tarball 发布器或 Registry 轮询协议。
+- 禁止 unpublish、创建 Tag、GitHub Release 或修改已有 dist-tag，除非用户明确要求执行对应操作。
 
 ## Git 与改动安全
 

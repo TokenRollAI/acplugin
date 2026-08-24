@@ -112,7 +112,6 @@ describe('retired runtime architecture guard', () => {
       'package.json',
       'pnpm-lock.yaml',
       'pnpm-workspace.yaml',
-      'scripts/verify-release.mjs',
       'tsconfig.base.json',
       ...await workspaceMetadataFiles('packages'),
     ];

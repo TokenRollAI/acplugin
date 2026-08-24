@@ -1,84 +1,49 @@
-# 手动发布独立版本化的公开 package
+# 发布独立版本化的公开 package
 
 > [English version](release.md)
 
-仓库包含九个独立版本化的公开 package：
+ACPlugin 有九个独立版本化的公开 npm package：主包、六个 Platform package 与 Hooks/MCP Extension。Core、Test、Docs、Playground 均为私有 package，绝不能发布。
 
-- `@tokenroll/acplugin`
-- `@tokenroll/acplugin-platform-claude-code`
-- `@tokenroll/acplugin-platform-codex`
-- `@tokenroll/acplugin-platform-cursor`
-- `@tokenroll/acplugin-platform-antigravity`
-- `@tokenroll/acplugin-platform-opencode`
-- `@tokenroll/acplugin-platform-pi`
-- `@tokenroll/acplugin-extension-hooks`
-- `@tokenroll/acplugin-extension-mcp`
+仓库工具链要求 Node.js `^22.18.0 || >=24.11.0`；已发布 package 另行支持 `^20.19.0 || ^22.13.0 || >=23.5.0`。
 
-Core、测试工作区、Docs 和 Playground 是私有包，不能发布，也不能作为运行时依赖出现在 tarball 中。所有 npm 发布、Registry 检查、Git Tag 和 GitHub Release 均由获得授权的维护者手工执行。仓库没有自动发布工作流。
+## 工作流
 
-仓库构建与发布工具要求 Node.js `^22.18.0 || >=24.11.0`，CI 固定使用 22.18.0；九个公开 package 当前都声明独立的运行时范围 `^20.19.0 || ^22.13.0 || >=23.5.0`。
+1. 指向 `main` 的功能 PR 为每个受影响的公开 package 提交 Changeset。
+2. PR 创建或更新时，`Lint` 与 `Typecheck` Action 分别运行。
+3. 功能 PR 合并到 `main` 后，`Changelog` 消费待处理 Changeset，创建或更新 `chore(release): version packages`。版本 PR 包含 package manifest 版本、changelog 与生成的公开版本快照，不会发布。
+4. 审核独立版本升级是否符合预期后再合并版本 PR。
+5. beta 在本地发布；稳定版由维护者手工触发 `Release`。
 
-## 仓库工作流
+`Changelog` 需要通过 `GITHUB_TOKEN` 创建版本 PR，因此仓库必须启用 **Actions → General → Workflow permissions → Allow GitHub Actions to create and approve pull requests**。
 
-`Check` 在 Pull Request 创建时自动执行：一个 Job 运行 lint/typecheck，一个独立 Job 运行完整 `test` 套件，另一个独立 Job 运行 `docs:check`，重新生成 API 页面、检查 VitePress 链接/结构，并验证及构建真实 Playground。
+## 准备 beta
 
-`Verify` 仅能手工触发，并使用只读仓库权限。它在 Node 22.18 上从同一 Revision 构建和验证九个 tarball，上传这组精确 Artifact，再在干净的 Node 20.19 工程中消费同一组文件；不会发布或创建 Release 引用。同一 Revision 一起验证不代表这些 package 属于固定版本组。
-
-`Patch` 从仓库默认分支手工触发，必须提供目标分支。目标分支必须至少包含一个让公开 package 产生发布的有效 Changeset；空 Changeset 不满足门禁。工作流会在任何版本写入前使用 `pnpm changeset status` 验证发布计划，再用 `pnpm version-packages` 消费全部 Changeset，确认至少一个公开版本发生变化，刷新 pnpm lockfile，依次运行 versions check、lint、typecheck 和完整 `test` 套件，然后创建或更新一个以所选目标分支为 base 的版本 PR。
-
-为了让 `Patch` 使用 `GITHUB_TOKEN` 创建 PR，必须启用仓库设置 **Actions → General → Workflow permissions → Allow GitHub Actions to create and approve pull requests**。该工作流不会发布 package，也不会创建任何 Release 引用。
-
-## 准备发布
-
-1. 为受影响的公开 package 添加 Changeset。集成实现变更应指向所属 Platform/Extension；只有 CLI 或公开 SDK 变化时才更新主包。
-2. 检查 `pnpm changeset status`，使用 `pnpm version-packages` 消费 Changeset，再用 `pnpm install --lockfile-only` 刷新 lockfile，并确认只有预期 manifest 发生变化；各 package 版本无需相同。
-3. 确认所有官方 Platform/Extension 在仓库中仍把 `@tokenroll/acplugin` 声明为 `workspace:^`；pack 后必须改写成普通 `^x.y.z` peer range。
-4. 运行：
-
-   ```bash
-   pnpm install --frozen-lockfile
-   pnpm run check
-   pnpm run docs:check
-   pnpm run release:verify
-   ```
-
-`release:verify` 会在临时目录中打包九个 package，对实际 tarball 执行类型解析与 Package Lint，检查 manifest 和内容，验证 peer rewrite，以及经同一主包 peer 实例产生的私有 Symbol 品牌互操作，再在干净外部消费者中安装并构建六 Platform/两个 Extension 脚手架。消费者会真实执行 Core Runtime，并证明 Claude Code/Codex 收到相同字节。对于主包，它会解析 tarball 内真实 ESM 图，证明 CLI 到 Migration 的边仍是 lazy，逐条核对外部 import 与已声明运行时依赖，并拒绝主包外部引用或内联官方集成。它绝不会发布任何内容。CI 通过 `--tarball-dir <empty-directory>` 保留精确验证过的文件，供独立 Node 20.19 consumer job 使用；本地需要保留待发布 tarball 时也可使用该参数。
-
-发布前必须提交这份精确验证过的发布准备。验证后不得从另一个 Revision 重新构建待发布文件。
-
-## 选择待发布 tarball
-
-只发布本次计划中版本发生变化的 package。保留或下载 `release:verify` 产生的九 tarball 精确 Artifact 集，再从中选择变更 package 对应的 tarball。未变化的 tarball 只是跨包验证输入，不是待发布版本。
-
-发布集成 package 前，检查其 tarball 中 `@tokenroll/acplugin` 的 peer range：
-
-- 如果该范围要求同次发布中的新主包版本，先发布并验证主包；
-- 如果 Registry 中已有主包版本满足该范围，集成可以独立发布；
-- 各 Platform 与 Extension 之间没有发布顺序依赖。
-
-## 手动发布
-
-由获得授权的 TokenRoll npm 组织维护者使用 2FA 发布每个选中的 tarball，并立即检查其精确版本：
+在已合并的版本 Revision 上先检查 pnpm 的无写入计划：
 
 ```bash
-npm publish <tarball-path> --access public --otp <OTP>
-npm view <package-name>@<version> version
+pnpm install --frozen-lockfile
+pnpm run publish:beta:dry-run
 ```
 
-初始 cohort 已完成发布，因此仓库有意不再提供一次发布全部公开包的根命令。先运行 `release:preflight`，再使用上面的显式命令只发布已选中且经过验证的 tarball。
+确认计划正确后，获得 npm 权限的维护者在本地执行：
 
-如果发布过程被中断，查询计划中的每个精确版本，只继续发布 peer dependency 已可满足且 Registry 中仍缺失的版本。npm 版本不可变，不能重复发布。
+```bash
+pnpm run publish:beta
+```
 
-## 手动创建 Release 引用
+若 npm 要求命令行一次性验证码，追加 `--otp <OTP>`。根命令会构建 workspace，随后用 pnpm 递归发布 `@tokenroll/*` 公开 workspace。由于根构建已经产出内容，发布阶段会跳过重复的 package lifecycle scripts。pnpm 会为每个公开 package 打包，并将仓库中的 `workspace:^` peer range 改写为普通已发布范围。
 
-旧的单一 package cohort `tokenroll-vX.Y.Z` Tag 无法表达独立版本，已不再适用。在 Registry 可查询到某个 package 的精确版本后，维护者可以按照仓库另行确认的命名约定创建该 package 专属 Tag 和 GitHub Release。不要在 Workflow 中猜测或自动化尚未确认的命名格式。
+## 发布稳定版
+
+先退出 Changesets prerelease mode，并合并稳定版版本 PR；随后从 `main` 手动触发 `Release` Action。该 Action 拒绝 prerelease 版本，并使用同一套递归公开 workspace 发布命令写入 npm `latest`。
+
+`Release` 有意保持手动：它使用仓库的 `NPM_TOKEN` secret，但绝不因 PR 或 push 自动触发；它不会创建 Git Tag、GitHub Release，也不会执行独立 dist-tag 修改。
 
 ## 安全规则
 
-- 恢复过程中绝不使用 `npm unpublish`，也不修改 dist-tag；
-- 集成 tarball 的主包 peer range 尚未存在于 Registry 时，绝不发布该集成；
-- 绝不发布私有 `@acplugin/*` 工作区 package；
-- 不因九个 package 一起验证就重复发布未变化的 package；
-- 在验证对应 npm 精确版本前，绝不创建或推送 Release 引用；
-- 未经明确项目决策，绝不添加或调用自动 npm 发布、Tag 创建或 GitHub Release 自动化；
-- 发布审计结束后，删除保存 tarball 的私有临时目录。
+- 绝不发布私有 `@acplugin/*` package；根发布脚本只筛选 `@tokenroll/*`。
+- 不用 `npm unpublish` 恢复失败发布。
+- 未另获授权时，不创建 Tag 或 GitHub Release。
+- npm 中已存在精确版本时，让 pnpm 报告并跳过；若需要改变该 package 内容，先升级版本再重试。
+- 官方 Platform/Extension manifest 中必须保持 `@tokenroll/acplugin: workspace:^`；打包 peer range 改写由 pnpm 负责。
+- 涉及行为、package 边界、Docs 或 Playground 的改动应运行 `pnpm run test` 与 `pnpm run docs:check`。PR Action 有意只保留 lint 与 typecheck。
