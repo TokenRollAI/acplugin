@@ -54,7 +54,7 @@ acplugin scan anthropics/claude-code
 | **MCP Servers**  | `.codex/config.toml`      | `opencode.json`           | `.cursor/mcp.json`    | `.agents/mcp_config.json` | Unsupported (warn) |
 | **Agents**       | `.codex/agents/*.toml`    | `.opencode/agents/*.md`   | `.cursor/agents/*.md` | `.agents/agents/*.md`     | Unsupported (warn) |
 | **Commands**     | Converted to Skills       | `.opencode/commands/`     | `.cursor/commands/`   | Converted to Skills       | `.pi/prompts/*.md` |
-| **Hooks**        | Documented in `AGENTS.md` | Documented in `AGENTS.md` | Warnings only         | Warnings only             | Warnings only      |
+| **Hooks**        | `hooks/hooks.json` (native) | Documented in `AGENTS.md` | Warnings only         | Warnings only             | Warnings only      |
 
 [Pi](https://github.com/earendil-works/pi) (pi-coding-agent) is a minimal terminal harness whose only native file formats are Claude-style Skills and instruction files. Commands degrade to prompt templates; MCP/Agents/Hooks have no target format (Pi extends via TypeScript extensions) and emit warnings.
 
