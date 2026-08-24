@@ -30,6 +30,9 @@ export function convertHooks(hooks: Hooks, platform: Platform): HookReport {
   if (platform === 'cursor') {
     return convertCursorHooks(hooks);
   }
+  if (platform === 'codex') {
+    return convertCodexHooks(hooks);
+  }
 
   const warnings: string[] = [];
   const converted: ConvertedFile[] = [];
@@ -59,6 +62,31 @@ export function convertHooks(hooks: Hooks, platform: Platform): HookReport {
   }
 
   return { converted, warnings };
+}
+
+/**
+ * Codex plugins support native hooks: the default hook file is hooks/hooks.json
+ * at the plugin root, using a Claude-compatible schema (same events incl.
+ * SessionStart/Stop/PreCompact, matchers, type:command, additionalContextLimit).
+ * See https://developers.openai.com/plugins/build/plugins and
+ * https://learn.chatgpt.com/docs/hooks — so we pass hooks through losslessly
+ * instead of degrading them to AGENTS.md prose. JSON.parse preserved any fields
+ * beyond our HookEntry type, so stringifying keeps them intact. Codex parses
+ * but skips non-command handler types itself.
+ */
+function convertCodexHooks(hooks: Hooks): HookReport {
+  return {
+    converted: [
+      {
+        path: 'hooks/hooks.json',
+        content: JSON.stringify({ hooks }, null, 2) + '\n',
+        type: 'hook',
+      },
+    ],
+    warnings: [
+      'Codex plugin hooks are non-managed: users must review and trust them via /hooks before they run',
+    ],
+  };
 }
 
 /**
@@ -120,12 +148,8 @@ function convertCommandHook(
       // Cursor doesn't have hooks yet in a config file format we can write
       return null;
     case 'codex':
-      // Codex doesn't have hooks — add as a note in AGENTS.md
-      return {
-        path: `AGENTS.md.hook-${event}`,
-        content: `## Hook: ${event}${matcher ? ` (${matcher})` : ''}\n\n${EVENT_TIMING[event] || `On ${event}, run`}: \`${command}\`\n`,
-        type: 'hook',
-      };
+      // Unreachable: codex is handled by convertCodexHooks (native passthrough).
+      return null;
     case 'opencode':
       // OpenCode doesn't have a public hooks system — add as a note
       return {

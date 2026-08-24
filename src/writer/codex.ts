@@ -40,23 +40,11 @@ export function generateCodex(scan: ScanResult): ConvertResult {
 
   // Hooks
   if (scan.hooks) {
+    // Codex supports native plugin hooks (default file: hooks/hooks.json,
+    // Claude-compatible schema) — pass through instead of degrading to prose.
     const hookResult = convertHooks(scan.hooks, 'codex');
     warnings.push(...hookResult.warnings);
-
-    // Merge hook notes into AGENTS.md
-    if (hookResult.converted.length > 0) {
-      const hookSection = '# Hooks (from Claude Code)\n\n' +
-        hookResult.converted.map(f => f.content).join('\n\n');
-      const existingAgentsMd = files.find(f => f.path === 'AGENTS.md');
-      if (existingAgentsMd) {
-        // Separate from prior instructions with a thematic break.
-        existingAgentsMd.content = existingAgentsMd.content.trimEnd() + '\n\n---\n\n' + hookSection + '\n';
-      } else {
-        // A fresh AGENTS.md must not open with "---": that reads as a
-        // frontmatter fence / stray horizontal rule.
-        files.push({ path: 'AGENTS.md', content: hookSection + '\n', type: 'hook' });
-      }
-    }
+    files.push(...hookResult.converted);
   }
 
   // Plugin-level resource files (scripts/, etc. referenced by MCP)
