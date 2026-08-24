@@ -39,7 +39,11 @@ jobs:
       - run: npm test
       - run: npm pack --dry-run
 
-      - name: Publish (idempotent, with provenance)
+      - name: Publish (trusted publishing, idempotent)
+        # Tokenless: configure this workflow as the package's trusted publisher
+        # on npmjs.com; npm exchanges the job's OIDC identity (id-token: write)
+        # for short-lived credentials. Provenance is attached automatically.
+        # Requires npm >= 11.5.1 (Node 24 bundles npm 11).
         run: |
           set -euo pipefail
           name=$(node -p "require('./package.json').name")
@@ -49,7 +53,5 @@ jobs:
           if npm view "${name}@${version}" version >/dev/null 2>&1; then
             echo "${name}@${version} already published — skipping"
           else
-            npm publish --provenance
+            npm publish
           fi
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
