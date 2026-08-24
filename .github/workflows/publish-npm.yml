@@ -9,9 +9,14 @@ permissions:
   contents: read
   id-token: write
 
+concurrency:
+  group: publish-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   publish:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v6
 
@@ -19,6 +24,7 @@ jobs:
         with:
           node-version: "24"
           registry-url: "https://registry.npmjs.org"
+          cache: npm
 
       - name: Verify tag matches package version
         run: |
@@ -32,4 +38,18 @@ jobs:
       - run: npm run build
       - run: npm test
       - run: npm pack --dry-run
-      - run: npm publish
+
+      - name: Publish (idempotent, with provenance)
+        run: |
+          set -euo pipefail
+          name=$(node -p "require('./package.json').name")
+          version=$(node -p "require('./package.json').version")
+          # Re-running the workflow for an already-published tag should be a
+          # no-op, not a 409 failure.
+          if npm view "${name}@${version}" version >/dev/null 2>&1; then
+            echo "${name}@${version} already published — skipping"
+          else
+            npm publish --provenance
+          fi
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
