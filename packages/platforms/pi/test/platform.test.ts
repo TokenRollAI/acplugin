@@ -11,6 +11,7 @@ import {
   type BytesAssetRef,
   type DiagnosticInput,
   type JsonValue,
+  type PlatformContributor,
   type ValidatePackageContext,
 } from '@acplugin/core';
 import { pi } from '../src/index.js';
@@ -197,6 +198,34 @@ function unsupportedMcp(): AcpluginExtension {
   });
 }
 
+/** 创建 Pi 必须显式拒绝的非空私有 Component contribution。 */
+function unsupportedComponentContribution(): AcpluginExtension {
+  const contributor: PlatformContributor<Record<string, never>, { readonly kind: 'fixture-component' }> = {
+    platform: 'pi',
+    platformApiVersion: '1',
+    contribute: () => ({
+      components: [{ subject: 'fixture:private-component', value: { kind: 'fixture-component' } }],
+      compatibility: [{
+        subject: 'fixture:private-component', capability: 'delivery', level: 'native',
+        reason: 'The fixture requests private Component delivery.',
+      }],
+    }),
+  };
+  return defineExtension({
+    id: 'private-component-fixture',
+    apiVersion: '1',
+    resourceRoots: [],
+    createSession: () => ({
+      discover: () => ({}),
+      validate: (_context, state) => ({
+        state, subjects: [{ subject: 'fixture:private-component', capabilities: ['delivery'] }],
+      }),
+      build: (_context, state) => ({ state }),
+      contributors: [contributor],
+    }),
+  });
+}
+
 afterEach(async () => {
   await Promise.all(temporaryRoots.splice(0).map(root => fs.rm(root, { recursive: true, force: true })));
 });
@@ -297,6 +326,19 @@ describe('Pi Platform Package API', () => {
       expect.objectContaining({ platform: 'pi', subject: 'mcp:docs', capability: 'transport', level: 'unsupported' }),
     ]));
     expect(report.packages[0]?.assets.some(asset => asset.path.startsWith('runtime/') || asset.path.startsWith('mcp/'))).toBe(false);
+  });
+
+  it('explicitly rejects non-empty private Component contributions', async () => {
+    const root = await temporaryProject();
+    const report = await run({
+      root, command: 'validate', commit: false, extensions: [unsupportedComponentContribution()],
+    });
+
+    expect(report.success).toBe(false);
+    expect(report.packages).toEqual([]);
+    expect(report.diagnostics).toContainEqual(expect.objectContaining({
+      code: 'PI_COMPONENT_CONTRIBUTION_UNSUPPORTED', phase: 'finalize', platform: 'pi',
+    }));
   });
 
   it('rejects native/fallback Skill identity collisions and unknown Component fields before Package creation', async () => {

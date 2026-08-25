@@ -57,8 +57,19 @@ declare const platformDefinitionTypeBrand: unique symbol;
 /** 仅用于 TypeScript 名义类型的 Extension 品牌，不参与运行时授权。 */
 declare const extensionDefinitionTypeBrand: unique symbol;
 
+/**
+ * 仅用于 TypeScript 名义类型的 Platform Component 来源品牌。
+ *
+ * Core 在 merge 时签发其对象 identity；后续 finalization 专属服务会以该 identity
+ * 作为运行时授权边界。调用方不能以同形普通对象替代它。
+ */
+declare const packageComponentOriginTypeBrand: unique symbol;
+
 /** 作者配置中可安装的 Platform 定义。 */
-export interface PlatformDefinition<O extends JsonObject = JsonObject> {
+export interface PlatformDefinition<
+  O extends JsonObject = JsonObject,
+  TComponent extends JsonObject = never,
+> {
   readonly id: string;
   readonly apiVersion: typeof LIFECYCLE_API_VERSION;
   readonly deliveryType: PlatformDeliveryType;
@@ -66,11 +77,14 @@ export interface PlatformDefinition<O extends JsonObject = JsonObject> {
   readonly options?: O;
   readonly capabilities?: PlatformCapabilities;
   /** 为当前 BuildSession 创建隔离的平台生命周期状态。 */
-  createSession(context: PlatformSetupContext<O>): Awaitable<PlatformSession>;
+  createSession(context: PlatformSetupContext<O>): Awaitable<PlatformSession<TComponent>>;
 }
 
 /** 经过工厂校验、复制、品牌化和冻结的 Platform。 */
-export interface AcpluginPlatform<O extends JsonObject = JsonObject> extends PlatformDefinition<O> {
+export interface AcpluginPlatform<
+  O extends JsonObject = JsonObject,
+  TComponent extends JsonObject = never,
+> extends PlatformDefinition<O, TComponent> {
   readonly [platformDefinitionTypeBrand]: true;
 }
 
@@ -182,13 +196,13 @@ export interface IntegrationCloseContext {
 }
 
 /** Platform BuildSession 私有生命周期。 */
-export interface PlatformSession {
+export interface PlatformSession<TComponent extends JsonObject = never> {
   /** 校验一个 canonical Component 的平台专属字段。 */
   validateComponent?(context: PlatformComponentValidationContext): Awaitable<void>;
   /** 从 canonical project 创建 Platform base Package。 */
   createPackage(context: CreatePackageContext): Awaitable<PlatformPackageInput>;
   /** 从集中合并的 snapshot 确定主 Package。 */
-  finalizePackage(context: FinalizePackageContext): Awaitable<PrimaryPackageInput>;
+  finalizePackage(context: FinalizePackageContext<TComponent>): Awaitable<PrimaryPackageInput>;
   /** 校验 Core 临时物化的完整 Package candidate。 */
   validatePackage(context: ValidatePackageContext): Awaitable<void>;
   /** 从已验证主 Package 创建可选 Distribution。 */
@@ -198,11 +212,37 @@ export interface PlatformSession {
 }
 
 /** Extension 对一个 Platform 的无序 add-only Contributor。 */
-export interface PlatformContributor<B> {
+export interface PlatformContributor<B, TComponent extends JsonObject = never> {
   readonly platform: string;
   readonly platformApiVersion: typeof LIFECYCLE_API_VERSION;
   /** 对只读 base Package 返回无序 add-only Contribution。 */
-  contribute(context: ContributionContext, built: Readonly<B>): Awaitable<PackageContribution>;
+  contribute(context: ContributionContext, built: Readonly<B>): Awaitable<PackageContribution<TComponent>>;
+}
+
+/** Extension 向 Platform 提交的一条不透明 JSON Component payload。 */
+export interface PackageComponentInput<TComponent extends JsonObject = never> {
+  /** 必须精确对应当前 Extension validate() 已声明的 subject。 */
+  readonly subject: string;
+  /** 仅由目标 Platform 理解的严格 JSON object。 */
+  readonly value: TComponent;
+}
+
+/**
+ * Core 签发的 Component provenance identity。
+ *
+ * owner/subject 仅用于审计和稳定诊断；后续消费必须接受 Core 当前 merge 暴露的原始
+ * 对象 identity，而不能以同形值伪造来源。
+ */
+export interface PackageComponentOrigin {
+  readonly owner: string;
+  readonly subject: string;
+  readonly [packageComponentOriginTypeBrand]: true;
+}
+
+/** 已合并且可供当前 Platform finalization 消费的 Component payload。 */
+export interface ContributedPackageComponent<TComponent extends JsonObject = JsonObject> {
+  readonly value: Readonly<TComponent>;
+  readonly origin: PackageComponentOrigin;
 }
 
 /** Extension 对一个 Document extension point 的字段贡献。 */
@@ -213,7 +253,9 @@ export interface DocumentFieldContribution {
 }
 
 /** Extension Contributor 的集中合并输入。 */
-export interface PackageContribution {
+export interface PackageContribution<TComponent extends JsonObject = never> {
+  /** Platform-owned Component 的不透明输入；Core 不读取 value 的业务字段。 */
+  readonly components?: readonly PackageComponentInput<TComponent>[];
   readonly documentFields?: readonly DocumentFieldContribution[];
   readonly assets?: readonly PackageAssetInput[];
   readonly compatibility: readonly CompatibilityInput[];
@@ -238,7 +280,11 @@ export interface ExtensionSession<D, V, B> {
   validate(context: ExtensionValidateContext, discovered: Readonly<D>): Awaitable<ExtensionValidationOutput<V>>;
   /** 通过 Core Host 把验证状态构建为跨 Platform Built State。 */
   build(context: ExtensionBuildContext, validated: Readonly<V>): Awaitable<ExtensionBuildOutput<B>>;
-  readonly contributors: readonly PlatformContributor<B>[];
+  /**
+   * Extension 边界接受异构 Platform payload；具体 Contributor 在其定义处保留
+   * Platform 自己的 union 类型，Core 在配置边界擦除为 JsonObject。
+   */
+  readonly contributors: readonly PlatformContributor<B, JsonObject>[];
   /** 在成功、失败或中止后释放当前 Session 状态。 */
   close?(context: IntegrationCloseContext): Awaitable<void>;
 }

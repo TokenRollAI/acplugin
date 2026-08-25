@@ -6,6 +6,7 @@ import type {
   PlatformIntegrationDescription,
   PlatformSession,
 } from '../contracts/integrations.js';
+import type { JsonObject } from '../contracts/common.js';
 import type { BuildReport } from '../contracts/reports.js';
 import type { ResolvedKernelConfig, ResolvedPlatform } from '../config/resolver.js';
 import type { BuiltExtensionState, ExtensionConsumerPlan } from '../resources/extensions.js';
@@ -18,7 +19,7 @@ import { DiagnosticRegistry } from '../services/diagnostics.js';
 export type InitializedIntegration = {
   readonly kind: 'platform';
   readonly id: string;
-  readonly session: PlatformSession;
+  readonly session: PlatformSession<JsonObject>;
 } | {
   readonly kind: 'extension';
   readonly id: string;
@@ -29,7 +30,8 @@ export type InitializedIntegration = {
 export interface PlatformRuntime {
   readonly resolved: ResolvedPlatform;
   readonly description: PlatformIntegrationDescription;
-  readonly session: PlatformSession;
+  /** 异构配置数组在 Core runtime 边界擦除各 Platform 的具体 payload union。 */
+  readonly session: PlatformSession<JsonObject>;
 }
 
 /** Extension definition 与其 setup Session。 */
@@ -133,7 +135,7 @@ export function selectPlatforms(config: ResolvedKernelConfig, selection: readonl
 }
 
 /** 验证 Platform Session 精确方法面。 */
-export function platformSession(value: unknown, id: string): PlatformSession {
+export function platformSession(value: unknown, id: string): PlatformSession<JsonObject> {
   /** fields 拒绝旧生命周期方法与未知行为面。 */
   const fields = dataObjectFields(value, new Set([
     'validateComponent', 'createPackage', 'finalizePackage', 'validatePackage', 'createDistributions', 'close',
@@ -146,7 +148,7 @@ export function platformSession(value: unknown, id: string): PlatformSession {
     if (fields[optional] !== undefined && typeof fields[optional].value !== 'function')
       throw new TypeError(`Platform "${id}" Session ${optional} must be a function.`);
   }
-  return value as PlatformSession;
+  return value as PlatformSession<JsonObject>;
 }
 
 /** 验证 Extension Session 精确方法面。 */

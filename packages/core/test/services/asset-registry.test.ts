@@ -2,7 +2,7 @@ import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import type { AssetRef } from '../../src/api/integration.js';
+import type { AssetRef, PackageComponentOrigin } from '../../src/api/integration.js';
 import { AssetRegistry } from '../../src/services/assets.js';
 import { BuildSessionScope } from '../../src/services/session-scope.js';
 import { SourceRegistry } from '../../src/services/sources.js';
@@ -72,6 +72,39 @@ describe('AssetRegistry', () => {
     expect(JSON.stringify(asset)).not.toContain(fixture.root);
   });
 
+  it('rejects coercible, unknown-field and behavior-bearing Bytes Asset inputs', async () => {
+    const fixture = await registries();
+    const service = fixture.assets.service('extension:owned');
+
+    await expect(service.fromBytes({
+      bytes: [1, 2, 3], origin: { operation: 'array-like' },
+    } as never)).rejects.toThrow('string or Uint8Array');
+    await expect(service.fromBytes({
+      bytes: 'hidden', origin: { operation: 'unknown-input' }, hidden: true,
+    } as never)).rejects.toThrow('Bytes Asset input contains unknown field "hidden"');
+    await expect(service.fromBytes({
+      bytes: 'hidden', origin: { operation: 'unknown-origin', hidden: true },
+    } as never)).rejects.toThrow('Generated Asset origin contains unknown field "hidden"');
+
+    let getterCalls = 0;
+    const accessorSubjects: string[] = [];
+    Object.defineProperty(accessorSubjects, '0', {
+      enumerable: true,
+      get: () => {
+        getterCalls += 1;
+        return 'fixture:subject';
+      },
+    });
+    accessorSubjects.length = 1;
+    await expect(service.fromBytes({
+      bytes: 'accessor', origin: { operation: 'accessor-subjects', subjects: accessorSubjects },
+    })).rejects.toThrow('dense');
+    expect(getterCalls).toBe(0);
+    await expect(service.fromBytes({
+      bytes: 'sparse', origin: { operation: 'sparse-subjects', subjects: new Array<string>(1) },
+    })).rejects.toThrow('dense');
+  });
+
   it('uses owner-local ref identities that do not reveal cross-owner scheduling', async () => {
     /** 第一轮 Registry 模拟 owner-b 先完成。 */
     const first = await registries();
@@ -85,6 +118,85 @@ describe('AssetRegistry', () => {
     const secondA = await second.assets.service('extension:a').fromBytes({ bytes: 'a', origin: { operation: 'build' } });
 
     expect(firstA.id).toBe(secondA.id);
+  });
+
+  it('accepts Component provenance only through the current finalization scope and revokes it afterward', async () => {
+    const fixture = await registries();
+    /** Core registry signs origin identity during Package merge. */
+    const alpha = fixture.assets.issueComponentOrigin('target', 'extension:alpha', 'private:alpha');
+    const zeta = fixture.assets.issueComponentOrigin('target', 'extension:zeta', 'private:zeta');
+    const scope = fixture.assets.componentFinalizationScope('target', 'platform:target', [{ origin: zeta }, { origin: alpha }]);
+    const asset = await scope.service.fromBytes({
+      bytes: 'rendered\n',
+      origin: {
+        operation: 'platform-component',
+        subjects: ['private:zeta', 'private:alpha'],
+        componentOrigins: [zeta, alpha],
+      },
+    });
+    expect(fixture.assets.describe('platform:target', asset).origin).toEqual({
+      type: 'generated', owner: 'platform:target', operation: 'platform-component',
+      contributors: [
+        { owner: 'extension:alpha', subject: 'private:alpha' },
+        { owner: 'extension:zeta', subject: 'private:zeta' },
+      ],
+      subjects: ['private:alpha', 'private:zeta'],
+    });
+    await expect(scope.service.fromBytes({
+      bytes: 'mismatched',
+      origin: {
+        operation: 'platform-component',
+        subjects: ['private:zeta'],
+        componentOrigins: [alpha],
+      },
+    })).rejects.toThrow('is not declared by its Component origins');
+    await expect(scope.service.fromBytes({
+      bytes: 'forged', origin: { operation: 'platform-component', componentOrigins: [Object.freeze({ owner: 'extension:alpha', subject: 'private:alpha' }) as PackageComponentOrigin] },
+    })).rejects.toThrow('not authorized');
+    await expect(scope.service.fromBytes({
+      bytes: 'duplicate', origin: { operation: 'platform-component', componentOrigins: [alpha, alpha] },
+    })).resolves.toBeDefined();
+    let getterCalls = 0;
+    const accessorOrigins: PackageComponentOrigin[] = [];
+    Object.defineProperty(accessorOrigins, '0', {
+      enumerable: true,
+      get: () => {
+        getterCalls += 1;
+        return alpha;
+      },
+    });
+    accessorOrigins.length = 1;
+    await expect(scope.service.fromBytes({
+      bytes: 'accessor', origin: { operation: 'platform-component', componentOrigins: accessorOrigins },
+    })).rejects.toThrow('dense');
+    expect(getterCalls).toBe(0);
+    const sparseOrigins = new Array<PackageComponentOrigin>(1);
+    await expect(scope.service.fromBytes({
+      bytes: 'sparse', origin: { operation: 'platform-component', componentOrigins: sparseOrigins },
+    })).rejects.toThrow('dense');
+    await expect(fixture.assets.service('platform:target').fromBytes({
+      bytes: 'outside', origin: { operation: 'platform-component', componentOrigins: [alpha] } as never,
+    })).rejects.toThrow('only available during Platform finalization');
+    scope.close();
+    await expect(scope.service.fromBytes({ bytes: 'late', origin: { operation: 'late' } })).rejects.toThrow('no longer active');
+  });
+
+  it('rejects Component origins from another Platform or BuildSession', async () => {
+    const current = await registries();
+    const otherPlatform = current.assets.issueComponentOrigin('other', 'extension:private', 'private:resource');
+    expect(() => current.assets.componentFinalizationScope(
+      'target',
+      'platform:target',
+      [{ origin: otherPlatform }],
+    )).toThrow('not authorized');
+
+    const otherSession = await registries();
+    const otherOrigin = otherSession.assets.issueComponentOrigin('target', 'extension:private', 'private:resource');
+    expect(() => current.assets.componentFinalizationScope(
+      'target',
+      'platform:target',
+      [{ origin: otherOrigin }],
+    )).toThrow('not authorized');
   });
 
   it('creates SourceAsset refs and rejects forged, cross-owner, cross-session and expired refs', async () => {

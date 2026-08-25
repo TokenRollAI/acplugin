@@ -2,7 +2,13 @@ import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { BytesAssetRef, SourceAssetRef, SourceFileRef } from '../../src/contracts/index.js';
+import type {
+  BytesAssetRef,
+  FinalizationAssetService,
+  JsonObject,
+  SourceAssetRef,
+  SourceFileRef,
+} from '../../src/contracts/index.js';
 import { defineExtension, definePlatform } from '../../src/api/definitions.js';
 import {
   runKernelBuildSession,
@@ -185,6 +191,105 @@ describe('Kernel BuildSession', () => {
       'close:extension:success:false',
       'close:platform:success:false',
     ]);
+  });
+
+  it('revokes a leaked finalization AssetService and enforces Component subjects through the lifecycle', async () => {
+    const root = await fixture();
+    await fs.rm(path.join(root, 'src', 'addons'), { recursive: true });
+    await fs.rm(path.join(root, 'public'), { recursive: true });
+    let leaked: FinalizationAssetService | undefined;
+    const platform = definePlatform<Record<string, never>, JsonObject>({
+      id: 'finalization-scope',
+      apiVersion: '1',
+      deliveryType: 'plugin',
+      createSession: () => ({
+        createPackage: ({ project }) => ({
+          documents: [],
+          assets: [],
+          compatibility: project.commands.map(command => ({
+            subject: `command:${command.id}`,
+            capability: 'component',
+            level: 'native' as const,
+            reason: 'Native command.',
+          })),
+          metadata: metadata(),
+        }),
+        async finalizePackage({ package: unit, assets }) {
+          leaked = assets;
+          await assets.fromBytes({
+            bytes: 'invalid',
+            origin: {
+              operation: 'component-probe',
+              subjects: ['fixture:other'],
+              componentOrigins: [unit.components[0]!.origin],
+            },
+          });
+          return { id: 'plugin', type: 'plugin' as const };
+        },
+        validatePackage: () => undefined,
+      }),
+    });
+    const extension = defineExtension({
+      id: 'finalization-probe',
+      apiVersion: '1',
+      resourceRoots: [],
+      createSession: () => ({
+        discover: () => ({}),
+        validate: (_context, state) => ({
+          state,
+          subjects: [{ subject: 'fixture:component', capabilities: ['delivery'] }],
+        }),
+        build: (_context, state) => ({ state }),
+        contributors: [{
+          platform: 'finalization-scope',
+          platformApiVersion: '1',
+          contribute: () => ({
+            components: [{ subject: 'fixture:component', value: { kind: 'probe' } }],
+            compatibility: [{
+              subject: 'fixture:component',
+              capability: 'delivery',
+              level: 'native' as const,
+              reason: 'Native fixture.',
+            }],
+          }),
+        }],
+      }),
+    });
+    const resolved = resolveKernelConfig({
+      name: 'finalization-scope',
+      version: '1.0.0',
+      description: 'Finalization scope fixture.',
+      platforms: [platform],
+      extensions: [extension],
+      public: false,
+    }, {
+      projectRoot: root,
+      configFile: path.join(root, 'acplugin.config.ts'),
+      command: 'inspect',
+      mode: 'production',
+    });
+    const environment = await createKernelBuildEnvironment(root);
+    try {
+      const result = await runKernelBuildSession({
+        config: resolved.config!,
+        frameworkVersion: 'test',
+        commit: false,
+        environment,
+      });
+
+      expect(result.report.success).toBe(false);
+      expect(result.report.diagnostics).toContainEqual(expect.objectContaining({
+        code: 'PLATFORM_FINALIZE_PACKAGE_FAILED',
+        phase: 'finalize',
+        platform: 'finalization-scope',
+      }));
+      await expect(leaked!.fromBytes({
+        bytes: 'late',
+        origin: { operation: 'late' },
+      })).rejects.toThrow('no longer active');
+    } finally {
+      await disposeKernelBuildEnvironment(environment);
+    }
   });
 
   it('places reverse close in the rollback window and reports cleanup failure without committing', async () => {

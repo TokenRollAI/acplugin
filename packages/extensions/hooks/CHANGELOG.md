@@ -1,5 +1,12 @@
 # @tokenroll/acplugin-extension-hooks
 
+## 0.0.3-beta
+
+### Patch Changes
+
+- Updated dependencies
+  - @tokenroll/acplugin@0.0.3-beta
+
 ## 0.0.2-beta
 
 ### Major Changes

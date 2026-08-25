@@ -240,22 +240,37 @@ export async function runPlatformPipeline(options: {
     'PLATFORM_FINALIZE_PACKAGE_FAILED',
     `Platform "${id}" primary Package finalization failed.`,
     id,
-    async () => finalizePrimaryPackage(id, options.platform.resolved.definition.deliveryType, contributed.value,
-      await options.platform.session.finalizePackage(Object.freeze({
-        command: options.command,
-        mode: options.mode,
-        project: options.project,
-        package: contributed.value,
-        compiler: await options.compiler.service(`platform:${id}`),
-        assets: options.assets.service(`platform:${id}`),
-        diagnostics: options.diagnostics.service('finalize', { owner: `platform:${id}`, platform: id }),
-      })), options.assets),
+    async () => {
+      /** finalization 是唯一得到 Component provenance asset capability 的 Platform callback。 */
+      const scope = options.assets.componentFinalizationScope(id, `platform:${id}`, contributed.value.components);
+      let input;
+      try {
+        input = await options.platform.session.finalizePackage(Object.freeze({
+          command: options.command,
+          mode: options.mode,
+          project: options.project,
+          package: contributed.value,
+          compiler: await options.compiler.service(`platform:${id}`),
+          assets: scope.service,
+          diagnostics: options.diagnostics.service('finalize', { owner: `platform:${id}`, platform: id }),
+        }));
+      } finally {
+        /** callback 返回/抛出后立即撤销 service，阻止延迟 provenance 签发。 */
+        scope.close();
+      }
+      /** Platform 已报告的可预期输入错误不能继续进入 Core Document/Asset materialization。 */
+      if (platformHasErrors(options.diagnostics, id))
+        return undefined;
+      return finalizePrimaryPackage(id, options.platform.resolved.definition.deliveryType, contributed.value, input, options.assets);
+    },
   );
-  if (!finalized.ok || platformHasErrors(options.diagnostics, id))
+  if (!finalized.ok || finalized.value === undefined || platformHasErrors(options.diagnostics, id))
     return undefined;
+  /** Narrow once before later Distribution callback closures. */
+  const primary = finalized.value;
   if (!await validatePlatformCandidate({
     platform: options.platform,
-    unit: finalized.value,
+    unit: primary,
     command: options.command,
     mode: options.mode,
     assets: options.assets,
@@ -275,14 +290,14 @@ export async function runPlatformPipeline(options: {
       ? Object.freeze([])
       : collectDistributionPackages({
           platform: id,
-          primary: finalized.value,
+          primary,
           assets: options.assets,
           /** create callback 不暴露 Registry，只委托当前 Platform Session。 */
           create: scopedAssets => Promise.resolve(options.platform.session.createDistributions!(Object.freeze({
             command: options.command,
             mode: options.mode,
             project: options.project,
-            primary: finalized.value,
+            primary,
             assets: scopedAssets,
             diagnostics: options.diagnostics.service('finalize', { owner: `platform:${id}`, platform: id }),
           }))),
@@ -305,6 +320,6 @@ export async function runPlatformPipeline(options: {
   return Object.freeze({
     platform: options.platform,
     merged: contributed.value,
-    units: Object.freeze([finalized.value, ...distributions.value]),
+    units: Object.freeze([primary, ...distributions.value]),
   });
 }

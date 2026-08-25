@@ -8,6 +8,7 @@ import {
   runKernelBuildSession,
   type AcpluginExtension,
   type ConfigCommand,
+  type PlatformContributor,
 } from '@acplugin/core';
 import { codex } from '../src/index.js';
 import { MARKETPLACE_MANIFEST_PATH, PLUGIN_MANIFEST_PATH } from '../src/package/manifest.js';
@@ -157,6 +158,34 @@ function contributionExtension(input: {
   });
 }
 
+/** 创建 Codex 必须显式拒绝的非空私有 Component contribution。 */
+function unsupportedComponentContribution(): AcpluginExtension {
+  const contributor: PlatformContributor<Record<string, never>, { readonly kind: 'fixture-component' }> = {
+    platform: 'codex',
+    platformApiVersion: '1',
+    contribute: () => ({
+      components: [{ subject: 'fixture:private-component', value: { kind: 'fixture-component' } }],
+      compatibility: [{
+        subject: 'fixture:private-component', capability: 'delivery', level: 'native',
+        reason: 'The fixture requests private Component delivery.',
+      }],
+    }),
+  };
+  return defineExtension({
+    id: 'private-component-fixture',
+    apiVersion: '1',
+    resourceRoots: [],
+    createSession: () => ({
+      discover: () => ({}),
+      validate: (_context, state) => ({
+        state, subjects: [{ subject: 'fixture:private-component', capabilities: ['delivery'] }],
+      }),
+      build: (_context, state) => ({ state }),
+      contributors: [contributor],
+    }),
+  });
+}
+
 afterEach(async () => {
   await Promise.all(temporaryRoots.splice(0).map(root => fs.rm(root, { recursive: true, force: true })));
 });
@@ -278,6 +307,21 @@ Review.
     expect(relaxedReport.success, JSON.stringify(relaxedReport.diagnostics, null, 2)).toBe(true);
     await expect(fs.readFile(path.join(agentRoot, 'dist/codex/plugin/skills/agent-reviewer/SKILL.md'), 'utf8'))
       .resolves.toContain('Intended model class: capable.');
+  });
+
+  it('explicitly rejects non-empty private Component contributions', async () => {
+    const root = await temporaryProject();
+    await fs.mkdir(path.join(root, 'src/skills/host'), { recursive: true });
+    await fs.writeFile(path.join(root, 'src/skills/host/SKILL.md'), '---\ndescription: Host.\n---\nHost.\n');
+    const report = await run({
+      root, command: 'validate', commit: false, extensions: [unsupportedComponentContribution()],
+    });
+
+    expect(report.success).toBe(false);
+    expect(report.packages).toEqual([]);
+    expect(report.diagnostics).toContainEqual(expect.objectContaining({
+      code: 'CODEX_COMPONENT_CONTRIBUTION_UNSUPPORTED', phase: 'finalize', platform: 'codex',
+    }));
   });
 
   it('lets Hooks and MCP Extensions use only declared add-only points and validates final wire data', async () => {

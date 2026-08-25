@@ -34,4 +34,6 @@ Pi 产生带 `package.json` 的 npm 主 Package：
 
 Pi 不支持 MCP transport，官方 MCP Contributor 会报告 unsupported，而不会伪造客户端行为。
 
+Pi 当前不支持 Platform Component Contribution。非空私有 contribution 会在 finalization 失败，绝不会被伪装为指导型 Skill。
+
 [Pi package API](/api/@tokenroll/acplugin-platform-pi/)

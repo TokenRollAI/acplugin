@@ -5,6 +5,7 @@ import { compareCodeUnits } from '../serialization/json.js';
 interface JsonSnapshotState {
   readonly ancestors: Set<object>;
   readonly path: string;
+  readonly objectGuard?: (value: object, path: string) => void;
 }
 
 /**
@@ -66,6 +67,8 @@ function snapshotValue(value: unknown, state: JsonSnapshotState): JsonValue {
   }
   if (typeof value !== 'object')
     throw new TypeError(`${state.path} must contain only JSON values.`);
+  /** Optional Core-only guard rejects signed capability identities before any field is inspected. */
+  state.objectGuard?.(value, state.path);
   if (state.ancestors.has(value))
     throw new TypeError(`${state.path} must not contain cycles.`);
 
@@ -93,6 +96,7 @@ function snapshotValue(value: unknown, state: JsonSnapshotState): JsonValue {
         result.push(snapshotValue(dataPropertyValue(descriptor, `${state.path}[${index}]`), {
           ancestors: state.ancestors,
           path: `${state.path}[${index}]`,
+          ...(state.objectGuard === undefined ? {} : { objectGuard: state.objectGuard }),
         }));
       }
       return Object.freeze(result);
@@ -112,6 +116,7 @@ function snapshotValue(value: unknown, state: JsonSnapshotState): JsonValue {
       defineJsonField(result, field, snapshotValue(dataPropertyValue(descriptors[field], fieldPath), {
         ancestors: state.ancestors,
         path: fieldPath,
+        ...(state.objectGuard === undefined ? {} : { objectGuard: state.objectGuard }),
       }));
     }
     return Object.freeze(result);
@@ -133,4 +138,20 @@ export function snapshotJson(value: unknown, label: string): JsonValue {
   if (typeof label !== 'string' || label.length === 0)
     throw new TypeError('JSON snapshot label must be a non-empty string.');
   return snapshotValue(value, { ancestors: new Set<object>(), path: label });
+}
+
+/**
+ * Core-internal strict JSON snapshot with an object-identity guard.
+ *
+ * The guard observes identity only and must not inspect Platform payload fields. It allows the
+ * Package layer to reject signed Source/Asset capabilities without reserving any JSON shape.
+ */
+export function snapshotJsonWithObjectGuard(
+  value: unknown,
+  label: string,
+  objectGuard: (value: object, path: string) => void,
+): JsonValue {
+  if (typeof label !== 'string' || label.length === 0)
+    throw new TypeError('JSON snapshot label must be a non-empty string.');
+  return snapshotValue(value, { ancestors: new Set<object>(), path: label, objectGuard });
 }

@@ -9,7 +9,7 @@
 
 Kernel v2 replaces shared lifecycle hooks with one private `PlatformSession` or `ExtensionSession` per build. A Session may hold resources that must be released on success, failure, or abort, while a managed commit must remain rollback-capable until all required Session cleanup succeeds.
 
-Build output and schema-v2 reports must also remain deterministic and free of machine paths or secrets. The former lifecycle exposed an ambient environment snapshot and discussed a cross-run dev cache without defining serializable state, implementation fingerprints, replayable effects, or transaction semantics.
+Build output and schema-v3 reports must also remain deterministic and free of machine paths or secrets. The former lifecycle exposed an ambient environment snapshot and discussed a cross-run dev cache without defining serializable state, implementation fingerprints, replayable effects, or transaction semantics.
 
 ## Decision
 

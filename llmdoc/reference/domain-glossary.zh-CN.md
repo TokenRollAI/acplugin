@@ -15,11 +15,12 @@
 | Extension point | Platform 显式允许一个 Contribution 填写的精确空 Document 字段路径。 |
 | Base Package | `Platform.createPackage()` 返回的不可变 Document、Asset、compatibility 和 metadata disposition。 |
 | Platform Contributor | Extension 回调；读取同一份 base Package，并返回独立的 add-only Package Contribution。 |
-| Package Contribution | 可选 Document 字段、Asset 和必需 compatibility；不能替换或删除 base 内容。 |
+| Package Contribution | 可选 Document 字段、Asset、subject-bound 不透明 Platform Component 和必需 compatibility；不能替换或删除 base 内容。 |
+| Platform Component Contribution | Extension Contributor 提交的、由 Platform 拥有的 JSON payload。它不是 Canonical Component；Core 只传输它，目标 Platform 负责校验、渲染并拥有原生输出。 |
 | Merged Package | Core 验证并把 Framework/Extension Contribution 与 base Package 合并后的确定性结果。 |
 | Primary Package | 最终可安装 Plugin、workspace 或 npm package，自动继承全部 merged Asset。 |
 | Distribution | 只有 primary Package candidate 通过 Platform 校验后才能派生的可选 Package。 |
 | Package candidate | Core 在临时根物化并传给 `validatePackage()` 的精确 Package 文件树。 |
 | Compatibility | Platform/resource/capability tuple，等级为 `native`、`transform`、`degraded` 或 `unsupported`。 |
-| BuildReport | 稳定 schema-v2 结果，包含 Project、Package、Asset provenance、兼容性、metadata、Platform 状态和诊断。 |
+| BuildReport | 稳定 schema-v3 结果，包含 Project、Package、Asset provenance、兼容性、metadata、Platform 状态和诊断。 |
 | 托管输出 | 针对选中 Platform 集合进行事务整体替换的配置输出根。 |

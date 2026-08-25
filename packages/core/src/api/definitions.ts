@@ -161,7 +161,10 @@ function definitionValue(descriptors: Record<string, PropertyDescriptor>, field:
  * @param definition trusted integration 提交的平台定义。
  * @returns 完成形态校验、复制和冻结的平台定义。
  */
-export function definePlatform<const O extends JsonObject>(definition: PlatformDefinition<O>): AcpluginPlatform<O> {
+export function definePlatform<
+  const O extends JsonObject,
+  TComponent extends JsonObject = never,
+>(definition: PlatformDefinition<O, TComponent>): AcpluginPlatform<O, TComponent> {
   /** definition 顶层必须是精确 plain-object contract。 */
   const descriptors = definitionDescriptors(definition, platformFields, 'Platform definition');
   /** API version 在任何回调运行前检查。 */
@@ -194,7 +197,7 @@ export function definePlatform<const O extends JsonObject>(definition: PlatformD
     createSession,
   };
   Object.defineProperty(platform, platformBrand, { value: true, enumerable: false });
-  return Object.freeze(platform) as unknown as AcpluginPlatform<O>;
+  return Object.freeze(platform) as unknown as AcpluginPlatform<O, TComponent>;
 }
 
 /**

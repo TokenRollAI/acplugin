@@ -1,6 +1,6 @@
 {
   "name": "@tokenroll/acplugin-extension-hooks",
-  "version": "0.0.2-beta",
+  "version": "0.0.3-beta",
   "description": "Portable hook authoring and platform contributors for acplugin.",
   "type": "module",
   "license": "MIT",

@@ -32,4 +32,6 @@ Plugin 包含 `.cursor-plugin/plugin.json`、`commands/`、`skills/` 与 `agents
 
 Hooks/MCP 的具体事件或 transport 支持由对应 Extension Contributor 报告，Platform 只提供受控 Manifest 扩展点。
 
+可信 Extension 可通过 `CursorPackageComponent` 交付私有原生 Subagent。Cursor 在 finalization 校验 payload、处理 canonical Agent 的命名冲突、生成 `agents/<id>.md` 并受控写入 `agents` glob；Extension 不能直接 patch Plugin Manifest。
+
 [Cursor package API](/api/@tokenroll/acplugin-platform-cursor/)

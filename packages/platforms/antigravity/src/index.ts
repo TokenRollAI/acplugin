@@ -51,8 +51,22 @@ export function antigravity(options: AntigravityPlatformOptions = {}): AcpluginP
           metadata: manifest.metadata,
         };
       },
-      /** Core 自动继承 base 与 Hooks/MCP 的 add-only 根 Assets。 */
-      finalizePackage: () => ({ id: 'plugin', type: 'plugin' }),
+      /**
+       * Antigravity 没有可验证的私有 Component wire contract。
+       *
+       * Payload 必须在最终交付边界显式拒绝，避免无声丢弃或把 Agent 错误降级成
+       * 生成 Skill；未来支持时仍应由本 Platform 自己引入 union 和 renderer。
+       */
+      finalizePackage: ({ package: mergedPackage, diagnostics }) => {
+        if (mergedPackage.components.length > 0) {
+          diagnostics.report({
+            code: 'ANTIGRAVITY_COMPONENT_CONTRIBUTION_UNSUPPORTED',
+            severity: 'error',
+            message: 'Antigravity does not support Platform Component contributions.',
+          });
+        }
+        return { id: 'plugin', type: 'plugin' };
+      },
       validatePackage: validateAntigravityPackage,
     }),
   });

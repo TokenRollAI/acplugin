@@ -77,7 +77,7 @@ A Platform Session owns:
 4. `validatePackage()` against the fully materialized candidate;
 5. optional `createDistributions()` from an already validated primary Package.
 
-An Extension validates and builds one platform-neutral state. Its `PlatformContributor` instances all read the same immutable Platform base Package and return independent `PackageContribution` values. A Contribution may add fields only at declared empty Document extension points, add Assets owned by that Extension, and report compatibility. It cannot read another Extension state, observe another Contribution, replace a Document, delete output, or claim a Component.
+An Extension validates and builds one platform-neutral state. Its `PlatformContributor` instances all read the same immutable Platform base Package and return independent `PackageContribution` values. A Contribution may add fields only at declared empty Document extension points, add Assets owned by that Extension, report compatibility, or submit subject-bound opaque JSON Platform Components. Core transports those payloads deterministically; only the receiving Platform finalizer validates, renders, names, and optionally registers its native resource. A Contributor cannot read another Extension state, observe another Contribution, replace a Document, delete output, or claim a Canonical Component.
 
 Core validates all Contributions, then performs one deterministic add-only merge. Conflicting Document fields or Package paths fail regardless of Extension configuration order.
 
@@ -85,7 +85,7 @@ Core validates all Contributions, then performs one deterministic add-only merge
 
 Package candidates are materialized only under Core-owned temporary roots. Platform validation therefore sees the exact file tree that would be installed. Distribution Assets inherit the validated primary Asset identity unless the Platform explicitly adds a newly signed Asset.
 
-`BuildReport` schema version 2 contains Components, Runtimes, Extensions, Platform status, Packages, Asset provenance, compatibility, metadata dispositions, and stage-bound diagnostics. It contains no bytes, timestamps, environment values, project absolute paths, or temporary roots.
+`BuildReport` schema version 3 contains Components, Runtimes, Extensions, Platform status, Packages, Asset provenance, compatibility, metadata dispositions, and stage-bound diagnostics. Component-driven generated Assets and finalization Documents may record stable contributor owner/subject provenance. It contains no bytes, timestamps, environment values, project absolute paths, or temporary roots.
 
 The managed output transaction treats the selected Platform set as one replacement:
 

@@ -7,6 +7,7 @@ import {
   type PackageAssetInput,
   type PlatformComponentValidationContext,
 } from '@tokenroll/acplugin/sdk';
+import type { OpenCodeNativeAgentComponent } from '../types.js';
 
 /** OpenCode 当前不开放未经独立 Schema 验证的 Component 专属字段。 */
 const COMPONENT_FIELDS = new Set<string>();
@@ -64,6 +65,36 @@ function openCodePermissions(tools: Readonly<Record<string, boolean>>): Readonly
     webfetch: tools.webfetch ? 'allow' : 'deny',
     task: tools.task ? 'allow' : 'deny',
   });
+}
+
+/** OpenCode private Subagent renderer 的已验证 Platform-owned 输入。 */
+export interface OpenCodeAgentDocumentInput {
+  readonly description: string;
+  readonly body: string;
+  readonly tools: Readonly<Record<string, boolean>>;
+  readonly permission: Readonly<Record<string, 'allow' | 'deny'>>;
+}
+
+/** 以 OpenCode workspace Subagent wire schema 渲染 Agent。 */
+export function renderOpenCodeAgent(input: OpenCodeAgentDocumentInput): string {
+  return markdownWithFrontmatter({
+    description: input.description,
+    mode: 'subagent',
+    tools: input.tools,
+    permission: input.permission,
+  }, input.body);
+}
+
+/** 将 OpenCode 私有 Component 映射为同一 Subagent renderer 输入。 */
+export function openCodeNativeAgentDocument(component: OpenCodeNativeAgentComponent): OpenCodeAgentDocumentInput {
+  const tools = Object.freeze(Object.fromEntries(OPENCODE_TOOLS.map(tool => [tool, component.tools?.[tool] ?? false])));
+  const permission = Object.freeze({
+    edit: component.permission?.edit ?? (tools.edit ? 'allow' : 'deny'),
+    bash: component.permission?.bash ?? (tools.bash ? 'allow' : 'deny'),
+    webfetch: component.permission?.webfetch ?? (tools.webfetch ? 'allow' : 'deny'),
+    task: component.permission?.task ?? (tools.task ? 'allow' : 'deny'),
+  });
+  return Object.freeze({ description: component.description, body: component.body, tools, permission });
 }
 
 /** 把 canonical Commands、Skills 与 Agents 转换为 OpenCode workspace Assets。 */
@@ -128,12 +159,12 @@ export async function createOpenCodeComponents(
     const tools = openCodeTools(agent.capabilities);
     /** Agent Markdown 使用 OpenCode 原生 Subagent 配置。 */
     const asset = await assets.fromBytes({
-      bytes: markdownWithFrontmatter({
+      bytes: renderOpenCodeAgent({
         description: agent.description,
-        mode: 'subagent',
+        body: agent.body,
         tools,
-        permission: openCodePermissions(tools),
-      }, agent.body),
+        permission: openCodePermissions(tools) as Readonly<Record<string, 'allow' | 'deny'>>,
+      }),
       origin: { operation: 'component-agent', subjects: [`agent:${agent.id}`] },
     });
     output.push(Object.freeze({ path: `.opencode/agents/${agent.id}.md`, asset }));

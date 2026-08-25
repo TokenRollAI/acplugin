@@ -11,6 +11,7 @@ function document(format: PackageDocumentSnapshot['format'], value: PackageDocum
     value,
     emission: 'required',
     extensionPoints: Object.freeze([]),
+    finalizationPoints: Object.freeze([]),
   });
 }
 

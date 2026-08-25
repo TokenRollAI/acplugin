@@ -332,7 +332,7 @@ config → setup Sessions → discover Resources → Canonical Project
 → compatibility → transaction → reverse close
 ```
 
-Descriptor loading goes through `context.modules`, while executable output goes through the Core-owned Rolldown service at `context.compiler`. The services register the actual module, license, plugin, and tsconfig graph for `dev`; integrations receive owner-scoped capabilities, do not create private bundlers, and cannot write `dist`. Platform Contributors can return owned Assets, add fields at declared Document extension points, and report compatibility from the same immutable base Package; they cannot replace Platform output or observe other Extension state. Session `close` always runs in reverse initialization order.
+Descriptor loading goes through `context.modules`, while executable output goes through the Core-owned Rolldown service at `context.compiler`. The services register the actual module, license, plugin, and tsconfig graph for `dev`; integrations receive owner-scoped capabilities, do not create private bundlers, and cannot write `dist`. Platform Contributors can return owned Assets, add fields at declared Document extension points, and report compatibility from the same immutable base Package. They can also submit an opaque Platform Component Contribution using the target Platform package's public payload type: Core transports only JSON and provenance, while that Platform validates, renders, names, and registers its native resource during finalization. Unsupported Platforms fail a non-empty contribution instead of silently dropping it or generating a fallback. Contributors cannot replace Platform output or observe other Extension state. Session `close` always runs in reverse initialization order.
 
 ## CLI
 

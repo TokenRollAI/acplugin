@@ -10,7 +10,11 @@ import {
   snapshotJson,
   type AcpluginExtension,
   type AcpluginPlatform,
+  type AssetService,
   type ExtensionDefinition,
+  type FinalizationAssetService,
+  type PackageContribution,
+  type PlatformContributor,
   type ManagedRolldownInputOptions,
   type ManagedRolldownOutputOptions,
   type ManagedRolldownPlugin,
@@ -24,8 +28,9 @@ import type { Project } from '@tokenroll/acplugin/sdk';
  * 验证普通作者根入口和可信集成 SDK 使用不同且明确的类型表面。
  */
 export function verifyKernelV2SdkTypes(): void {
+  type CommunityComponent = { readonly kind: 'community'; readonly body: string };
   /** 第三方 Platform 只从 sdk subpath 创建。 */
-  const platform: AcpluginPlatform = definePlatform({
+  const platform: AcpluginPlatform<Record<string, never>, CommunityComponent> = definePlatform({
     id: 'community-platform',
     apiVersion: '1',
     deliveryType: 'plugin',
@@ -39,6 +44,27 @@ export function verifyKernelV2SdkTypes(): void {
       validatePackage: () => undefined,
     }),
   });
+  /** Platform-specific component type stays at the contributor/finalization boundary. */
+  const contributor: PlatformContributor<{ readonly enabled: true }, CommunityComponent> = {
+    platform: 'community-platform',
+    platformApiVersion: '1',
+    contribute: () => ({
+      components: [{ subject: 'community:resource', value: { kind: 'community', body: 'Body.' } }],
+      compatibility: [{ subject: 'community:resource', capability: 'component', level: 'native', reason: 'Native.' }],
+    }),
+  };
+  const noComponentContribution: PackageContribution = { compatibility: [] };
+  declareFinalizationAssetBoundary(undefined as unknown as FinalizationAssetService);
+  declareOrdinaryAssetBoundary(undefined as unknown as AssetService);
+  const unsupportedContributor: PlatformContributor<Record<string, never>> = {
+    platform: 'unsupported-platform',
+    platformApiVersion: '1',
+    contribute: () => ({
+      // @ts-expect-error Default never payload forbids Components for an undeclared Platform capability.
+      components: [{ subject: 'community:resource', value: { kind: 'community' } }],
+      compatibility: [],
+    }),
+  };
   /** 第三方 Extension 只从 sdk subpath 创建。 */
   const extension: AcpluginExtension = defineExtension({
     id: 'community-extension',
@@ -112,6 +138,9 @@ export function verifyKernelV2SdkTypes(): void {
 
   void [
     config,
+    contributor,
+    noComponentContribution,
+    unsupportedContributor,
     oldPlatform,
     oldExtension,
     forgedSource,
@@ -125,4 +154,22 @@ export function verifyKernelV2SdkTypes(): void {
     snapshot,
     undefined as unknown as Project,
   ];
+}
+
+function declareFinalizationAssetBoundary(assets: FinalizationAssetService): void {
+  void assets.fromBytes({
+    bytes: 'component',
+    origin: { operation: 'platform-component', componentOrigins: [] },
+  });
+}
+
+function declareOrdinaryAssetBoundary(assets: AssetService): void {
+  void assets.fromBytes({
+    bytes: 'component',
+    origin: {
+      operation: 'extension-component',
+      // @ts-expect-error Only Platform finalization may attach Core-issued Component origins.
+      componentOrigins: [],
+    },
+  });
 }

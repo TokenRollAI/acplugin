@@ -310,7 +310,7 @@ function expectedNonNativeEntries() {
 
 /** 校验报告结构、兼容性矩阵、诊断和 Package 覆盖。 */
 function verifyReport(report, command) {
-  assert(report.schemaVersion === 2, 'Playground report does not use schema v2.');
+  assert(report.schemaVersion === 3, 'Playground report does not use schema v3.');
   assert(report.success === true, `Playground ${command} did not succeed.`);
   assert(report.command === command, `Playground ${command} report has the wrong command.`);
   assert(report.committed === (command === 'build'), `Playground ${command} has the wrong committed state.`);

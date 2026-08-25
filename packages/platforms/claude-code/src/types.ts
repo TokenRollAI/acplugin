@@ -20,6 +20,31 @@ export interface ClaudeCodePlatformOptions {
   readonly marketplace?: ClaudeCodeMarketplaceOptions;
 }
 
+/** Claude Code Platform 允许 Extension 在 finalization 提交的私有 Component 联合。 */
+export type ClaudePackageComponent = ClaudeNativeAgentComponent;
+
+/**
+ * Claude Code 原生 Agent 的 Platform-owned contribution 数据。
+ *
+ * 它不是 Canonical Agent，也不复用 Core 的 Agent model/capability 类型；每个字段
+ * 的运行时校验、名称冲突、frontmatter 和安装路径都由本 Platform 独立拥有。
+ */
+export type ClaudeNativeAgentComponent = import('@tokenroll/acplugin/sdk').JsonObject & Readonly<{
+  readonly kind: 'native-agent';
+  readonly id: string;
+  readonly description: string;
+  readonly body: string;
+  readonly model?: 'inherit' | 'fast' | 'capable';
+  readonly tools?: readonly string[];
+  readonly disallowedTools?: readonly string[];
+  readonly effort?: 'low' | 'medium' | 'high' | 'xhigh' | 'max';
+  readonly maxTurns?: number;
+  readonly skills?: readonly string[];
+  readonly memory?: 'user' | 'project' | 'local';
+  readonly background?: boolean;
+  readonly isolation?: 'worktree';
+}>;
+
 /** Claude Code Plugin 清单中可由 Platform 和 Extension 共同组成的字段。 */
 export interface ClaudeCodePluginManifest {
   readonly name: string;

@@ -10,8 +10,11 @@ import type {
   SourceAssetRef,
   SourceFileRef,
 } from '../contracts/services.js';
-import type { AssetOrigin } from '../contracts/reports.js';
+import type { ContributedPackageComponent, PackageComponentOrigin } from '../contracts/integrations.js';
+import type { FinalizationAssetService } from '../contracts/packages.js';
+import type { AssetContributor, AssetOrigin } from '../contracts/reports.js';
 import type { CompileAssetOriginInput } from '../contracts/compiler.js';
+import { dataArrayItems, dataObjectFields } from '../security/data-boundary.js';
 import { BuildSessionScope } from './session-scope.js';
 import { compareCodePoints, safeRelativePath, validatePhysicalEntry } from '../security/path-policy.js';
 import { SourceRegistry } from './sources.js';
@@ -35,6 +38,13 @@ export interface AssetIssuanceScope {
   /** @returns 当前 ref 是否由本 scope 新签发。 */
   readonly includes: (asset: AssetRef) => boolean;
   /** 关闭后拒绝 callback 泄漏的 service 继续签发或读取。 */
+  readonly close: () => void;
+}
+
+/** Finalization callback 内受限 Component provenance Asset scope。 */
+export interface ComponentFinalizationAssetScope {
+  readonly service: FinalizationAssetService;
+  /** 关闭后拒绝泄漏的 finalization AssetService 继续签发或读取。 */
   readonly close: () => void;
 }
 
@@ -128,6 +138,57 @@ function stableOriginId(value: unknown, label: string): string {
 }
 
 /**
+ * 从当前 Platform finalization 收到的 Component origins 建立稳定 provenance。
+ *
+ * allowed 使用 object identity 而不是 metadata 文本，因此普通对象、其他 Package、
+ * 其他 Session 或已过期 scope 的同形 origin 都不能被伪造为贡献来源。
+ */
+function componentContributors(
+  value: unknown,
+  allowed: ReadonlySet<PackageComponentOrigin> | undefined,
+): readonly AssetContributor[] | undefined {
+  if (value === undefined)
+    return undefined;
+  if (allowed === undefined)
+    throw new Error('Generated Asset componentOrigins are only available during Platform finalization.');
+  const inputs = dataArrayItems(value, 'Generated Asset componentOrigins');
+  const contributors = inputs.map((origin, index) => {
+    if (typeof origin !== 'object' || origin === null || !allowed.has(origin as PackageComponentOrigin))
+      throw new Error(`Generated Asset componentOrigins[${index}] is not authorized for this Platform finalization.`);
+    const owner = (origin as PackageComponentOrigin).owner;
+    const subject = (origin as PackageComponentOrigin).subject;
+    if (typeof owner !== 'string' || typeof subject !== 'string')
+      throw new Error(`Generated Asset componentOrigins[${index}] is invalid.`);
+    return Object.freeze({ owner, subject });
+  });
+  /** 多条 payload 可来自同一 Extension subject；报告只保留一条稳定审计记录。 */
+  const unique = new Map<string, AssetContributor>();
+  for (const contributor of contributors)
+    unique.set(`${contributor.owner}\0${contributor.subject}`, contributor);
+  return Object.freeze([...unique.values()].sort((left, right) => compareCodePoints(left.owner, right.owner)
+    || compareCodePoints(left.subject, right.subject)));
+}
+
+/**
+ * Platform-rendered Asset 的逻辑 subjects 只能引用其实际声明的 Component origins。
+ *
+ * Core 自己编码 contribution-driven Document 时仍使用 document:<id> 作为逻辑 subject，
+ * 因此该约束只由 finalization callback 的 scoped AssetService 启用。
+ */
+function validateComponentSubjects(
+  subjects: readonly string[] | undefined,
+  contributors: readonly AssetContributor[] | undefined,
+): void {
+  if (subjects === undefined || contributors === undefined)
+    return;
+  const available = new Set(contributors.map(contributor => contributor.subject));
+  for (const subject of subjects) {
+    if (!available.has(subject))
+      throw new Error(`Generated Asset subject "${subject}" is not declared by its Component origins.`);
+  }
+}
+
+/**
  * 验证 Compiler module report 使用的安全逻辑来源引用。
  *
  * @param value project-relative、virtual 或 package identity。
@@ -166,6 +227,17 @@ export class AssetRegistry {
   readonly #grants = new WeakMap<object, Set<string>>();
   /** owner 内单调递增且不受其他 owner 并行完成顺序影响的 ref 序号。 */
   readonly #ownerSequences = new Map<string, number>();
+  /** Core 签发的 Component provenance identity 及其当前 Platform/Session 绑定。 */
+  readonly #componentOrigins = new WeakMap<PackageComponentOrigin, Readonly<{ platform: string; owner: string; subject: string; session: object }>>();
+
+  /**
+   * @returns value 是否为当前 Session 真实签发的 Source/Asset capability identity。
+   *
+   * Package Component JSON 只调用本 identity predicate，不读取 payload 业务字段。
+   */
+  isCapabilityReference(value: object): boolean {
+    return this.#records.has(value) || this.#sources.isReference(value);
+  }
 
   /**
    * 创建当前 BuildSession 唯一 Asset Registry。
@@ -197,6 +269,103 @@ export class AssetRegistry {
       read: (asset, options) => this.read(owner, asset, options),
     };
     return Object.freeze(service);
+  }
+
+  /**
+   * 由 Package merge 为当前 Platform 签发 Component provenance identity。
+   *
+   * 该 Registry 是唯一能够把 identity 放入私有 WeakMap 的位置；公开 metadata
+   * 相同的普通对象不能在 later finalization 获得授权。
+   */
+  issueComponentOrigin(platform: string, owner: string, subject: string): PackageComponentOrigin {
+    this.#scope.assertActive();
+    if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/u.test(platform)
+      || typeof owner !== 'string' || typeof subject !== 'string') {
+      throw new Error('Component origin identity is invalid.');
+    }
+    const origin = Object.freeze({ owner, subject }) as PackageComponentOrigin;
+    this.#componentOrigins.set(origin, Object.freeze({ platform, owner, subject, session: this.#scope.token }));
+    return origin;
+  }
+
+  /** @returns 当前 Platform/Session 真实合并 Component 的签名 origin 集合。 */
+  #authorizedComponentOrigins(
+    platform: string,
+    components: readonly Pick<ContributedPackageComponent, 'origin'>[],
+  ): ReadonlySet<PackageComponentOrigin> {
+    this.#scope.assertActive();
+    const origins = new Set<PackageComponentOrigin>();
+    for (const component of components) {
+      if (typeof component !== 'object' || component === null || typeof component.origin !== 'object' || component.origin === null)
+        throw new Error('Component finalization requires Core-signed Component origins.');
+      const record = this.#componentOrigins.get(component.origin);
+      if (record === undefined || record.session !== this.#scope.token || record.platform !== platform
+        || record.owner !== component.origin.owner || record.subject !== component.origin.subject) {
+        throw new Error('Component origin is not authorized for this Platform finalization.');
+      }
+      origins.add(component.origin);
+    }
+    return origins;
+  }
+
+  /**
+   * 为 Platform finalization 创建带当前 merged Component identity 集合的可撤销服务。
+   *
+   * 只有该 callback service 的 Bytes provenance 可以引用 components；其他阶段仍使用
+   * 普通 AssetService，因而不能延展 contribution provenance 的授权边界。
+   */
+  componentFinalizationScope(
+    platform: string,
+    owner: string,
+    components: readonly Pick<ContributedPackageComponent, 'origin'>[],
+  ): ComponentFinalizationAssetScope {
+    this.#scope.assertActive();
+    if (typeof owner !== 'string' || owner.length === 0)
+      throw new Error('Component finalization owner must be a non-empty string.');
+    const origins = this.#authorizedComponentOrigins(platform, components);
+    let active = true;
+    const assertActive = (): void => {
+      if (!active)
+        throw new Error('Component finalization Asset scope is no longer active.');
+      this.#scope.assertActive();
+    };
+    const service: FinalizationAssetService = {
+      fromSource: async (source, options) => {
+        assertActive();
+        return this.issueSource(owner, source, options);
+      },
+      fromBytes: async (input) => {
+        assertActive();
+        return this.issueBytes(owner, input, origins, true);
+      },
+      read: async (asset, options) => {
+        assertActive();
+        return this.read(owner, asset, options);
+      },
+    };
+    const close = (): void => {
+      active = false;
+    };
+    return Object.freeze({ service: Object.freeze(service), close });
+  }
+
+  /**
+   * 由 Core 在 Platform callback 结束后编码 contribution-driven Document 时使用。
+   *
+   * 它复用相同的签名集合，但不是 AssetService，因此 Platform/Extension 无法在
+   * callback 外继续签发带 Component provenance 的 Assets。
+   */
+  issueFinalizationBytes(
+    platform: string,
+    owner: string,
+    components: readonly Pick<ContributedPackageComponent, 'origin'>[],
+    input: {
+      readonly bytes: Uint8Array | string;
+      readonly mode?: AssetMode;
+      readonly origin: GeneratedBytesOriginInput;
+    },
+  ): Promise<BytesAssetRef> {
+    return this.issueBytes(owner, input, this.#authorizedComponentOrigins(platform, components));
   }
 
   /**
@@ -331,27 +500,44 @@ export class AssetRegistry {
     readonly bytes: Uint8Array | string;
     readonly mode?: AssetMode;
     readonly origin: GeneratedBytesOriginInput;
-  }): Promise<BytesAssetRef> {
+  }, allowedComponentOrigins?: ReadonlySet<PackageComponentOrigin>, enforceComponentSubjects = false): Promise<BytesAssetRef> {
     this.#scope.assertActive();
-    if (typeof input !== 'object' || input === null)
-      throw new Error('Bytes Asset input must be an object.');
+    const inputFields = dataObjectFields(input, new Set(['bytes', 'mode', 'origin']), 'Bytes Asset input');
+    const originFields = dataObjectFields(
+      inputFields.origin?.value,
+      new Set(['operation', 'subjects', 'componentOrigins']),
+      'Generated Asset origin',
+    );
     /** 字符串按 UTF-8 编码，Uint8Array 必须复制底层存储。 */
-    const bytes = typeof input.bytes === 'string' ? new TextEncoder().encode(input.bytes) : Uint8Array.from(input.bytes);
+    const bytesInput = inputFields.bytes?.value;
+    if (typeof bytesInput !== 'string' && !(bytesInput instanceof Uint8Array))
+      throw new Error('Bytes Asset bytes must be a string or Uint8Array.');
+    const bytes = typeof bytesInput === 'string' ? new TextEncoder().encode(bytesInput) : Uint8Array.from(bytesInput);
     /** subjects 是稳定标识集合，复制、去重并按 code point 排序。 */
-    const subjects = input.origin.subjects?.map(subject => stableOriginId(subject, 'Generated Asset subject')).sort(compareCodePoints);
+    const subjectInputs = originFields.subjects === undefined
+      ? undefined
+      : dataArrayItems(originFields.subjects.value, 'Generated Asset subjects');
+    const subjects = subjectInputs?.map(subject => stableOriginId(subject, 'Generated Asset subject')).sort(compareCodePoints);
     if (subjects !== undefined && new Set(subjects).size !== subjects.length)
       throw new Error('Generated Asset subjects must not contain duplicates.');
+    const contributors = componentContributors(
+      originFields.componentOrigins?.value,
+      allowedComponentOrigins,
+    );
+    if (enforceComponentSubjects)
+      validateComponentSubjects(subjects, contributors);
     /** owner 由闭包覆盖，调用方只能填写 operation/subjects。 */
     const origin = Object.freeze({
       type: 'generated' as const,
       owner,
-      operation: stableOriginId(input.origin.operation, 'Generated Asset operation'),
+      operation: stableOriginId(originFields.operation?.value, 'Generated Asset operation'),
       ...(subjects === undefined ? {} : { subjects: Object.freeze(subjects) }),
+      ...(contributors === undefined ? {} : { contributors }),
     });
     return this.#issue({
       kind: 'bytes-asset',
       owner,
-      mode: assetMode(input.mode, 0o644),
+      mode: assetMode(inputFields.mode?.value as AssetMode | undefined, 0o644),
       size: bytes.byteLength,
       sha256: hashBytes(bytes),
       origin,

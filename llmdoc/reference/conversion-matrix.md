@@ -24,6 +24,21 @@ When a Codex Command body uses `{{arguments}}`, the fallback Skill replaces it w
 
 Codex uses `<plugin-name>-<command-id>` as the generated Skill ID. The final ID is validated with the native and Agent fallback Skill namespace before Package creation.
 
+## Platform Component Contributions
+
+An Extension may map a private resource into an opaque JSON payload owned by a target Platform. This is not a Canonical Component, a raw Manifest patch, an Extension ordering mechanism, or a fallback protocol. The Platform validates and renders the payload in finalization, while Core keeps the merge and provenance generic.
+
+| Platform | Private native contribution |
+| --- | --- |
+| Claude Code | Native Agent at `agents/<id>.md`; the Platform controls the `agents` Manifest field. |
+| Cursor | Native Subagent at `agents/<id>.md`; the Platform controls the `agents` Manifest glob. |
+| OpenCode | Native workspace Subagent at `.opencode/agents/<id>.md`; no config patch is needed. |
+| Codex | Unsupported; a non-empty contribution fails, with no generated `agent-*` Skill. |
+| Antigravity | Unsupported; a non-empty contribution fails, with no generated Skill fallback. |
+| Pi | Unsupported; a non-empty contribution fails, with no generated guidance Skill. |
+
+The first supported payloads are the respective Platform package's native Agent types. Schema, identity, case/NFC collision policy, output paths, and candidate validation remain Platform-owned. Component-driven Assets and finalization Documents expose only stable Extension owner/subject provenance in schema-v3 reports.
+
 ## Hooks Extension
 
 | Portable event | Claude Code | Codex | Cursor | Antigravity | OpenCode | Pi |

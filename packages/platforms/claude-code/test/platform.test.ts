@@ -7,8 +7,8 @@ import {
   runKernelBuildSession,
   type ConfigCommand,
 } from '@acplugin/core';
-import { defineExtension, type AcpluginExtension } from '@tokenroll/acplugin/sdk';
-import { claudeCode } from '../src/index.js';
+import { defineExtension, type AcpluginExtension, type PlatformContributor } from '@tokenroll/acplugin/sdk';
+import { claudeCode, type ClaudePackageComponent } from '../src/index.js';
 import { MARKETPLACE_MANIFEST_PATH, PLUGIN_MANIFEST_PATH } from '../src/package/manifest.js';
 
 /** 测试结束后统一删除的临时工程根。 */
@@ -184,6 +184,47 @@ function wireExtension(input: {
   });
 }
 
+/** 创建只通过 Claude Platform Component transport 交付 Native Agent 的中立测试 Extension。 */
+function nativeAgentExtension(input: {
+  readonly id: string;
+  readonly agents: readonly { readonly id: string; readonly description?: string; readonly body?: string }[];
+}): AcpluginExtension {
+  const contributor: PlatformContributor<Record<string, never>, ClaudePackageComponent> = {
+    platform: 'claude-code',
+    platformApiVersion: '1',
+    contribute: () => ({
+      components: input.agents.map(agent => ({
+        subject: `fixture:${input.id}`,
+        value: {
+          kind: 'native-agent' as const,
+          id: agent.id,
+          description: agent.description ?? `Native ${agent.id}.`,
+          body: agent.body ?? `Perform ${agent.id}.`,
+          model: 'capable' as const,
+          tools: ['Read', 'Grep'],
+        },
+      })),
+      compatibility: [{
+        subject: `fixture:${input.id}`,
+        capability: 'delivery',
+        level: 'native' as const,
+        reason: 'The fixture is delivered as a native Claude Code Agent.',
+      }],
+    }),
+  };
+  return defineExtension({
+    id: input.id,
+    apiVersion: '1',
+    resourceRoots: [],
+    createSession: () => ({
+      discover: () => ({}),
+      validate: (_context, discovered) => ({ state: discovered, subjects: [{ subject: `fixture:${input.id}`, capabilities: ['delivery'] }] }),
+      build: (_context, validated) => ({ state: validated }),
+      contributors: [contributor],
+    }),
+  });
+}
+
 afterEach(async () => {
   await Promise.all(temporaryRoots.splice(0).map(root => fs.rm(root, { recursive: true, force: true })));
 });
@@ -246,6 +287,68 @@ describe('Claude Code Platform Package API', () => {
     ]));
   });
 
+  it('renders a Platform-owned Native Agent contribution, registers it in the Manifest, and preserves provenance', async () => {
+    const root = await temporaryProject();
+    const report = await run({ root, extensions: [nativeAgentExtension({ id: 'private-fixture', agents: [{ id: 'observer' }] })] });
+    const output = path.join(root, 'dist/claude-code/plugin');
+    const manifest = JSON.parse(await fs.readFile(path.join(output, PLUGIN_MANIFEST_PATH), 'utf8'));
+    const agent = await fs.readFile(path.join(output, 'agents/observer.md'), 'utf8');
+    const agentAsset = report.packages[0]!.assets.find(asset => asset.path === 'agents/observer.md')!;
+    const manifestAsset = report.packages[0]!.assets.find(asset => asset.path === PLUGIN_MANIFEST_PATH)!;
+
+    expect(report.success, JSON.stringify(report.diagnostics, null, 2)).toBe(true);
+    expect(manifest.agents).toBe('./agents/');
+    expect(agent).toContain('name: observer');
+    expect(agentAsset).toMatchObject({
+      owner: 'platform:claude-code',
+      origin: { contributors: [{ owner: 'extension:private-fixture', subject: 'fixture:private-fixture' }] },
+    });
+    expect(manifestAsset).toMatchObject({
+      origin: { contributors: [{ owner: 'extension:private-fixture', subject: 'fixture:private-fixture' }] },
+    });
+  });
+
+  it('keeps canonical and contributed Agents in one Platform namespace and rejects deterministic collisions', async () => {
+    const root = await temporaryProject();
+    await fs.mkdir(path.join(root, 'src/agents'), { recursive: true });
+    await fs.writeFile(path.join(root, 'src/agents/existing.md'), '---\ndescription: Existing Agent.\n---\nExisting.\n');
+    const collision = await run({
+      root,
+      command: 'validate',
+      commit: false,
+      extensions: [nativeAgentExtension({ id: 'collision-fixture', agents: [{ id: 'existing' }] })],
+    });
+    expect(collision.success).toBe(false);
+    expect(collision.diagnostics).toContainEqual(expect.objectContaining({
+      code: 'CLAUDE_COMPONENT_CONTRIBUTION_COLLISION', phase: 'finalize', platform: 'claude-code',
+    }));
+
+    const invalidRoot = await temporaryProject();
+    const invalid = await run({
+      root: invalidRoot,
+      command: 'validate',
+      commit: false,
+      extensions: [nativeAgentExtension({ id: 'invalid-fixture', agents: [{ id: 'EXISTING' }] })],
+    });
+    expect(invalid.success).toBe(false);
+    expect(invalid.diagnostics).toContainEqual(expect.objectContaining({
+      code: 'CLAUDE_COMPONENT_CONTRIBUTION_INVALID', phase: 'finalize', platform: 'claude-code',
+    }));
+
+    const duplicateRoot = await temporaryProject();
+    const extensions = [
+      nativeAgentExtension({ id: 'zeta-fixture', agents: [{ id: 'same' }] }),
+      nativeAgentExtension({ id: 'alpha-fixture', agents: [{ id: 'same' }] }),
+    ];
+    const first = await run({ root: duplicateRoot, command: 'validate', commit: false, extensions });
+    const second = await run({ root: duplicateRoot, command: 'validate', commit: false, extensions: [...extensions].reverse() });
+    expect(first.diagnostics).toEqual(second.diagnostics);
+    expect(first.success).toBe(false);
+    expect(first.diagnostics).toContainEqual(expect.objectContaining({
+      code: 'CLAUDE_COMPONENT_CONTRIBUTION_COLLISION', phase: 'finalize', platform: 'claude-code',
+    }));
+  });
+
   it('creates a self-contained Marketplace by inheriting validated primary AssetRefs byte-for-byte', async () => {
     /** root 提供足够多的 Asset 类型验证完整继承。 */
     const root = await temporaryProject();
@@ -253,13 +356,16 @@ describe('Claude Code Platform Package API', () => {
     /** platform 开启唯一可选 Distribution。 */
     const platform = claudeCode({ marketplace: {} });
     /** first 用于建立确定性报告和字节基线。 */
-    const first = await run({ root, platform });
+    const contribution = nativeAgentExtension({ id: 'marketplace-fixture', agents: [{ id: 'contributed' }] });
+    const first = await run({ root, platform, extensions: [contribution] });
     /** firstDistribution 保存首次构建的完整分发报告。 */
     const firstDistribution = first.packages.find(unit => unit.id === 'marketplace')!;
     /** primary 与 distribution 使用相同 AssetRef，因此报告 hash/origin 必须一致。 */
     const primary = first.packages.find(unit => unit.id === 'plugin')!;
+    const contributedPrimary = primary.assets.find(asset => asset.path === 'agents/contributed.md')!;
+    const contributedDistribution = firstDistribution.assets.find(asset => asset.path === 'agents/contributed.md')!;
     /** second 使用相同输入验证完整事务替换不改变字节。 */
-    const second = await run({ root, platform });
+    const second = await run({ root, platform, extensions: [contribution] });
     /** marketplaceRoot 是第二次原子替换后的最终分发目录。 */
     const marketplaceRoot = path.join(root, 'dist/claude-code/marketplace');
 
@@ -274,6 +380,12 @@ describe('Claude Code Platform Package API', () => {
         owner: source.owner, mode: source.mode, sha256: source.sha256, origin: source.origin,
       });
     }
+    expect(contributedDistribution).toMatchObject({
+      owner: contributedPrimary.owner,
+      mode: contributedPrimary.mode,
+      sha256: contributedPrimary.sha256,
+      origin: contributedPrimary.origin,
+    });
     expect(second.packages.find(unit => unit.id === 'marketplace')?.assets).toEqual(firstDistribution.assets);
   });
 

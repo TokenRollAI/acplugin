@@ -29,6 +29,12 @@ export interface MetadataDispositionEntry extends MetadataDispositionInput {
   readonly platform: string;
 }
 
+/** 生成 Asset 的 contribution provenance；不包含 payload、路径或平台业务类型。 */
+export interface AssetContributor {
+  readonly owner: string;
+  readonly subject: string;
+}
+
 /** 稳定报告中的 Asset 来源。 */
 export type AssetOrigin = {
   readonly type: 'source';
@@ -47,6 +53,7 @@ export type AssetOrigin = {
   readonly owner: string;
   readonly operation: string;
   readonly subjects?: readonly string[];
+  readonly contributors?: readonly AssetContributor[];
 };
 
 /** BuildReport 中的 Asset 摘要。 */
@@ -114,7 +121,7 @@ export interface Diagnostic extends DiagnosticInput {
 
 /** Kernel v2 唯一公开构建报告。 */
 export interface BuildReport {
-  readonly schemaVersion: 2;
+  readonly schemaVersion: 3;
   readonly framework: { readonly name: 'acplugin'; readonly version: string };
   readonly compiler: { readonly name: 'rolldown'; readonly version: string };
   readonly success: boolean;

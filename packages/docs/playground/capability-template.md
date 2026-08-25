@@ -37,7 +37,7 @@ export default defineConfig({
 
 ## 输出验证
 
-验证器消费真实 `validate --json` 和 `build --json`，逐项检查六平台兼容性矩阵、schema-v2 Package/Asset report 与文件树闭包、Component 转换内容、Manifest/Config 引用、Hook runtime、MCP JSON-RPC、Node Runtime 真实执行、Secret 不泄漏和双构建字节确定性。平台明确 unsupported 的事件、transport 或 runtime 必须出现在兼容性报告中，同时不得生成伪配置或伪运行文件。
+验证器消费真实 `validate --json` 和 `build --json`，逐项检查六平台兼容性矩阵、schema-v3 Package/Asset report 与文件树闭包、Component 转换内容、Manifest/Config 引用、Hook runtime、MCP JSON-RPC、Node Runtime 真实执行、Secret 不泄漏和双构建字节确定性。平台明确 unsupported 的事件、transport 或 runtime 必须出现在兼容性报告中，同时不得生成伪配置或伪运行文件。
 
 ## 模板边界
 

@@ -14,7 +14,7 @@ const roots: string[] = [];
 
 /** @returns 带一个 structured-origin Asset 的 Package fixture。 */
 async function fixture() {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'acplugin-report-v2-'));
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'acplugin-report-v3-'));
   roots.push(root);
   const scope = new BuildSessionScope();
   const sources = new SourceRegistry(scope, root);
@@ -37,7 +37,7 @@ afterEach(async () => {
   await Promise.all(roots.splice(0).map(root => fs.rm(root, { recursive: true, force: true })));
 });
 
-describe('BuildReport schema v2', () => {
+describe('BuildReport schema v3', () => {
   it('sorts deterministically and includes structured Asset provenance without bytes', async () => {
     const current = await fixture();
     const input = {
@@ -57,12 +57,19 @@ describe('BuildReport schema v2', () => {
 
     expect(first).toBe(second);
     expect(first.endsWith('\n')).toBe(true);
-    expect(JSON.parse(first)).toMatchObject({
-      schemaVersion: 2,
+    const parsed = JSON.parse(first);
+    expect(parsed).toMatchObject({
+      schemaVersion: 3,
       packages: [{ validated: true, assets: [{
         path: 'bin/main.mjs', owner: 'platform:target', mode: 0o755,
         origin: { type: 'generated', owner: 'platform:target', operation: 'generated-command', subjects: ['command:check'] },
       }] }],
+    });
+    expect(parsed.packages[0].assets[0].origin).toEqual({
+      type: 'generated',
+      owner: 'platform:target',
+      operation: 'generated-command',
+      subjects: ['command:check'],
     });
     expect(first).not.toContain('content');
     expect(first).not.toContain(current.root);

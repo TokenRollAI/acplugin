@@ -24,6 +24,21 @@ OpenCode 明确是 Workspace Overlay，不会收到伪造的通用 `package.json
 
 Codex 使用 `<plugin-name>-<command-id>` 作为 generated Skill ID，并在 Package 创建前与原生 Skill、Agent fallback Skill 共用同一命名空间校验。
 
+## Platform Component Contribution
+
+Extension 可以把私有资源映射为目标 Platform 拥有的不透明 JSON payload。这不是 Canonical Component、raw Manifest patch、Extension 排序机制或 fallback 协议。Platform 在 finalization 中校验和渲染 payload，Core 只保持通用 merge 与 provenance。
+
+| Platform | 私有原生 contribution |
+| --- | --- |
+| Claude Code | 原生 Agent，路径为 `agents/<id>.md`；Platform 控制 `agents` Manifest 字段。 |
+| Cursor | 原生 Subagent，路径为 `agents/<id>.md`；Platform 控制 `agents` Manifest glob。 |
+| OpenCode | 原生 workspace Subagent，路径为 `.opencode/agents/<id>.md`；无需 patch config。 |
+| Codex | 不支持；非空 contribution 失败，不生成 `agent-*` Skill。 |
+| Antigravity | 不支持；非空 contribution 失败，不生成 Skill fallback。 |
+| Pi | 不支持；非空 contribution 失败，不生成指导型 Skill。 |
+
+首期支持的 payload 是各 Platform package 的原生 Agent type。schema、identity、大小写/NFC 冲突策略、输出路径和 candidate validation 始终属于 Platform。由 contribution 决定的 Asset 与 finalization Document 只在 schema-v3 report 中公开稳定的 Extension owner/subject provenance。
+
 ## Hooks Extension
 
 | 可移植事件 | Claude Code | Codex | Cursor | Antigravity | OpenCode | Pi |

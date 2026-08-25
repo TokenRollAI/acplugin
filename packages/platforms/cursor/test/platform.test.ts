@@ -7,12 +7,13 @@ import {
   defineExtension,
   type AcpluginExtension,
   type JsonValue,
+  type PlatformContributor,
 } from '@acplugin/core';
 import {
   resolveKernelConfig,
   runKernelBuildSession,
 } from '@acplugin/core';
-import { cursor } from '../src/index.js';
+import { cursor, type CursorPackageComponent } from '../src/index.js';
 import { PLUGIN_MANIFEST_PATH } from '../src/package/manifest.js';
 
 /** 测试结束后统一删除的临时工程根目录。 */
@@ -159,6 +160,44 @@ function contribution(input: {
   });
 }
 
+/** 创建只由 Cursor Platform Component transport 交付 Native Agent 的中立 Extension。 */
+function nativeAgentContribution(input: {
+  readonly id: string;
+  readonly agents: readonly Record<string, JsonValue>[];
+}): AcpluginExtension {
+  /** payload 类型只存在于 Cursor Platform 与其 Contributor 的边界。 */
+  const contributor: PlatformContributor<Record<string, never>, CursorPackageComponent> = {
+    platform: 'cursor',
+    platformApiVersion: '1',
+    contribute: () => ({
+      components: input.agents.map(agent => ({
+        subject: `fixture:${input.id}`,
+        value: agent as CursorPackageComponent,
+      })),
+      compatibility: [{
+        subject: `fixture:${input.id}`,
+        capability: 'delivery',
+        level: 'native',
+        reason: 'The fixture is delivered as a native Cursor Subagent.',
+      }],
+    }),
+  };
+  return defineExtension({
+    id: input.id,
+    apiVersion: '1',
+    resourceRoots: [],
+    createSession: () => ({
+      discover: () => ({}),
+      validate: (_context, discovered) => ({
+        state: discovered,
+        subjects: [{ subject: `fixture:${input.id}`, capabilities: ['delivery'] }],
+      }),
+      build: (_context, validated) => ({ state: validated }),
+      contributors: [contributor],
+    }),
+  });
+}
+
 afterEach(async () => {
   await Promise.all(temporaryRoots.splice(0).map(root => fs.rm(root, { recursive: true, force: true })));
 });
@@ -213,6 +252,86 @@ describe('Cursor Platform Package API', () => {
     }));
     expect(report.packages.flatMap(unit => unit.assets).some(asset => asset.path.startsWith('runtime/'))).toBe(false);
     await expect(fs.access(path.join(root, 'dist/cursor/plugin/runtime'))).rejects.toThrow();
+  });
+
+  it('renders Platform-owned Native Agent contributions and records only trusted contributor provenance', async () => {
+    /** 没有 canonical Agent 时，唯一 Agent 来自独立 Extension 的 private payload。 */
+    const root = await createProject();
+    await fs.rm(path.join(root, 'src/agents/reviewer.md'));
+    const report = await run({
+      root,
+      extensions: [nativeAgentContribution({
+        id: 'private-fixture',
+        agents: [{ kind: 'native-agent', id: 'observer', description: 'Observe the project.', body: 'Observe.', readonly: true }],
+      })],
+    });
+    const output = path.join(root, 'dist/cursor/plugin');
+    const manifest = JSON.parse(await fs.readFile(path.join(output, PLUGIN_MANIFEST_PATH), 'utf8')) as Record<string, unknown>;
+    const asset = report.packages[0]!.assets.find(candidate => candidate.path === 'agents/observer.md');
+
+    expect(report.success, JSON.stringify(report.diagnostics, null, 2)).toBe(true);
+    expect(manifest.agents).toBe('./agents/*.md');
+    await expect(fs.readFile(path.join(output, 'agents/observer.md'), 'utf8')).resolves.toContain('readonly: true');
+    expect(asset).toMatchObject({
+      owner: 'platform:cursor',
+      origin: { contributors: [{ owner: 'extension:private-fixture', subject: 'fixture:private-fixture' }] },
+    });
+    expect(report.packages[0]!.assets.find(candidate => candidate.path === PLUGIN_MANIFEST_PATH)).toMatchObject({
+      origin: { contributors: [{ owner: 'extension:private-fixture', subject: 'fixture:private-fixture' }] },
+    });
+  });
+
+  it('rejects malformed and colliding Native Agent contributions independently of Extension order', async () => {
+    /** canonical 与 private Agent 共享 Cursor 的目标文件命名空间。 */
+    const canonicalRoot = await createProject();
+    const canonical = await run({
+      root: canonicalRoot,
+      command: 'validate',
+      commit: false,
+      extensions: [nativeAgentContribution({
+        id: 'canonical-collision',
+        agents: [{ kind: 'native-agent', id: 'reviewer', description: 'Duplicate.', body: 'Duplicate.' }],
+      })],
+    });
+    expect(canonical.success).toBe(false);
+    expect(canonical.diagnostics).toContainEqual(expect.objectContaining({
+      code: 'CURSOR_COMPONENT_CONTRIBUTION_COLLISION', phase: 'finalize', platform: 'cursor',
+    }));
+
+    /** 未知 wire field 由 Cursor，而非 Core 或 Extension，进行最终 schema 拒绝。 */
+    const malformedRoot = await createProject();
+    await fs.rm(path.join(malformedRoot, 'src/agents/reviewer.md'));
+    const malformed = await run({
+      root: malformedRoot,
+      command: 'validate',
+      commit: false,
+      extensions: [nativeAgentContribution({
+        id: 'malformed-agent',
+        agents: [{ kind: 'native-agent', id: 'invalid', description: 'Invalid.', body: 'Invalid.', unsupported: true }],
+      })],
+    });
+    expect(malformed.success).toBe(false);
+    expect(malformed.diagnostics).toContainEqual(expect.objectContaining({
+      code: 'CURSOR_COMPONENT_CONTRIBUTION_INVALID', phase: 'finalize', platform: 'cursor',
+    }));
+
+    /** 两个 private Agent 使用同一稳定 ID 时，异常摘要不能依赖配置顺序。 */
+    const ordered = [
+      nativeAgentContribution({ id: 'zeta-fixture', agents: [{ kind: 'native-agent', id: 'same', description: 'Same.', body: 'Same.' }] }),
+      nativeAgentContribution({ id: 'alpha-fixture', agents: [{ kind: 'native-agent', id: 'same', description: 'Same.', body: 'Same.' }] }),
+    ];
+    const firstRoot = await createProject();
+    await fs.rm(path.join(firstRoot, 'src/agents/reviewer.md'));
+    const first = await run({ root: firstRoot, command: 'validate', commit: false, extensions: ordered });
+    const secondRoot = await createProject();
+    await fs.rm(path.join(secondRoot, 'src/agents/reviewer.md'));
+    const second = await run({ root: secondRoot, command: 'validate', commit: false, extensions: [...ordered].reverse() });
+    expect(first.success).toBe(false);
+    expect(second.success).toBe(false);
+    expect(first.diagnostics).toEqual(second.diagnostics);
+    expect(first.diagnostics).toContainEqual(expect.objectContaining({
+      code: 'CURSOR_COMPONENT_CONTRIBUTION_COLLISION', phase: 'finalize', platform: 'cursor',
+    }));
   });
 
   it('accepts Hooks/MCP add-only contributions and rejects duplicate point occupation', async () => {

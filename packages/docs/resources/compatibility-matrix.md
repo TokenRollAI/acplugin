@@ -13,6 +13,19 @@
 
 表格只描述 Component 主能力。`argumentHint`、invocation、model、capabilities 等字段仍可能产生独立 degraded/transform 记录。
 
+## Platform Component Contribution
+
+| Platform | 私有原生 Component contribution |
+| --- | --- |
+| Claude Code | Native Agent；Platform 渲染 `agents/<id>.md` 并写受控 Manifest 字段 |
+| Cursor | Native Subagent；Platform 渲染 `agents/<id>.md` 并写受控 Manifest glob |
+| OpenCode | Native workspace Subagent；Platform 渲染 `.opencode/agents/<id>.md`，不 patch config |
+| Codex | Unsupported；非空 contribution 在 finalization 失败，不生成 Skill fallback |
+| Antigravity | Unsupported；非空 contribution 在 finalization 失败，不生成 Skill fallback |
+| Pi | Unsupported；非空 contribution 在 finalization 失败，不生成 Skill fallback |
+
+此能力仅供 Extension 的 `PlatformContributor<TPayload>` 使用；不是 Canonical Component，也不引入 Extension 顺序、slot 或覆盖模型。payload schema、路径与冲突策略由各 Platform package 拥有。
+
 ## MCP transports
 
 | Transport | Claude Code | Codex | Cursor | Antigravity | OpenCode | Pi |

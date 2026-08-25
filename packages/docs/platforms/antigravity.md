@@ -32,4 +32,6 @@ Plugin 根使用最小 `plugin.json` 和 `skills/`：
 
 除 `name` 外，统一元数据会按实际声明报告 omitted 与 warning，而不是写入未经确认的 Manifest 字段。包含 Agent 的工程需要显式审查 strict 策略。
 
+Antigravity 当前不支持 Platform Component Contribution。非空私有 contribution 会在 finalization 失败，绝不会被伪装为 Skill。
+
 [Antigravity package API](/api/@tokenroll/acplugin-platform-antigravity/)

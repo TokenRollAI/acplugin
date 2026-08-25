@@ -36,4 +36,6 @@ export default defineConfig({
 
 存在 Agent 的工程默认 strict 会失败；只有明确接受这一降级时才使用 `codex({ strict: false })`。可选 Marketplace 写入 `.agents/plugins/marketplace.json`。
 
+Codex 当前不支持 Platform Component Contribution。非空私有 contribution 会在 finalization 失败，绝不会被伪装为 `agent-*` Skill。
+
 [Codex package API](/api/@tokenroll/acplugin-platform-codex/)

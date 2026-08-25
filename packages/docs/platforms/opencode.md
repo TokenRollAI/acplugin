@@ -38,4 +38,6 @@ opencode.json              # 有配置或 Extension 内容时生成
 
 Command、Skill、Agent 都有原生 workspace 表示。Canonical capabilities 会转换为 OpenCode tools/permission 字段；无法精确固定 model 时按字段报告 degraded。HTTP 与 local stdio MCP 都可由官方 Contributor 加入 workspace 配置。
 
+可信 Extension 可通过 `OpenCodePackageComponent` 交付私有原生 workspace Subagent。OpenCode 在 finalization 校验 payload、处理 canonical Agent 的命名冲突并生成 `.opencode/agents/<id>.md`；该能力不创建或 patch `opencode.json`。
+
 [OpenCode package API](/api/@tokenroll/acplugin-platform-opencode/)

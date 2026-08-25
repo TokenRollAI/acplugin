@@ -1,5 +1,15 @@
 # @tokenroll/acplugin
 
+## 0.0.3-beta
+
+### Major Changes
+
+- Add opaque, subject-bound Platform Component Contributions to the trusted Integration SDK. Core now transports strict JSON payloads and records scoped contributor provenance in BuildReport schema version 3 without acquiring Platform-specific Agent or target-format knowledge.
+
+  Claude Code, Cursor, and OpenCode expose and render their own native Agent contribution payloads during Platform finalization. Codex, Antigravity, and Pi explicitly reject non-empty private component contributions rather than silently dropping them or generating fallback Skills.
+
+  Harden `AssetService.fromBytes()` to accept only exact data-object inputs, exact generated-origin fields, and `string | Uint8Array` bytes so third-party Integrations cannot rely on accessor, hidden-field, or array-like coercion.
+
 ## 0.0.2-beta
 
 ### Major Changes

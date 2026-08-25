@@ -20,6 +20,8 @@ export default defineConfig({
 
 The package also exports the named `antigravity` factory, its option types, `PLATFORM_ID`, and `PLATFORM_API_VERSION`.
 
+Antigravity does not currently expose a Platform Component Contribution payload. A non-empty private component contribution fails during Package finalization rather than being silently converted to a Skill.
+
 ## License
 
 MIT

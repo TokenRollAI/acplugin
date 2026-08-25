@@ -7,6 +7,13 @@ import { afterEach, describe, expect, it } from 'vitest';
 /** 主包工作区根目录。 */
 const packageRoot = fileURLToPath(new URL('../../../acplugin', import.meta.url));
 
+/** 公开 Component payload 类型所在的三个官方 Platform package。 */
+const componentPlatformRoots = Object.freeze({
+  'claude-code': fileURLToPath(new URL('../../../platforms/claude-code', import.meta.url)),
+  'cursor': fileURLToPath(new URL('../../../platforms/cursor', import.meta.url)),
+  'opencode': fileURLToPath(new URL('../../../platforms/opencode', import.meta.url)),
+});
+
 /** packed consumer 测试创建的临时目录。 */
 const temporaryRoots: string[] = [];
 
@@ -295,5 +302,150 @@ process.stdout.write(JSON.stringify({
     /** 最终 Manifest 必须包含 Core 合并后的 add-only Document 字段。 */
     const manifest = JSON.parse(await fs.readFile(path.join(consumer, 'dist/external-fixture/plugin/plugin.json'), 'utf8'));
     expect(manifest.extensions).toEqual({ external: { enabled: true } });
+  }, 120_000);
+
+  it('typechecks and builds official Platform Component payloads from clean tarballs', async () => {
+    /** 主包、Platform tarball 和 consumer 全部位于 workspace 外。 */
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'acplugin-platform-components-pack-'));
+    temporaryRoots.push(root);
+    const tarballs = path.join(root, 'tarballs');
+    await fs.mkdir(tarballs);
+
+    /** 所有安装输入都经过各公开 package 的真实 pnpm pack 边界。 */
+    const mainTarball = packedPath(
+      (await execute('pnpm', ['pack', '--pack-destination', tarballs], packageRoot)).stdout,
+      packageRoot,
+    );
+    const platformTarballs = Object.fromEntries(await Promise.all(
+      Object.entries(componentPlatformRoots).map(async ([id, packageDirectory]) => [
+        id,
+        packedPath(
+          (await execute('pnpm', ['pack', '--pack-destination', tarballs], packageDirectory)).stdout,
+          packageDirectory,
+        ),
+      ]),
+    ));
+
+    /** clean consumer 不可见 workspace alias、私有 Core 或源码声明。 */
+    const consumer = path.join(root, 'consumer');
+    await fs.mkdir(consumer);
+    await fs.writeFile(path.join(consumer, 'package.json'), JSON.stringify({
+      name: 'official-platform-component-consumer',
+      version: '1.0.0',
+      private: true,
+      type: 'module',
+      dependencies: {
+        '@tokenroll/acplugin': `file:${mainTarball}`,
+        '@tokenroll/acplugin-platform-claude-code': `file:${platformTarballs['claude-code']}`,
+        '@tokenroll/acplugin-platform-cursor': `file:${platformTarballs.cursor}`,
+        '@tokenroll/acplugin-platform-opencode': `file:${platformTarballs.opencode}`,
+      },
+      devDependencies: { '@typescript/native': 'npm:typescript@^7.0.2' },
+    }, null, 2));
+    await fs.writeFile(path.join(consumer, 'tsconfig.json'), JSON.stringify({
+      compilerOptions: {
+        target: 'ES2022',
+        lib: ['ESNext', 'DOM'],
+        module: 'NodeNext',
+        moduleResolution: 'NodeNext',
+        strict: true,
+        noEmit: true,
+        skipLibCheck: false,
+      },
+      include: ['acplugin.config.ts'],
+    }, null, 2));
+    await fs.writeFile(path.join(consumer, 'acplugin.config.ts'), `
+import { defineConfig } from '@tokenroll/acplugin';
+import { defineExtension, type PlatformContributor } from '@tokenroll/acplugin/sdk';
+import claudeCode, { type ClaudePackageComponent } from '@tokenroll/acplugin-platform-claude-code';
+import cursor, { type CursorPackageComponent } from '@tokenroll/acplugin-platform-cursor';
+import openCode, { type OpenCodePackageComponent } from '@tokenroll/acplugin-platform-opencode';
+
+type BuiltState = Record<string, never>;
+const subject = 'fixture:packed-agent';
+const compatibility = [{
+  subject,
+  capability: 'delivery',
+  level: 'native',
+  reason: 'The packed fixture is delivered as a native Platform Component.',
+}] as const;
+
+const claudeContributor: PlatformContributor<BuiltState, ClaudePackageComponent> = {
+  platform: 'claude-code',
+  platformApiVersion: '1',
+  contribute: () => ({
+    components: [{ subject, value: {
+      kind: 'native-agent', id: 'packed-agent', description: 'Packed Agent.', body: 'Run packed checks.',
+      model: 'capable', tools: ['Read'],
+    } }],
+    compatibility,
+  }),
+};
+
+const cursorContributor: PlatformContributor<BuiltState, CursorPackageComponent> = {
+  platform: 'cursor',
+  platformApiVersion: '1',
+  contribute: () => ({
+    components: [{ subject, value: {
+      kind: 'native-agent', id: 'packed-agent', description: 'Packed Agent.', body: 'Run packed checks.',
+      readonly: true,
+    } }],
+    compatibility,
+  }),
+};
+
+const openCodeContributor: PlatformContributor<BuiltState, OpenCodePackageComponent> = {
+  platform: 'opencode',
+  platformApiVersion: '1',
+  contribute: () => ({
+    components: [{ subject, value: {
+      kind: 'native-agent', id: 'packed-agent', description: 'Packed Agent.', body: 'Run packed checks.',
+      tools: { read: true }, permission: { edit: 'deny' },
+    } }],
+    compatibility,
+  }),
+};
+
+const extension = defineExtension({
+  id: 'packed-component-fixture',
+  apiVersion: '1',
+  resourceRoots: [],
+  createSession: () => ({
+    discover: () => ({}),
+    validate: (_context, state) => ({ state, subjects: [{ subject, capabilities: ['delivery'] }] }),
+    build: (_context, state) => ({ state }),
+    contributors: [claudeContributor, cursorContributor, openCodeContributor],
+  }),
+});
+
+export default defineConfig({
+  name: 'packed-component-consumer',
+  version: '1.0.0',
+  description: 'Clean packed Platform Component consumer.',
+  public: false,
+  platforms: [claudeCode(), cursor(), openCode()],
+  extensions: [extension],
+});
+`);
+
+    await execute('pnpm', ['install', '--ignore-workspace', '--ignore-scripts'], consumer);
+    await execute('pnpm', ['exec', 'tsc', '-p', 'tsconfig.json'], consumer);
+    const build = JSON.parse((await execute('pnpm', ['exec', 'acplugin', 'build', '--json'], consumer)).stdout);
+
+    expect(build).toMatchObject({ success: true, committed: true, schemaVersion: 3 });
+    expect(build.packages).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        platform: 'claude-code',
+        assets: expect.arrayContaining([expect.objectContaining({ path: 'agents/packed-agent.md' })]),
+      }),
+      expect.objectContaining({
+        platform: 'cursor',
+        assets: expect.arrayContaining([expect.objectContaining({ path: 'agents/packed-agent.md' })]),
+      }),
+      expect.objectContaining({
+        platform: 'opencode',
+        assets: expect.arrayContaining([expect.objectContaining({ path: '.opencode/agents/packed-agent.md' })]),
+      }),
+    ]));
   }, 120_000);
 });

@@ -18,7 +18,9 @@ export default defineConfig({
 });
 ```
 
-The package also exports the named `claudeCode` factory, its option types, `PLATFORM_ID`, and `PLATFORM_API_VERSION`.
+The package also exports the named `claudeCode` factory, its option types, `ClaudePackageComponent`, `ClaudeNativeAgentComponent`, `PLATFORM_ID`, and `PLATFORM_API_VERSION`.
+
+`ClaudePackageComponent` is for trusted Extension contributors that need Claude-native private delivery. It is not a Canonical Agent or a raw Manifest escape hatch: Claude Code validates and renders it during Package finalization.
 
 ## License
 

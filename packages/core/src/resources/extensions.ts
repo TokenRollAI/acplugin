@@ -7,6 +7,7 @@ import type {
   PlatformIntegrationDescription,
   PackageContribution,
 } from '../contracts/integrations.js';
+import type { JsonObject } from '../contracts/common.js';
 import type { CanonicalProject } from '../contracts/components.js';
 import type { CompilerService } from '../contracts/compiler.js';
 import type {
@@ -38,7 +39,7 @@ export interface ValidatedExtensionState<V> {
 /** 一个选中 Platform 对当前 Extension 的 Contributor 匹配结果。 */
 export interface ExtensionConsumer<B> {
   readonly platform: PlatformIntegrationDescription;
-  readonly contributor?: PlatformContributor<B>;
+  readonly contributor?: PlatformContributor<B, JsonObject>;
 }
 
 /** validate 后、build 前固定的 Extension consumer 计划。 */
@@ -215,7 +216,7 @@ export function preflightExtensionConsumers<D, V, B>(options: {
   /** Contributor array 自身也必须是无 accessor 的稠密 data array。 */
   const candidates = dataArrayItems(options.session.contributors, `Extension "${options.validated.extension.id}" contributors`);
   /** Platform ID 索引拒绝一个 Extension 对同目标定义两个 Contributor。 */
-  const contributors = new Map<string, PlatformContributor<B>>();
+  const contributors = new Map<string, PlatformContributor<B, JsonObject>>();
   for (const [index, candidate] of candidates.entries()) {
     /** Contributor 是唯一允许包含 contribute 行为的精确对象。 */
     const fields = dataObjectFields(
@@ -234,7 +235,7 @@ export function preflightExtensionConsumers<D, V, B>(options: {
     contributors.set(platform, Object.freeze({
       platform,
       platformApiVersion: '1',
-      contribute: fields.contribute.value as PlatformContributor<B>['contribute'],
+      contribute: fields.contribute.value as PlatformContributor<B, JsonObject>['contribute'],
     }));
   }
   /** 选中平台排序使 consumer preflight 与作者配置顺序无关。 */
@@ -362,7 +363,7 @@ export async function collectExtensionContributions(options: {
         owner, extension: plan.extension.id, platform: options.platform.id,
       }),
     }), built.state);
-    return Object.freeze({ owner, subjects: plan.subjects, contribution: contribution as PackageContribution });
+    return Object.freeze({ owner, subjects: plan.subjects, contribution: contribution as PackageContribution<JsonObject> });
   });
   /** Promise.all 保留输入槽位，但 merge 只接受 owner-sorted 无序集合。 */
   return Object.freeze(await Promise.all(tasks));

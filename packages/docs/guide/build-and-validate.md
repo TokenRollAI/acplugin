@@ -34,4 +34,4 @@ CI 建议使用：
 pnpm exec acplugin validate --json > build-report.json
 ```
 
-schema-v2 `BuildReport` 包含 Framework/Compiler 版本、Components、Runtimes、Extensions、Platforms、Packages、Asset 元数据、兼容性、metadata disposition 与阶段诊断。它不包含 Asset bytes、时间戳、凭据、临时路径或机器绝对路径，集合使用稳定顺序。
+schema-v3 `BuildReport` 包含 Framework/Compiler 版本、Components、Runtimes、Extensions、Platforms、Packages、Asset 元数据、兼容性、metadata disposition 与阶段诊断。由 Platform Component Contribution 决定的生成 Asset 还会带稳定的 Extension owner/subject provenance。它不包含 Asset bytes、时间戳、凭据、临时路径或机器绝对路径，集合使用稳定顺序。

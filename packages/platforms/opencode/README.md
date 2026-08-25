@@ -18,7 +18,9 @@ export default defineConfig({
 });
 ```
 
-The package also exports the named `openCode` factory, its option types, `PLATFORM_ID`, and `PLATFORM_API_VERSION`.
+The package also exports the named `openCode` factory, its option types, `OpenCodePackageComponent`, `OpenCodeNativeAgentComponent`, `PLATFORM_ID`, and `PLATFORM_API_VERSION`.
+
+`OpenCodePackageComponent` is for trusted Extension contributors that need native workspace delivery. OpenCode owns its validation and rendering and does not create a synthetic Plugin Manifest for it.
 
 ## License
 

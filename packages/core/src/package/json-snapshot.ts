@@ -3,6 +3,7 @@ import type {
   JsonObject,
   JsonValue,
 } from '../contracts/common.js';
+import { dataArrayItems } from '../security/data-boundary.js';
 import { compareCodePoints } from '../security/path-policy.js';
 
 /**
@@ -13,11 +14,13 @@ import { compareCodePoints } from '../security/path-policy.js';
  * @returns 不含控制字符且冻结的非空字段 tuple。
  */
 export function snapshotFieldPath(value: unknown, label = 'Document field path'): DocumentFieldPath {
-  if (!Array.isArray(value) || value.length === 0
-    || value.some(segment => typeof segment !== 'string' || segment.length === 0 || /[\0\r\n\t]/u.test(segment))) {
+  /** Document paths use the same dense, descriptor-only boundary as every Integration array. */
+  const items = dataArrayItems(value, label);
+  if (items.length === 0
+    || items.some(segment => typeof segment !== 'string' || segment.length === 0 || /[\0\r\n\t]/u.test(segment))) {
     throw new TypeError(`${label} must be a non-empty array of stable field names.`);
   }
-  return Object.freeze([...value]) as unknown as DocumentFieldPath;
+  return items as unknown as DocumentFieldPath;
 }
 
 /** @returns 字段路径不会因分隔字符内容产生歧义的内部键。 */

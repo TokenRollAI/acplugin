@@ -1,6 +1,6 @@
 {
   "name": "@tokenroll/acplugin-platform-cursor",
-  "version": "0.0.2-beta",
+  "version": "0.0.3-beta",
   "description": "Cursor Platform integration for acplugin.",
   "type": "module",
   "license": "MIT",

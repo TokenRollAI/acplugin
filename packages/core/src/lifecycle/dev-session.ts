@@ -65,7 +65,7 @@ async function isolatedFailureReport(
   input: DevSessionRoundInput,
   diagnostic: Diagnostic,
 ): Promise<BuildReport> {
-  /** 失败报告仍使用独占环境取得完整且安全的 schema-v2 字段。 */
+  /** 失败报告仍使用独占环境取得完整且安全的 schema-v3 字段。 */
   const environment = await createKernelBuildEnvironment(input.projectRoot);
   try {
     return await failureReport(input, environment, Object.freeze([diagnostic]));

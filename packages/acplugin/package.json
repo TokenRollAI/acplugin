@@ -1,6 +1,6 @@
 {
   "name": "@tokenroll/acplugin",
-  "version": "0.0.2-beta",
+  "version": "0.0.3-beta",
   "description": "Canonical AI Plugin framework and CLI.",
   "type": "module",
   "license": "MIT",

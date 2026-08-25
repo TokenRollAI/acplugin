@@ -14,6 +14,22 @@ export interface CursorPlatformOptions {
   readonly minClientVersions?: Readonly<Record<string, string>>;
 }
 
+/** Cursor Platform 接受的私有 Component union。 */
+export type CursorPackageComponent = CursorNativeAgentComponent;
+
+/**
+ * Cursor 原生 Subagent contribution。
+ *
+ * 这是 Cursor 自己的窄表示，不映射其他 Platform 的模型、工具或权限字段。
+ */
+export type CursorNativeAgentComponent = import('@tokenroll/acplugin/sdk').JsonObject & Readonly<{
+  readonly kind: 'native-agent';
+  readonly id: string;
+  readonly description: string;
+  readonly body: string;
+  readonly readonly?: boolean;
+}>;
+
 /** Cursor 官方 Plugin Manifest 的受控结构。 */
 export interface CursorPluginManifest {
   /** 稳定 Plugin ID。 */

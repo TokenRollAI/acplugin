@@ -18,7 +18,9 @@ export default defineConfig({
 });
 ```
 
-The package also exports the named `cursor` factory, its option types, `PLATFORM_ID`, and `PLATFORM_API_VERSION`.
+The package also exports the named `cursor` factory, its option types, `CursorPackageComponent`, `CursorNativeAgentComponent`, `PLATFORM_ID`, and `PLATFORM_API_VERSION`.
+
+`CursorPackageComponent` is for trusted Extension contributors that need Cursor-native private delivery. Cursor validates and renders it during Package finalization; it does not permit raw Plugin Manifest patches.
 
 ## License
 

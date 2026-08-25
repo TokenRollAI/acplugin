@@ -64,7 +64,8 @@ config → setup Sessions → Resource/Extension discovery → Canonical Project
 - Core 定义唯一阶段顺序、Context、诊断、兼容性、Asset 所有权和事务，不包含平台名称分支。
 - Platform 负责一种目标平台的 Component 转换、结构化 Document、base Package、主 Package 身份、可选 Marketplace Distribution 和最终候选校验。
 - Extension 负责横向作者能力；其 Built State 通过显式 `PlatformContributor` 对同一只读 base Package 返回无序 add-only `PackageContribution`。
-- Contributor 只能读取 base Package、向声明的 extension point 新增字段、追加自有 Asset 和报告兼容性，不能替换 Platform、完整 Document 或已有字段。
+- Contributor 只能读取 base Package、向声明的 extension point 新增字段、追加自有 Asset、报告兼容性，或提交 subject-bound opaque Platform Component JSON；不能替换 Platform、完整 Document 或已有字段。
+- Core 只负责 Platform Component 的严格 JSON envelope、稳定合并和 provenance；目标 Platform 的 finalization 独占 payload schema、render、路径、Manifest 注册和不支持诊断。
 - Platform/Extension 不获得物理 workDir 或 `dist` 写权限；Source、Module、Compiler、Execution 和 Asset Service 由 Core 按 owner 授权。
 - Platform options 必须是深度冻结的 JSON；Extension 不提供依赖图和跨 Extension State 读取。
 - Session `close` 在成功/失败时均按初始化逆序执行，收到的异常只能是脱敏摘要。

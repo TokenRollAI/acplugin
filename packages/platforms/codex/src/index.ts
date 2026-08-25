@@ -64,8 +64,23 @@ export function codex(options: CodexPlatformOptions = {}): AcpluginPlatform {
             metadata: manifest.metadata,
           };
         },
-        /** base/contribution Assets 和 Documents 由 Core 自动进入固定主 Plugin。 */
-        finalizePackage: () => ({ id: 'plugin', type: 'plugin' }),
+        /**
+         * Codex 尚未拥有 Platform Component 的原生交付契约。
+         *
+         * 不能静默丢弃 opaque payload，也不能把它伪装成 `agent-*` Skill；两者都会
+         * 让 Extension 对实际交付能力得到错误结论。等 Codex 有经过验证的本地表达
+         * 时，由本包定义 payload union 和 finalization renderer。
+         */
+        finalizePackage: ({ package: mergedPackage, diagnostics }) => {
+          if (mergedPackage.components.length > 0) {
+            diagnostics.report({
+              code: 'CODEX_COMPONENT_CONTRIBUTION_UNSUPPORTED',
+              severity: 'error',
+              message: 'Codex does not support Platform Component contributions.',
+            });
+          }
+          return { id: 'plugin', type: 'plugin' };
+        },
         validatePackage: validateCodexPackage,
         /** 可选 Marketplace 只继承已验证 primary 的真实 AssetRef。 */
         async createDistributions(context) {

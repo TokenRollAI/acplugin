@@ -26,7 +26,7 @@ pnpm --filter @acplugin/playground build
 仓库根的 `pnpm playground:check` 不只检查文件是否存在。`scripts/verify-playground.mjs` 会：
 
 - 对六个平台的 210 条 compatibility 记录和 83 条预期降级/不支持项执行精确白名单校验，并核对 66 条 metadata disposition。
-- 比较 schema-v2 `BuildReport.packages[].assets` 与真实 `dist` 文件树，按字节检查 Skill auxiliary、Public、Runtime 和 Marketplace 继承内容。
+- 比较 schema-v3 `BuildReport.packages[].assets` 与真实 `dist` 文件树，按字节检查 Skill auxiliary、Public、Runtime 和 Marketplace 继承内容。
 - 解析 Manifest、Hooks 配置和 MCP 配置，确认所有引用存在，且 unsupported 能力没有伪造 Asset。
 - 用真实子进程执行每个受支持的自包含 Hook `handler.mjs`、三个 local MCP bundle 和双平台 Node Runtime。
 - 用 Secret 探针扫描报告和产物，连续构建两次并比较全部文件 hash 与 mode。

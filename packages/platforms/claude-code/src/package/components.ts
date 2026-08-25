@@ -7,6 +7,7 @@ import {
   type PackageAssetInput,
   type PlatformComponentValidationContext,
 } from '@tokenroll/acplugin/sdk';
+import type { ClaudeNativeAgentComponent } from '../types.js';
 
 /** 三类 Component 允许的 Claude Code 专属字段。 */
 const FIELDS = Object.freeze({
@@ -115,6 +116,57 @@ function toolList(value: unknown): string | undefined {
   return Array.isArray(value) && value.length > 0 ? value.join(', ') : undefined;
 }
 
+/** Claude Agent renderer 消费的已验证、Platform-owned frontmatter 输入。 */
+export interface ClaudeAgentDocumentInput {
+  readonly id: string;
+  readonly description: string;
+  readonly body: string;
+  readonly model: 'inherit' | 'fast' | 'capable';
+  readonly tools?: readonly string[];
+  readonly disallowedTools?: readonly string[];
+  readonly effort?: 'low' | 'medium' | 'high' | 'xhigh' | 'max';
+  readonly maxTurns?: number;
+  readonly skills?: readonly string[];
+  readonly memory?: 'user' | 'project' | 'local';
+  readonly background?: boolean;
+  readonly isolation?: 'worktree';
+}
+
+/** 把一个已验证的 Claude Agent 表示为 Platform 固定 Markdown/frontmatter 字节。 */
+export function renderClaudeAgent(input: ClaudeAgentDocumentInput): string {
+  return markdownWithFrontmatter({
+    name: input.id,
+    description: input.description,
+    model: claudeModel(input.model),
+    tools: toolList(input.tools),
+    disallowedTools: toolList(input.disallowedTools),
+    effort: input.effort,
+    maxTurns: input.maxTurns,
+    skills: input.skills,
+    memory: input.memory,
+    background: input.background,
+    isolation: input.isolation,
+  }, input.body);
+}
+
+/** 将 Claude 私有 Component 映射为同一 Agent renderer 的输入。 */
+export function claudeNativeAgentDocument(component: ClaudeNativeAgentComponent): ClaudeAgentDocumentInput {
+  return Object.freeze({
+    id: component.id,
+    description: component.description,
+    body: component.body,
+    model: component.model ?? 'inherit',
+    ...(component.tools === undefined ? {} : { tools: component.tools }),
+    ...(component.disallowedTools === undefined ? {} : { disallowedTools: component.disallowedTools }),
+    ...(component.effort === undefined ? {} : { effort: component.effort }),
+    ...(component.maxTurns === undefined ? {} : { maxTurns: component.maxTurns }),
+    ...(component.skills === undefined ? {} : { skills: component.skills }),
+    ...(component.memory === undefined ? {} : { memory: component.memory }),
+    ...(component.background === undefined ? {} : { background: component.background }),
+    ...(component.isolation === undefined ? {} : { isolation: component.isolation }),
+  });
+}
+
 /** 把 canonical Components 转为 Claude Code 原生 Asset 与完整兼容性。 */
 export async function createClaudeComponents(project: CanonicalProject, assets: AssetService): Promise<ClaudeComponentPackage> {
   /** output 只包含 Platform 自有生成 Asset 和已授予的 Skill auxiliary refs。 */
@@ -169,22 +221,37 @@ export async function createClaudeComponents(project: CanonicalProject, assets: 
     /** fields 可显式覆盖 portable capability 的保守 tools 映射。 */
     const fields = agent.platforms['claude-code'] ?? {};
     /** tools 优先使用显式平台配置，否则保守映射 portable capabilities。 */
-    const tools = fields.tools ?? claudeTools(agent.capabilities);
+    const tools = stringArray(fields.tools) ? fields.tools : claudeTools(agent.capabilities);
+    /** validateComponent 已报告非法字段；renderer 只接受经过同一窄化的值。 */
+    const disallowedTools = stringArray(fields.disallowedTools) ? fields.disallowedTools : undefined;
+    const skills = stringArray(fields.skills) ? fields.skills : undefined;
+    const effort = typeof fields.effort === 'string' && ENUMS.effort.has(fields.effort)
+      ? fields.effort as ClaudeAgentDocumentInput['effort']
+      : undefined;
+    const maxTurns = typeof fields.maxTurns === 'number' && Number.isInteger(fields.maxTurns) && fields.maxTurns > 0
+      ? fields.maxTurns
+      : undefined;
+    const memory = typeof fields.memory === 'string' && ENUMS.memory.has(fields.memory)
+      ? fields.memory as ClaudeAgentDocumentInput['memory']
+      : undefined;
+    const background = typeof fields.background === 'boolean' ? fields.background : undefined;
+    const isolation = fields.isolation === 'worktree' ? 'worktree' as const : undefined;
     /** asset 是由 Platform owner 签发的 Agent Markdown。 */
     const asset = await assets.fromBytes({
-      bytes: markdownWithFrontmatter({
-        name: agent.id,
+      bytes: renderClaudeAgent({
+        id: agent.id,
         description: agent.description,
-        model: claudeModel(agent.model),
-        tools: toolList(tools),
-        disallowedTools: toolList(fields.disallowedTools),
-        effort: fields.effort,
-        maxTurns: fields.maxTurns,
-        skills: fields.skills,
-        memory: fields.memory,
-        background: fields.background,
-        isolation: fields.isolation,
-      }, agent.body),
+        body: agent.body,
+        model: agent.model,
+        tools,
+        ...(disallowedTools === undefined ? {} : { disallowedTools }),
+        ...(effort === undefined ? {} : { effort }),
+        ...(maxTurns === undefined ? {} : { maxTurns }),
+        ...(skills === undefined ? {} : { skills }),
+        ...(memory === undefined ? {} : { memory }),
+        ...(background === undefined ? {} : { background }),
+        ...(isolation === undefined ? {} : { isolation }),
+      }),
       origin: { operation: 'component-agent', subjects: [`agent:${agent.id}`] },
     });
     output.push(Object.freeze({ path: `agents/${agent.id}.md`, asset }));

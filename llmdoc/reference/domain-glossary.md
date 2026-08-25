@@ -15,11 +15,12 @@
 | Extension point | An exact empty Document field path that the Platform explicitly allows one Contribution to fill. |
 | Base Package | The immutable Documents, Assets, compatibility, and metadata dispositions returned by `Platform.createPackage()`. |
 | Platform Contributor | An Extension callback that reads the same base Package and returns one independent add-only Package Contribution. |
-| Package Contribution | Optional Document fields and Assets plus required compatibility entries. It cannot replace or delete base content. |
+| Package Contribution | Optional Document fields, Assets, subject-bound opaque Platform Components, and required compatibility entries. It cannot replace or delete base content. |
+| Platform Component Contribution | A Platform-owned JSON payload submitted by an Extension Contributor. It is not a Canonical Component; Core transports it while the target Platform validates, renders, and owns native output. |
 | Merged Package | Core's deterministic result after validating and combining Framework and Extension Contributions with the base Package. |
 | Primary Package | The finalized installable Plugin, workspace, or npm package, including all inherited merged Assets. |
 | Distribution | An optional Package derived only after the primary Package candidate has passed Platform validation. |
 | Package candidate | A Core-owned temporary materialization of the exact Package tree passed to `validatePackage()`. |
 | Compatibility | A Platform/resource/capability tuple reported as `native`, `transform`, `degraded`, or `unsupported`. |
-| BuildReport | The stable schema-v2 result containing Project, Package, Asset provenance, compatibility, metadata, Platform status, and diagnostics. |
+| BuildReport | The stable schema-v3 result containing Project, Package, Asset provenance, compatibility, metadata, Platform status, and diagnostics. |
 | Managed output | The complete configured output root replaced transactionally for the selected Platform set. |

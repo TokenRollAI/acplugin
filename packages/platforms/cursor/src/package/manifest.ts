@@ -53,17 +53,12 @@ export function validatePlatformOptions(options: CursorPlatformOptions): void {
   }
 }
 
-/** @returns canonical project 是否包含指定 Component kind。 */
-function hasComponents(project: CanonicalProject, kind: 'command' | 'skill' | 'agent'): boolean {
-  return kind === 'command'
-    ? project.commands.length > 0
-    : kind === 'skill'
-      ? project.skills.length > 0
-      : project.agents.length > 0;
-}
-
 /** @returns 统一元数据和 Cursor 选项组成的官方 Plugin Manifest。 */
-function pluginManifest(project: CanonicalProject, options: Readonly<JsonObject>): CursorPluginManifest {
+function pluginManifest(
+  project: CanonicalProject,
+  options: Readonly<JsonObject>,
+  components: { readonly commands: boolean; readonly skills: boolean },
+): CursorPluginManifest {
   /** metadata 已由 Core config resolver 完整验证。 */
   const metadata = project.metadata;
   return {
@@ -92,9 +87,8 @@ function pluginManifest(project: CanonicalProject, options: Readonly<JsonObject>
       : {
           minClientVersions: options.minClientVersions as Readonly<Record<string, string>>,
         }),
-    ...(hasComponents(project, 'command') ? { commands: './commands/*.md' } : {}),
-    ...(hasComponents(project, 'skill') ? { skills: './skills/*/SKILL.md' } : {}),
-    ...(hasComponents(project, 'agent') ? { agents: './agents/*.md' } : {}),
+    ...(components.commands ? { commands: './commands/*.md' } : {}),
+    ...(components.skills ? { skills: './skills/*/SKILL.md' } : {}),
   };
 }
 
@@ -133,17 +127,20 @@ function metadataDispositions(metadata: PluginMetadata): readonly MetadataDispos
 export function createPluginDocument(input: {
   readonly project: CanonicalProject;
   readonly options: Readonly<JsonObject>;
+  readonly components: { readonly commands: boolean; readonly skills: boolean };
 }): { readonly document: PackageDocumentInput; readonly metadata: readonly MetadataDispositionInput[] } {
   /** document 是 Cursor base Package 的唯一结构化清单。 */
   const document: PackageDocumentInput = Object.freeze({
     id: PLUGIN_MANIFEST_ID,
     path: PLUGIN_MANIFEST_PATH,
     format: 'json',
-    value: pluginManifest(input.project, input.options) as unknown as JsonObject,
+    value: pluginManifest(input.project, input.options, input.components) as unknown as JsonObject,
     extensionPoints: Object.freeze([
       Object.freeze(['hooks'] as const),
       Object.freeze(['mcpServers'] as const),
     ]),
+    /** 合并私有 Component 后由 Cursor Platform 自己决定是否声明 Agents glob。 */
+    finalizationPoints: Object.freeze([Object.freeze(['agents'] as const)]),
   });
   return Object.freeze({ document, metadata: metadataDispositions(input.project.metadata) });
 }

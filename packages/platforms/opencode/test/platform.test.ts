@@ -11,8 +11,9 @@ import {
   type AcpluginExtension,
   type BytesAssetRef,
   type JsonValue,
+  type PlatformContributor,
 } from '@tokenroll/acplugin/sdk';
-import { openCode } from '../src/index.js';
+import { openCode, type OpenCodePackageComponent } from '../src/index.js';
 import { WORKSPACE_CONFIG_PATH } from '../src/package/config-document.js';
 
 /** 测试结束后统一删除的临时工程根目录。 */
@@ -133,11 +134,63 @@ function mcpContribution(input: {
   });
 }
 
+/** 创建只由 OpenCode Platform Component transport 交付 Native Agent 的中立 Extension。 */
+function nativeAgentContribution(input: {
+  readonly id: string;
+  readonly agents: readonly Record<string, JsonValue>[];
+}): AcpluginExtension {
+  /** OpenCode payload union 只在此 contributor 与 Platform finalization 边界存在。 */
+  const contributor: PlatformContributor<Record<string, never>, OpenCodePackageComponent> = {
+    platform: 'opencode',
+    platformApiVersion: '1',
+    contribute: () => ({
+      components: input.agents.map(agent => ({
+        subject: `fixture:${input.id}`,
+        value: agent as OpenCodePackageComponent,
+      })),
+      compatibility: [{
+        subject: `fixture:${input.id}`,
+        capability: 'delivery',
+        level: 'native',
+        reason: 'The fixture is delivered as a native OpenCode Subagent.',
+      }],
+    }),
+  };
+  return defineExtension({
+    id: input.id,
+    apiVersion: '1',
+    resourceRoots: [],
+    createSession: () => ({
+      discover: () => ({}),
+      validate: (_context, discovered) => ({
+        state: discovered,
+        subjects: [{ subject: `fixture:${input.id}`, capabilities: ['delivery'] }],
+      }),
+      build: (_context, validated) => ({ state: validated }),
+      contributors: [contributor],
+    }),
+  });
+}
+
 afterEach(async () => {
   await Promise.all(temporaryRoots.splice(0).map(root => fs.rm(root, { recursive: true, force: true })));
 });
 
 describe('OpenCode Platform Package API', () => {
+  it('exposes sparse tool and permission maps in the public component type', () => {
+    /** The runtime accepts a subset; consumers should not need a type assertion. */
+    const component: OpenCodePackageComponent = {
+      kind: 'native-agent',
+      id: 'sparse-agent',
+      description: 'Sparse Agent.',
+      body: 'Run the task.',
+      tools: { read: true },
+      permission: { edit: 'deny' },
+    };
+    expect(component.tools).toEqual({ read: true });
+    expect(component.permission).toEqual({ edit: 'deny' });
+  });
+
   it('builds a first-class workspace Package with native Components and config golden', async () => {
     /** root 覆盖全部原生 workspace Resources。 */
     const root = await temporaryProject();
@@ -186,6 +239,82 @@ describe('OpenCode Platform Package API', () => {
     expect(report.success, JSON.stringify(report.diagnostics, null, 2)).toBe(true);
     expect(report.packages).toContainEqual(expect.objectContaining({ id: 'workspace', assets: [] }));
     await expect(fs.access(path.join(root, 'dist/opencode/workspace/opencode.json'))).rejects.toThrow();
+  });
+
+  it('renders Platform-owned Native Agent contributions without writing workspace configuration', async () => {
+    /** private Agent 不要求也不能通过 manifest/config patch 获得发现能力。 */
+    const root = await temporaryProject();
+    const report = await run({
+      root,
+      platform: openCode(),
+      extensions: [nativeAgentContribution({
+        id: 'private-fixture',
+        agents: [{
+          kind: 'native-agent', id: 'observer', description: 'Observe the project.', body: 'Observe.',
+          tools: { read: true, glob: true }, permission: { edit: 'deny', bash: 'deny' },
+        }],
+      })],
+    });
+    const output = path.join(root, 'dist/opencode/workspace');
+    const asset = report.packages[0]!.assets.find(candidate => candidate.path === '.opencode/agents/observer.md');
+
+    expect(report.success, JSON.stringify(report.diagnostics, null, 2)).toBe(true);
+    await expect(fs.readFile(path.join(output, '.opencode/agents/observer.md'), 'utf8')).resolves.toContain('mode: subagent');
+    await expect(fs.access(path.join(output, WORKSPACE_CONFIG_PATH))).rejects.toThrow();
+    expect(asset).toMatchObject({
+      owner: 'platform:opencode',
+      origin: { contributors: [{ owner: 'extension:private-fixture', subject: 'fixture:private-fixture' }] },
+    });
+  });
+
+  it('rejects malformed and colliding Native Agent contributions independently of Extension order', async () => {
+    /** canonical 与 private Agent 使用同一个 .opencode/agents namespace。 */
+    const canonicalRoot = await temporaryProject();
+    await fs.mkdir(path.join(canonicalRoot, 'src/agents'), { recursive: true });
+    await fs.writeFile(path.join(canonicalRoot, 'src/agents/reviewer.md'), '---\ndescription: Reviewer.\n---\nReview.\n');
+    const canonical = await run({
+      root: canonicalRoot,
+      command: 'validate',
+      commit: false,
+      extensions: [nativeAgentContribution({
+        id: 'canonical-collision',
+        agents: [{ kind: 'native-agent', id: 'reviewer', description: 'Duplicate.', body: 'Duplicate.' }],
+      })],
+    });
+    expect(canonical.success).toBe(false);
+    expect(canonical.diagnostics).toContainEqual(expect.objectContaining({
+      code: 'OPENCODE_COMPONENT_CONTRIBUTION_COLLISION', phase: 'finalize', platform: 'opencode',
+    }));
+
+    /** unknown field 保持 Platform-owned wire schema 的最终验证职责。 */
+    const malformedRoot = await temporaryProject();
+    const malformed = await run({
+      root: malformedRoot,
+      command: 'validate',
+      commit: false,
+      extensions: [nativeAgentContribution({
+        id: 'malformed-agent',
+        agents: [{ kind: 'native-agent', id: 'invalid', description: 'Invalid.', body: 'Invalid.', unsupported: true }],
+      })],
+    });
+    expect(malformed.success).toBe(false);
+    expect(malformed.diagnostics).toContainEqual(expect.objectContaining({
+      code: 'OPENCODE_COMPONENT_CONTRIBUTION_INVALID', phase: 'finalize', platform: 'opencode',
+    }));
+
+    /** owner/subject 排序固定后，duplicate 失败不受 Extension 输入排列影响。 */
+    const ordered = [
+      nativeAgentContribution({ id: 'zeta-fixture', agents: [{ kind: 'native-agent', id: 'same', description: 'Same.', body: 'Same.' }] }),
+      nativeAgentContribution({ id: 'alpha-fixture', agents: [{ kind: 'native-agent', id: 'same', description: 'Same.', body: 'Same.' }] }),
+    ];
+    const first = await run({ root: await temporaryProject(), command: 'validate', commit: false, extensions: ordered });
+    const second = await run({ root: await temporaryProject(), command: 'validate', commit: false, extensions: [...ordered].reverse() });
+    expect(first.success).toBe(false);
+    expect(second.success).toBe(false);
+    expect(first.diagnostics).toEqual(second.diagnostics);
+    expect(first.diagnostics).toContainEqual(expect.objectContaining({
+      code: 'OPENCODE_COMPONENT_CONTRIBUTION_COLLISION', phase: 'finalize', platform: 'opencode',
+    }));
   });
 
   it('accepts remote/local MCP contribution and validates local Asset references', async () => {

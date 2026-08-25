@@ -25,6 +25,8 @@ overrides are intentionally not supported.
 
 The package also exports the named `codex` factory, its option types, `PLATFORM_ID`, and `PLATFORM_API_VERSION`.
 
+Codex does not currently expose a Platform Component Contribution payload. A Contributor that submits a non-empty private component contribution for Codex fails during Package finalization; it is never converted to an `agent-*` Skill.
+
 ## License
 
 MIT

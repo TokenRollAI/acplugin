@@ -17,7 +17,7 @@
 
 公开调用面有意分成两层：
 
-- `@tokenroll/acplugin`：普通作者使用 `defineConfig()`，程序化调用方使用 `createProject()`、`runProject()`、`Project.dev()`，并读取 schema-v2 `BuildReport`。
+- `@tokenroll/acplugin`：普通作者使用 `defineConfig()`，程序化调用方使用 `createProject()`、`runProject()`、`Project.dev()`，并读取 schema-v3 `BuildReport`。
 - `@tokenroll/acplugin/sdk`：Platform/Extension 实现使用 `definePlatform()`、`defineExtension()`、Session/Contributor/Compiler/Asset 契约与稳定序列化工具。
 
 官方 Platform/Extension 以主包为 peer，只能 import `/sdk`，不能 import `@acplugin/core`。主包不 bundle 或重导出任何官方集成。
@@ -42,7 +42,7 @@ acplugin.config.ts
 → aggregate materialization validation
 → managed transaction
 → reverse Session close
-→ BuildReport schema v2
+→ BuildReport schema v3
 ```
 
 CLI、`runProject()`、`Project.run()` 与 `Project.dev()` 的每个重建轮次最终都进入 `packages/core/src/lifecycle/build-session.ts`。不存在 CLI 专用构建器或 Extension 自己的 pipeline。
@@ -136,9 +136,12 @@ Contribution 只能：
 
 - 填写已声明、当前为空的 Document field path；
 - 追加当前 owner 已签发或获 grant 的 Asset；
+- 提交与 Extension 已声明 subject 绑定、仅由目标 Platform 解释的不透明 JSON Component payload；
 - 精确覆盖 Extension validate 阶段声明的 compatibility tuple。
 
-它不能读取其他 Contribution、替换/删除已有字段、append 任意数组、claim/suppress Component 或覆盖 Asset 路径。同一字段、路径或 tuple 竞争稳定失败，不使用 `extensions[]` 顺序解决。
+payload 不是 Canonical Component，Core 不读取其业务字段。只有 `finalizePackage()` 看到 merged payload；目标 Platform 负责 schema、命名空间、输出路径、渲染与 candidate validation。Claude Code、Cursor、OpenCode 首期各自支持原生 Agent payload；Codex、Antigravity、Pi 对非空 payload 稳定失败，绝不静默忽略或生成 fallback。
+
+它不能读取其他 Contribution、替换/删除已有字段、append 任意数组、claim/suppress Canonical Component 或覆盖 Asset 路径。同一字段、路径或 tuple 竞争稳定失败，不使用 `extensions[]` 顺序解决。
 
 `finalizePackage()` 读取 merged snapshot，只决定主 Package identity/type 并可追加 Platform 自有 Asset。Core 自动继承全部 base/contribution 内容。主 Package 通过完整临时候选校验后，Platform 才能创建 Marketplace Distribution；Distribution 也必须保持继承 Asset 完整性并再次校验。
 
@@ -231,11 +234,12 @@ commit 的 Session close 位于 swap 后仍可 rollback 的窗口。任何必要
 
 ## 13. BuildReport
 
-schema-v2 `BuildReport` 包含：
+schema-v3 `BuildReport` 包含：
 
 - framework/compiler version、command、mode、success、committed；
 - Component、Runtime、Extension、Platform 状态；
 - Package Unit 与 Asset 的 path/owner/origin/mode/size/SHA-256；
+- Component contribution 驱动的生成 Asset/finalization Document 的稳定 contributor owner/subject provenance；
 - compatibility 与 metadata disposition；
 - 绑定 phase/owner/platform/extension/component 的稳定诊断。
 

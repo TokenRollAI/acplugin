@@ -85,6 +85,11 @@ export class SourceRegistry {
   /** 已签发来源的 exact/case/NFC 冲突索引。 */
   readonly #collisions = new SourcePathCollisionRegistry();
 
+  /** @returns value 是否为当前 BuildSession 真实签发的 Source capability identity。 */
+  isReference(value: object): boolean {
+    return this.#records.has(value);
+  }
+
   /**
    * 创建当前 BuildSession 唯一的 Source Registry。
    *

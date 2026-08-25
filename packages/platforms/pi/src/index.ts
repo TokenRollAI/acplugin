@@ -58,8 +58,22 @@ export function pi(options: PiPlatformOptions = {}): AcpluginPlatform {
             metadata: manifest.metadata,
           };
         },
-        /** Core 自动继承 base Assets 和无序 Hooks Contribution。 */
-        finalizePackage: () => ({ id: 'package', type: 'package' }),
+        /**
+         * Pi 尚未定义 Platform Component 的原生 package representation。
+         *
+         * 拒绝非空贡献使 Extension 不能误以为自己的私有资源已被交付，并保持
+         * 既有 canonical Agent → Skill conversion 与 private contribution 相互独立。
+         */
+        finalizePackage: ({ package: mergedPackage, diagnostics }) => {
+          if (mergedPackage.components.length > 0) {
+            diagnostics.report({
+              code: 'PI_COMPONENT_CONTRIBUTION_UNSUPPORTED',
+              severity: 'error',
+              message: 'Pi does not support Platform Component contributions.',
+            });
+          }
+          return { id: 'package', type: 'package' };
+        },
         validatePackage: validatePiPackage,
       };
     },

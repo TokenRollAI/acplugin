@@ -15,7 +15,7 @@ import { AssetRegistry } from '../services/assets.js';
 import { compareCodePoints } from '../security/path-policy.js';
 import { snapshotJson } from '../security/json-snapshot.js';
 
-/** Schema v2 BuildReport 的完整内部输入。 */
+/** Schema v3 BuildReport 的完整内部输入。 */
 export interface BuildReportInput {
   readonly frameworkVersion: string;
   readonly compilerVersion: string;
@@ -82,7 +82,7 @@ function reportRecords<T>(value: readonly T[], label: string): readonly T[] {
 }
 
 /**
- * 创建深度冻结、稳定排序的 Schema v2 BuildReport。
+ * 创建深度冻结、稳定排序的 Schema v3 BuildReport。
  *
  * @param input Kernel 完整生命周期已验证的报告输入。
  * @returns 不含 timestamp、绝对路径、bytes 或环境值的报告。
@@ -122,7 +122,7 @@ export function createBuildReport(input: BuildReportInput): BuildReport {
   const diagnostics = reportRecords(input.diagnostics, 'BuildReport diagnostics');
   /** 最终整体 snapshot 同时校验 scalar 和 Package report，形成单一深冻边界。 */
   return snapshotJson({
-    schemaVersion: 2,
+    schemaVersion: 3,
     framework: Object.freeze({ name: 'acplugin', version: input.frameworkVersion }),
     compiler: Object.freeze({ name: 'rolldown', version: input.compilerVersion }),
     success: input.success,
@@ -143,7 +143,7 @@ export function createBuildReport(input: BuildReportInput): BuildReport {
 /**
  * 把 BuildReport 编码为固定键序和单尾随换行 JSON。
  *
- * @param report 已建立边界的 Schema v2 report。
+ * @param report 已建立边界的 Schema v3 report。
  * @returns 字节稳定 JSON 文本。
  */
 export function serializeBuildReport(report: BuildReport): string {

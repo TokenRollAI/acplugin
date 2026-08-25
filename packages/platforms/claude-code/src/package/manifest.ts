@@ -85,7 +85,7 @@ export function validatePlatformOptions(options: ClaudeCodePlatformOptions): voi
 function pluginManifest(
   metadata: PluginMetadata,
   options: Readonly<JsonObject>,
-  components: { readonly commands: number; readonly skills: number; readonly agents: number },
+  components: { readonly commands: number; readonly skills: number },
 ): ClaudeCodePluginManifest {
   return {
     name: metadata.name,
@@ -100,7 +100,6 @@ function pluginManifest(
     ...(options.defaultEnabled === undefined ? {} : { defaultEnabled: options.defaultEnabled as boolean }),
     ...(components.commands === 0 ? {} : { commands: './commands/' }),
     ...(components.skills === 0 ? {} : { skills: './skills/' }),
-    ...(components.agents === 0 ? {} : { agents: './agents/' }),
   };
 }
 
@@ -133,7 +132,7 @@ function metadataDispositions(metadata: PluginMetadata): readonly MetadataDispos
 export function createPluginDocument(input: {
   readonly metadata: PluginMetadata;
   readonly options: Readonly<JsonObject>;
-  readonly components: { readonly commands: number; readonly skills: number; readonly agents: number };
+  readonly components: { readonly commands: number; readonly skills: number };
 }): { readonly document: PackageDocumentInput; readonly metadata: readonly MetadataDispositionInput[] } {
   /** document 是 Platform 唯一拥有的结构化主清单。 */
   const document: PackageDocumentInput = Object.freeze({
@@ -145,6 +144,8 @@ export function createPluginDocument(input: {
       Object.freeze(['hooks'] as const),
       Object.freeze(['mcpServers'] as const),
     ]),
+    /** 合并私有 Component 后才由 Claude Platform 自己决定是否注册 agents 目录。 */
+    finalizationPoints: Object.freeze([Object.freeze(['agents'] as const)]),
   });
   return Object.freeze({ document, metadata: metadataDispositions(input.metadata) });
 }

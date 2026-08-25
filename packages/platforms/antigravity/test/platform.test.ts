@@ -7,6 +7,7 @@ import {
   resolveKernelConfig,
   runKernelBuildSession,
   type AcpluginExtension,
+  type PlatformContributor,
 } from '@acplugin/core';
 import { antigravity } from '../src/index.js';
 import { PLUGIN_MANIFEST_PATH } from '../src/package/manifest.js';
@@ -138,6 +139,34 @@ function rootContribution(input: {
   });
 }
 
+/** 创建 Antigravity 必须显式拒绝的非空私有 Component contribution。 */
+function unsupportedComponentContribution(): AcpluginExtension {
+  const contributor: PlatformContributor<Record<string, never>, { readonly kind: 'fixture-component' }> = {
+    platform: 'antigravity',
+    platformApiVersion: '1',
+    contribute: () => ({
+      components: [{ subject: 'fixture:private-component', value: { kind: 'fixture-component' } }],
+      compatibility: [{
+        subject: 'fixture:private-component', capability: 'delivery', level: 'native',
+        reason: 'The fixture requests private Component delivery.',
+      }],
+    }),
+  };
+  return defineExtension({
+    id: 'private-component-fixture',
+    apiVersion: '1',
+    resourceRoots: [],
+    createSession: () => ({
+      discover: () => ({}),
+      validate: (_context, state) => ({
+        state, subjects: [{ subject: 'fixture:private-component', capabilities: ['delivery'] }],
+      }),
+      build: (_context, state) => ({ state }),
+      contributors: [contributor],
+    }),
+  });
+}
+
 afterEach(async () => {
   await Promise.all(temporaryRoots.splice(0).map(root => fs.rm(root, { recursive: true, force: true })));
 });
@@ -232,6 +261,19 @@ describe('Antigravity Platform Package API', () => {
     expect(collision.success).toBe(false);
     expect(collision.diagnostics).toContainEqual(expect.objectContaining({
       code: 'PLATFORM_CONTRIBUTION_FAILED', platform: 'antigravity', phase: 'contribute',
+    }));
+  });
+
+  it('explicitly rejects non-empty private Component contributions', async () => {
+    const root = await temporaryProject();
+    const report = await run({
+      root, command: 'validate', commit: false, extensions: [unsupportedComponentContribution()],
+    });
+
+    expect(report.success).toBe(false);
+    expect(report.packages).toEqual([]);
+    expect(report.diagnostics).toContainEqual(expect.objectContaining({
+      code: 'ANTIGRAVITY_COMPONENT_CONTRIBUTION_UNSUPPORTED', phase: 'finalize', platform: 'antigravity',
     }));
   });
 
